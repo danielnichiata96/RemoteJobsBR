@@ -1,0 +1,16 @@
+# Ambiente virtual
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Configurações e logs
+.env
+*.log
+*.sqlite3
+
+# Dependências instaladas via pip
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
