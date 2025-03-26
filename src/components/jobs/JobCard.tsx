@@ -3,16 +3,25 @@ import Image from 'next/image';
 import { Job } from '@/types/job';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useState } from 'react';
 
 interface JobCardProps {
   job: Job;
 }
 
 export default function JobCard({ job }: JobCardProps) {
+  const [imgError, setImgError] = useState(false);
+  
+  // Função para garantir que temos um objeto Date válido
+  const getFormattedDate = (date: Date | string) => {
+    const dateObj = date instanceof Date ? date : new Date(date);
+    return formatDistanceToNow(dateObj, { locale: ptBR, addSuffix: false });
+  };
+
   return (
     <div className="card hover:shadow-lg transition-shadow duration-200">
       <div className="flex items-start">
-        {job.companyLogo ? (
+        {job.companyLogo && !imgError ? (
           <div className="flex-shrink-0 mr-4">
             <Image 
               src={job.companyLogo} 
@@ -20,6 +29,7 @@ export default function JobCard({ job }: JobCardProps) {
               width={60}
               height={60}
               className="rounded-md"
+              onError={() => setImgError(true)}
             />
           </div>
         ) : (
@@ -53,7 +63,7 @@ export default function JobCard({ job }: JobCardProps) {
             <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded">
               {job.experienceLevel === 'entry-level' ? 'Júnior' :
                 job.experienceLevel === 'mid-level' ? 'Pleno' :
-                job.experienceLevel === 'senior' ? 'Sênior' : 'Líder'}
+                job.experienceLevel === 'senior-level' ? 'Sênior' : 'Líder'}
             </span>
           </div>
           
@@ -83,7 +93,7 @@ export default function JobCard({ job }: JobCardProps) {
           
           <div className="flex justify-between items-center mt-4">
             <span className="text-xs text-gray-500">
-              Publicada há {formatDistanceToNow(new Date(job.createdAt), { locale: ptBR, addSuffix: false })}
+              Publicada há {getFormattedDate(job.createdAt)}
             </span>
             
             <Link 

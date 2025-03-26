@@ -3,23 +3,32 @@ export interface Job {
   title: string;
   company: string;
   companyLogo?: string;
-  companyWebsite?: string;
   location: string;
-  salary?: string;
   description: string;
-  requirements: string;
+  jobType: string;
+  experienceLevel: string;
   tags: string[];
-  jobType: JobType;
-  experienceLevel: ExperienceLevel;
-  contactEmail: string;
-  status: JobStatus;
-  createdAt: Date;
-  updatedAt: Date;
+  salary?: string;
+  createdAt: Date | string;
+  applicationUrl: string;
 }
 
-export type JobType = 'full-time' | 'part-time' | 'contract' | 'freelance';
+// Tipos de trabalho
+export enum JobType {
+  FULL_TIME = 'full-time',
+  PART_TIME = 'part-time',
+  CONTRACT = 'contract',
+  FREELANCE = 'freelance',
+  INTERNSHIP = 'internship',
+}
 
-export type ExperienceLevel = 'entry-level' | 'mid-level' | 'senior' | 'lead';
+// Níveis de experiência
+export enum ExperienceLevel {
+  ENTRY = 'entry-level',
+  MID = 'mid-level',
+  SENIOR = 'senior-level',
+  LEAD = 'lead-level',
+}
 
 export type JobStatus = 'active' | 'filled' | 'closed';
 

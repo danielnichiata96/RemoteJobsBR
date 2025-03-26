@@ -1,290 +1,210 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { GetServerSideProps, InferGetServerSidePropsType } from 'next';
 import Head from 'next/head';
-import Link from 'next/link';
-import { GetStaticProps } from 'next';
 import Layout from '@/components/common/Layout';
-import WideJobCard from '@/components/jobs/WideJobCard';
-import NewsletterSignup from '@/components/common/NewsletterSignup';
-import { Job, JobType, ExperienceLevel } from '@/types/models';
+import JobCard from '@/components/jobs/JobCard';
+import SearchBar from '@/components/jobs/SearchBar';
+import SimpleFilter from '@/components/jobs/SimpleFilter';
+import { Job, JobType, ExperienceLevel } from '@/types/job';
+import { prisma } from '@/lib/prisma';
 
-// Dados de exemplo para a página inicial
-export const MOCK_JOBS: Job[] = [
+// Dados de exemplo para a página inicial até termos integração com o backend
+const MOCK_JOBS_DATA = [
   {
     id: '1',
-    companyId: '101',
     title: 'Desenvolvedor Frontend React',
-    description: 'Estamos procurando um desenvolvedor frontend React experiente para trabalhar em projetos inovadores. Você irá colaborar com uma equipe internacional e participar de todo o ciclo de desenvolvimento.',
-    requirements: 'React, TypeScript, CSS avançado',
-    responsibilities: 'Desenvolver interfaces, colaborar com o design, implementar testes automatizados',
-    benefits: 'Horário flexível, plano de saúde, 30 dias de férias',
-    jobType: JobType.FULL_TIME,
-    experienceLevel: ExperienceLevel.MID,
-    skills: ['React', 'TypeScript', 'Redux', 'CSS', 'Figma'],
-    tags: ['Frontend', 'JavaScript'],
+    company: 'TechInova',
+    companyLogo: 'https://via.placeholder.com/150',
     location: 'São Paulo (Remoto)',
-    country: 'Brasil',
-    workplaceType: 'remote',
-    minSalary: 8000,
-    maxSalary: 12000,
-    currency: 'BRL',
-    salaryCycle: 'monthly',
-    showSalary: true,
-    status: 'ACTIVE',
-    visas: [],
-    languages: ['Português', 'Inglês'],
-    applicationUrl: '',
-    applicationEmail: 'jobs@company.com',
-    createdAt: new Date('2025-02-15T10:00:00Z'),
-    updatedAt: new Date('2025-02-15T10:00:00Z'),
-    publishedAt: new Date('2025-02-15T10:00:00Z'),
-    expiresAt: new Date('2025-04-15T10:00:00Z'),
-    viewCount: 145,
-    applicantCount: 12,
-    company: {
-      id: '101',
-      name: 'TechInova',
-      email: 'contact@techinova.com',
-      logo: 'https://via.placeholder.com/150',
-      role: 'COMPANY',
-      createdAt: new Date('2024-01-01'),
-      updatedAt: new Date('2024-01-01'),
-      isActive: true,
-    }
+    description: 'Estamos procurando um desenvolvedor frontend React experiente para trabalhar em projetos inovadores.',
+    jobType: 'full-time',
+    experienceLevel: 'mid-level',
+    tags: ['React', 'TypeScript', 'Redux', 'CSS', 'Figma'],
+    salary: 'R$ 8.000 - R$ 12.000',
+    createdAt: '2025-02-15T10:00:00Z',
+    applicationUrl: '/jobs/1'
   },
   {
     id: '2',
-    companyId: '102',
     title: 'UX/UI Designer para Projeto Internacional',
-    description: 'Empresa dos EUA busca UX/UI Designer para trabalhar em projeto de fintech. O designer ideal será responsável por criar experiências de usuário intuitivas e atraentes para produtos financeiros digitais.',
-    requirements: 'Figma, UX Research, Design Thinking',
-    responsibilities: 'Criar wireframes, prototipar, realizar testes de usuário',
-    benefits: 'Pagamento em dólar, equipe global, flexibilidade',
-    jobType: JobType.FULL_TIME,
-    experienceLevel: ExperienceLevel.SENIOR,
-    skills: ['Figma', 'UI Design', 'Wireframing', 'Design Thinking', 'Adobe XD'],
-    tags: ['Design', 'UX/UI'],
+    company: 'GlobalFin',
+    companyLogo: 'https://via.placeholder.com/150',
     location: 'Remoto (EUA)',
-    country: 'Estados Unidos',
-    workplaceType: 'remote',
-    minSalary: 6000,
-    maxSalary: 9000,
-    currency: 'USD',
-    salaryCycle: 'monthly',
-    showSalary: true,
-    status: 'ACTIVE',
-    visas: [],
-    languages: ['Inglês'],
-    applicationUrl: '',
-    applicationEmail: 'design@globalfin.com',
-    createdAt: new Date('2025-03-01T10:00:00Z'),
-    updatedAt: new Date('2025-03-01T10:00:00Z'),
-    publishedAt: new Date('2025-03-01T10:00:00Z'),
-    expiresAt: new Date('2025-05-01T10:00:00Z'),
-    viewCount: 89,
-    applicantCount: 7,
-    company: {
-      id: '102',
-      name: 'GlobalFin',
-      email: 'hr@globalfin.com',
-      logo: 'https://via.placeholder.com/150',
-      role: 'COMPANY',
-      createdAt: new Date('2024-01-01'),
-      updatedAt: new Date('2024-01-01'),
-      isActive: true,
-    }
+    description: 'Empresa dos EUA busca UX/UI Designer para trabalhar em projeto de fintech.',
+    jobType: 'full-time',
+    experienceLevel: 'senior',
+    tags: ['Figma', 'UI Design', 'UX Research', 'Design Thinking', 'Adobe XD'],
+    salary: 'US$ 6.000 - US$ 9.000',
+    createdAt: '2025-03-01T10:00:00Z',
+    applicationUrl: '/jobs/2'
   },
   {
     id: '3',
-    companyId: '103',
     title: 'Desenvolvedor Backend Node.js',
-    description: 'Empresa europeia procura desenvolvedor Node.js para construir e manter APIs REST e microsserviços. Esta é uma oportunidade para quem deseja trabalhar em um ambiente internacional com práticas modernas de desenvolvimento.',
-    requirements: 'Node.js, TypeScript, PostgreSQL, Docker',
-    responsibilities: 'Desenvolver APIs, otimizar performance, documentar código',
-    benefits: 'Plano de desenvolvimento de carreira, bônus anual, horário flexível',
-    jobType: JobType.FULL_TIME,
-    experienceLevel: ExperienceLevel.MID,
-    skills: ['Node.js', 'Express', 'TypeScript', 'PostgreSQL', 'Docker', 'AWS'],
-    tags: ['Backend', 'JavaScript'],
+    company: 'EuroTechDev',
+    companyLogo: 'https://via.placeholder.com/150',
     location: 'Remoto (Alemanha)',
-    country: 'Alemanha',
-    workplaceType: 'remote',
-    minSalary: 5000,
-    maxSalary: 7000,
-    currency: 'EUR',
-    salaryCycle: 'monthly',
-    showSalary: true,
-    status: 'ACTIVE',
-    visas: [],
-    languages: ['Inglês'],
-    applicationUrl: '',
-    applicationEmail: 'careers@eurotechdev.com',
-    createdAt: new Date('2025-03-10T10:00:00Z'),
-    updatedAt: new Date('2025-03-10T10:00:00Z'),
-    publishedAt: new Date('2025-03-10T10:00:00Z'),
-    expiresAt: new Date('2025-05-10T10:00:00Z'),
-    viewCount: 112,
-    applicantCount: 9,
-    company: {
-      id: '103',
-      name: 'EuroTechDev',
-      email: 'info@eurotechdev.com',
-      logo: 'https://via.placeholder.com/150',
-      role: 'COMPANY',
-      createdAt: new Date('2024-01-01'),
-      updatedAt: new Date('2024-01-01'),
-      isActive: true,
-    }
+    description: 'Empresa europeia procura desenvolvedor Node.js para construir e manter APIs REST e microsserviços.',
+    jobType: 'full-time',
+    experienceLevel: 'mid-level',
+    tags: ['Node.js', 'TypeScript', 'PostgreSQL', 'Docker', 'AWS'],
+    salary: '€ 5.000 - € 7.000',
+    createdAt: '2025-03-10T10:00:00Z',
+    applicationUrl: '/jobs/3'
   }
 ];
 
 interface HomeProps {
-  featuredJobs: Job[];
+  initialJobs: Job[];
 }
 
-export default function Home({ featuredJobs }: HomeProps) {
+export default function Home({ initialJobs }: InferGetServerSidePropsType<typeof getServerSideProps>) {
+  const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Redirecionar para a página de busca com o termo
-    window.location.href = `/jobs?search=${encodeURIComponent(searchTerm)}`;
+  const [filters, setFilters] = useState({
+    jobTypes: [] as string[],
+    experienceLevels: [] as string[],
+    remoteOnly: false
+  });
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Simula a busca de dados - em produção seria uma chamada de API real
+  useEffect(() => {
+    const fetchJobs = () => {
+      setIsLoading(true);
+      
+      // Simulando uma chamada de API com setTimeout
+      setTimeout(() => {
+        let filteredJobs = [...initialJobs];
+        
+        // Filtragem por termo de busca
+        if (searchTerm) {
+          const term = searchTerm.toLowerCase();
+          filteredJobs = filteredJobs.filter(job => 
+            job.title.toLowerCase().includes(term) || 
+            job.company.toLowerCase().includes(term) || 
+            job.description.toLowerCase().includes(term) ||
+            job.tags.some(tag => tag.toLowerCase().includes(term))
+          );
+        }
+        
+        // Filtragem por tipo de contrato
+        if (filters.jobTypes.length > 0) {
+          filteredJobs = filteredJobs.filter(job => 
+            filters.jobTypes.includes(job.jobType)
+          );
+        }
+        
+        // Filtragem por nível de experiência
+        if (filters.experienceLevels.length > 0) {
+          filteredJobs = filteredJobs.filter(job => 
+            filters.experienceLevels.includes(job.experienceLevel)
+          );
+        }
+        
+        // Filtragem por vagas 100% remotas
+        if (filters.remoteOnly) {
+          filteredJobs = filteredJobs.filter(job => 
+            job.location.toLowerCase().includes('remoto')
+          );
+        }
+        
+        setJobs(filteredJobs);
+        setIsLoading(false);
+      }, 300); // Pequeno atraso para simular a chamada de API
+    };
+    
+    fetchJobs();
+  }, [searchTerm, filters, initialJobs]);
+
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+  };
+
+  const handleFilterChange = (newFilters: {
+    jobTypes: string[];
+    experienceLevels: string[];
+    remoteOnly: boolean;
+  }) => {
+    setFilters(newFilters);
   };
 
   return (
     <Layout>
       <Head>
-        <title>RemoteJobsBR - Vagas Remotas Internacionais para Brasileiros</title>
-        <meta name="description" content="Encontre as melhores vagas remotas em empresas internacionais para profissionais brasileiros" />
+        <title>RemoteJobsBR - Vagas Remotas Internacionais</title>
+        <meta name="description" content="Encontre vagas remotas em empresas internacionais para profissionais brasileiros" />
       </Head>
 
-      <section className="py-16 bg-gradient-to-b from-primary-50 to-white">
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto text-center mb-12">
-            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
-              Vagas Remotas Internacionais para Brasileiros
-            </h1>
-            <p className="text-xl text-gray-600 mb-8">
-              Conectamos talentos brasileiros a oportunidades de trabalho remoto em empresas internacionais.
-              Encontre sua próxima vaga com salários em dólar e euro.
-            </p>
-            
-            <form onSubmit={handleSearch} className="max-w-2xl mx-auto">
-              <div className="flex flex-col sm:flex-row shadow-lg rounded-lg overflow-hidden">
-                <input
-                  type="text"
-                  placeholder="Busque por cargo, tecnologia ou empresa..."
-                  className="flex-grow px-6 py-4 border-0 focus:ring-0 focus:outline-none"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-                <button 
-                  type="submit"
-                  className="bg-primary-600 hover:bg-primary-700 text-white px-8 py-4 font-medium transition duration-200"
-                >
-                  Buscar
-                </button>
-              </div>
-            </form>
-          </div>
+      <div className="container mx-auto px-4 py-8 max-w-3xl">
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-bold text-gray-900 mb-3">
+            Vagas Remotas Internacionais
+          </h1>
+          <p className="text-gray-600">
+            Oportunidades em empresas estrangeiras para profissionais brasileiros
+          </p>
         </div>
-      </section>
-      
-      <section className="py-12">
-        <div className="container mx-auto px-4">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">Vagas em Destaque</h2>
-            <Link 
-              href="/jobs" 
-              className="text-primary-600 hover:text-primary-800 font-medium flex items-center"
-            >
-              Ver todas as vagas
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+
+        {/* Barra de pesquisa */}
+        <SearchBar onSearch={handleSearch} />
+
+        {/* Filtros */}
+        <SimpleFilter onFilterChange={handleFilterChange} />
+
+        {/* Lista de vagas */}
+        <div className="space-y-6">
+          {isLoading ? (
+            <div className="flex justify-center py-20">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+            </div>
+          ) : jobs.length > 0 ? (
+            jobs.map(job => (
+              <div key={job.id} className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
+                <JobCard job={job} />
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-10">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-            </Link>
-          </div>
-          
-          <div className="space-y-6">
-            {featuredJobs.map((job) => (
-              <WideJobCard key={job.id} job={job} />
-            ))}
-          </div>
-          
-          <div className="mt-12 text-center">
-            <Link
-              href="/jobs"
-              className="inline-block bg-primary-600 hover:bg-primary-700 text-white py-3 px-8 rounded-md font-medium transition duration-200"
-            >
-              Ver Todas as Vagas
-            </Link>
-          </div>
-        </div>
-      </section>
-      
-      <section className="py-12">
-        <div className="container mx-auto px-4">
-          <h2 className="text-2xl font-bold text-gray-900 text-center mb-12">Como Funciona</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="bg-primary-100 w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-600" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M9 9a2 2 0 114 0 2 2 0 01-4 0z" />
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a4 4 0 00-3.446 6.032l-2.261 2.26a1 1 0 101.414 1.415l2.261-2.261A4 4 0 1011 5z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-2 text-gray-900">1. Encontre Vagas</h3>
+              <h2 className="text-xl font-bold text-gray-700 mb-2">Nenhuma vaga encontrada</h2>
               <p className="text-gray-600">
-                Busque entre centenas de vagas remotas em empresas internacionais que correspondam às suas habilidades.
+                Tente ajustar seus filtros ou realizar uma nova busca.
               </p>
             </div>
-            
-            <div className="text-center">
-              <div className="bg-primary-100 w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-600" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-2 text-gray-900">2. Candidate-se</h3>
-              <p className="text-gray-600">
-                Aplique diretamente pelo site com apenas alguns cliques e acompanhe o status das suas candidaturas.
-              </p>
-            </div>
-            
-            <div className="text-center">
-              <div className="bg-primary-100 w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-600" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M7 2a2 2 0 00-2 2v12a2 2 0 002 2h6a2 2 0 002-2V4a2 2 0 00-2-2H7zm3 14a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-2 text-gray-900">3. Conecte-se</h3>
-              <p className="text-gray-600">
-                Se seu perfil for compatível, a empresa entrará em contato para as próximas etapas do processo seletivo.
-              </p>
-            </div>
-          </div>
+          )}
         </div>
-      </section>
-      
-      <section className="py-12">
-        <div className="container mx-auto px-4">
-          <NewsletterSignup />
-        </div>
-      </section>
+      </div>
     </Layout>
   );
 }
 
-export const getStaticProps: GetStaticProps = async () => {
-  // Em um cenário real, buscaríamos do banco de dados
-  // através do Prisma
-  const featuredJobs = MOCK_JOBS;
+export const getServerSideProps: GetServerSideProps = async () => {
+  // Aqui faremos a integração com o Prisma e o banco de dados
+  // Por enquanto, retornaremos os dados de exemplo
+  
+  // Exemplo de como seria com Prisma:
+  // const jobsData = await prisma.job.findMany({
+  //   where: { status: 'ACTIVE' },
+  //   include: { company: true },
+  //   orderBy: { createdAt: 'desc' },
+  //   take: 10,
+  // });
+  // 
+  // const initialJobs = jobsData.map(job => ({
+  //   ...job,
+  //   createdAt: job.createdAt.toISOString(),
+  //   updatedAt: job.updatedAt.toISOString(),
+  // }));
+  
+  // Usando dados de exemplo
+  const initialJobs = MOCK_JOBS_DATA;
   
   return {
     props: {
-      featuredJobs,
+      initialJobs,
     },
-    // Revalidar a cada 1 hora
-    revalidate: 3600,
   };
 }; 
