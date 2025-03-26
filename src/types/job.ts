@@ -11,6 +11,8 @@ export interface Job {
   salary?: string;
   createdAt: Date | string;
   applicationUrl: string;
+  industry?: string;
+  regionType?: string;
 }
 
 // Tipos de trabalho

@@ -22,7 +22,9 @@ const MOCK_JOBS_DATA = [
     tags: ['React', 'TypeScript', 'Redux', 'CSS', 'Figma'],
     salary: 'R$ 8.000 - R$ 12.000',
     createdAt: '2025-02-15T10:00:00Z',
-    applicationUrl: '/jobs/1'
+    applicationUrl: '/jobs/1',
+    industry: 'tech',
+    regionType: 'brazil'
   },
   {
     id: '2',
@@ -32,11 +34,13 @@ const MOCK_JOBS_DATA = [
     location: 'Remoto (EUA)',
     description: 'Empresa dos EUA busca UX/UI Designer para trabalhar em projeto de fintech.',
     jobType: 'full-time',
-    experienceLevel: 'senior',
+    experienceLevel: 'senior-level',
     tags: ['Figma', 'UI Design', 'UX Research', 'Design Thinking', 'Adobe XD'],
     salary: 'US$ 6.000 - US$ 9.000',
     createdAt: '2025-03-01T10:00:00Z',
-    applicationUrl: '/jobs/2'
+    applicationUrl: '/jobs/2',
+    industry: 'finance',
+    regionType: 'worldwide'
   },
   {
     id: '3',
@@ -50,7 +54,41 @@ const MOCK_JOBS_DATA = [
     tags: ['Node.js', 'TypeScript', 'PostgreSQL', 'Docker', 'AWS'],
     salary: '€ 5.000 - € 7.000',
     createdAt: '2025-03-10T10:00:00Z',
-    applicationUrl: '/jobs/3'
+    applicationUrl: '/jobs/3',
+    industry: 'tech',
+    regionType: 'worldwide'
+  },
+  {
+    id: '4',
+    title: 'Product Manager em Edtech',
+    company: 'EdLearn',
+    companyLogo: 'https://via.placeholder.com/150',
+    location: 'Remoto (Argentina)',
+    description: 'Buscamos Product Manager para liderar o desenvolvimento de produtos educacionais digitais.',
+    jobType: 'full-time',
+    experienceLevel: 'senior-level',
+    tags: ['Agile', 'Product Management', 'Edtech', 'Scrum', 'Data Analysis'],
+    salary: 'US$ 4.000 - US$ 6.500',
+    createdAt: '2025-03-05T10:00:00Z',
+    applicationUrl: '/jobs/4',
+    industry: 'education',
+    regionType: 'latam'
+  },
+  {
+    id: '5',
+    title: 'Desenvolvedor Mobile React Native',
+    company: 'HealthApp',
+    companyLogo: 'https://via.placeholder.com/150',
+    location: 'Remoto (Brasil)',
+    description: 'Procuramos desenvolvedor React Native para aplicativo de saúde em expansão internacional.',
+    jobType: 'contract',
+    experienceLevel: 'mid-level',
+    tags: ['React Native', 'Mobile', 'JavaScript', 'Redux', 'App Development'],
+    salary: 'R$ 7.000 - R$ 10.000',
+    createdAt: '2025-03-12T10:00:00Z',
+    applicationUrl: '/jobs/5',
+    industry: 'healthcare',
+    regionType: 'brazil'
   }
 ];
 
@@ -64,7 +102,8 @@ export default function Home({ initialJobs }: InferGetServerSidePropsType<typeof
   const [filters, setFilters] = useState({
     jobTypes: [] as string[],
     experienceLevels: [] as string[],
-    remoteOnly: false
+    industries: [] as string[],
+    locations: [] as string[]
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -102,10 +141,17 @@ export default function Home({ initialJobs }: InferGetServerSidePropsType<typeof
           );
         }
         
-        // Filtragem por vagas 100% remotas
-        if (filters.remoteOnly) {
+        // Filtragem por indústria/área
+        if (filters.industries.length > 0) {
           filteredJobs = filteredJobs.filter(job => 
-            job.location.toLowerCase().includes('remoto')
+            job.industry && filters.industries.includes(job.industry)
+          );
+        }
+        
+        // Filtragem por localização/região
+        if (filters.locations.length > 0) {
+          filteredJobs = filteredJobs.filter(job => 
+            job.regionType && filters.locations.includes(job.regionType)
           );
         }
         
@@ -124,7 +170,8 @@ export default function Home({ initialJobs }: InferGetServerSidePropsType<typeof
   const handleFilterChange = (newFilters: {
     jobTypes: string[];
     experienceLevels: string[];
-    remoteOnly: boolean;
+    industries: string[];
+    locations: string[];
   }) => {
     setFilters(newFilters);
   };
@@ -136,7 +183,7 @@ export default function Home({ initialJobs }: InferGetServerSidePropsType<typeof
         <meta name="description" content="Encontre vagas remotas em empresas internacionais para profissionais brasileiros" />
       </Head>
 
-      <div className="container mx-auto px-4 py-8 max-w-3xl">
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="text-center mb-10">
           <h1 className="text-3xl font-bold text-gray-900 mb-3">
             Vagas Remotas Internacionais
@@ -151,6 +198,25 @@ export default function Home({ initialJobs }: InferGetServerSidePropsType<typeof
 
         {/* Filtros */}
         <SimpleFilter onFilterChange={handleFilterChange} />
+
+        {/* Status e contagem de resultados */}
+        <div className="mb-6 flex justify-between items-center">
+          <p className="text-gray-600">
+            Exibindo <span className="font-medium">{jobs.length}</span> vagas
+          </p>
+          
+          {Object.values(filters).some(f => f.length > 0) && (
+            <button
+              onClick={() => setFilters({ jobTypes: [], experienceLevels: [], industries: [], locations: [] })}
+              className="text-primary-600 hover:text-primary-800 text-sm font-medium flex items-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Limpar todos os filtros
+            </button>
+          )}
+        </div>
 
         {/* Lista de vagas */}
         <div className="space-y-6">
