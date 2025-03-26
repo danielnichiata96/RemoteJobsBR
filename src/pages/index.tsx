@@ -1,276 +1,269 @@
 import { useState, useEffect } from 'react';
-import { GetServerSideProps, InferGetServerSidePropsType } from 'next';
-import Head from 'next/head';
-import Layout from '@/components/common/Layout';
-import JobCard from '@/components/jobs/JobCard';
-import SearchBar from '@/components/jobs/SearchBar';
-import SimpleFilter from '@/components/jobs/SimpleFilter';
-import { Job, JobType, ExperienceLevel } from '@/types/job';
-import { prisma } from '@/lib/prisma';
+import Layout from '../components/common/Layout';
+import JobCard from '../components/jobs/JobCard';
+import SearchBar from '../components/jobs/SearchBar';
+import SimpleFilter from '../components/jobs/SimpleFilter';
+import { Job } from '../types/job';
 
-// Dados de exemplo para a página inicial até termos integração com o backend
-const MOCK_JOBS_DATA = [
-  {
-    id: '1',
-    title: 'Desenvolvedor Frontend React',
-    company: 'TechInova',
-    companyLogo: 'https://via.placeholder.com/150',
-    location: 'São Paulo (Remoto)',
-    description: 'Estamos procurando um desenvolvedor frontend React experiente para trabalhar em projetos inovadores.',
-    jobType: 'full-time',
-    experienceLevel: 'mid-level',
-    tags: ['React', 'TypeScript', 'Redux', 'CSS', 'Figma'],
-    salary: 'R$ 8.000 - R$ 12.000',
-    createdAt: '2025-02-15T10:00:00Z',
-    applicationUrl: '/jobs/1',
-    industry: 'tech',
-    regionType: 'brazil'
-  },
-  {
-    id: '2',
-    title: 'UX/UI Designer para Projeto Internacional',
-    company: 'GlobalFin',
-    companyLogo: 'https://via.placeholder.com/150',
-    location: 'Remoto (EUA)',
-    description: 'Empresa dos EUA busca UX/UI Designer para trabalhar em projeto de fintech.',
-    jobType: 'full-time',
-    experienceLevel: 'senior-level',
-    tags: ['Figma', 'UI Design', 'UX Research', 'Design Thinking', 'Adobe XD'],
-    salary: 'US$ 6.000 - US$ 9.000',
-    createdAt: '2025-03-01T10:00:00Z',
-    applicationUrl: '/jobs/2',
-    industry: 'finance',
-    regionType: 'worldwide'
-  },
-  {
-    id: '3',
-    title: 'Desenvolvedor Backend Node.js',
-    company: 'EuroTechDev',
-    companyLogo: 'https://via.placeholder.com/150',
-    location: 'Remoto (Alemanha)',
-    description: 'Empresa europeia procura desenvolvedor Node.js para construir e manter APIs REST e microsserviços.',
-    jobType: 'full-time',
-    experienceLevel: 'mid-level',
-    tags: ['Node.js', 'TypeScript', 'PostgreSQL', 'Docker', 'AWS'],
-    salary: '€ 5.000 - € 7.000',
-    createdAt: '2025-03-10T10:00:00Z',
-    applicationUrl: '/jobs/3',
-    industry: 'tech',
-    regionType: 'worldwide'
-  },
-  {
-    id: '4',
-    title: 'Product Manager em Edtech',
-    company: 'EdLearn',
-    companyLogo: 'https://via.placeholder.com/150',
-    location: 'Remoto (Argentina)',
-    description: 'Buscamos Product Manager para liderar o desenvolvimento de produtos educacionais digitais.',
-    jobType: 'full-time',
-    experienceLevel: 'senior-level',
-    tags: ['Agile', 'Product Management', 'Edtech', 'Scrum', 'Data Analysis'],
-    salary: 'US$ 4.000 - US$ 6.500',
-    createdAt: '2025-03-05T10:00:00Z',
-    applicationUrl: '/jobs/4',
-    industry: 'education',
-    regionType: 'latam'
-  },
-  {
-    id: '5',
-    title: 'Desenvolvedor Mobile React Native',
-    company: 'HealthApp',
-    companyLogo: 'https://via.placeholder.com/150',
-    location: 'Remoto (Brasil)',
-    description: 'Procuramos desenvolvedor React Native para aplicativo de saúde em expansão internacional.',
-    jobType: 'contract',
-    experienceLevel: 'mid-level',
-    tags: ['React Native', 'Mobile', 'JavaScript', 'Redux', 'App Development'],
-    salary: 'R$ 7.000 - R$ 10.000',
-    createdAt: '2025-03-12T10:00:00Z',
-    applicationUrl: '/jobs/5',
-    industry: 'healthcare',
-    regionType: 'brazil'
-  }
-];
-
-interface HomeProps {
-  initialJobs: Job[];
-}
-
-export default function Home({ initialJobs }: InferGetServerSidePropsType<typeof getServerSideProps>) {
-  const [jobs, setJobs] = useState<Job[]>(initialJobs);
+export default function Home(props) {
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState({
-    jobTypes: [] as string[],
-    experienceLevels: [] as string[],
-    industries: [] as string[],
-    locations: [] as string[]
+  const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([]);
+  const [selectedExperienceLevels, setSelectedExperienceLevels] = useState<string[]>([]);
+  const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    limit: 20,
+    pages: 0
   });
-  const [isLoading, setIsLoading] = useState(false);
 
-  // Simula a busca de dados - em produção seria uma chamada de API real
+  // Fetch jobs from API
   useEffect(() => {
-    const fetchJobs = () => {
-      setIsLoading(true);
+    const fetchJobs = async () => {
+      setLoading(true);
+      setError(null);
       
-      // Simulando uma chamada de API com setTimeout
-      setTimeout(() => {
-        let filteredJobs = [...initialJobs];
+      try {
+        // Build query parameters
+        const params = new URLSearchParams();
         
-        // Filtragem por termo de busca
-        if (searchTerm) {
-          const term = searchTerm.toLowerCase();
-          filteredJobs = filteredJobs.filter(job => 
-            job.title.toLowerCase().includes(term) || 
-            job.company.toLowerCase().includes(term) || 
-            job.description.toLowerCase().includes(term) ||
-            job.tags.some(tag => tag.toLowerCase().includes(term))
-          );
+        if (searchTerm) params.append('search', searchTerm);
+        if (selectedJobTypes.length > 0) {
+          selectedJobTypes.forEach(type => params.append('jobTypes', type));
+        }
+        if (selectedExperienceLevels.length > 0) {
+          selectedExperienceLevels.forEach(level => params.append('experienceLevels', level));
+        }
+        if (selectedIndustries.length > 0) {
+          selectedIndustries.forEach(industry => params.append('industries', industry));
+        }
+        if (selectedLocations.length > 0) {
+          selectedLocations.forEach(location => params.append('locations', location));
         }
         
-        // Filtragem por tipo de contrato
-        if (filters.jobTypes.length > 0) {
-          filteredJobs = filteredJobs.filter(job => 
-            filters.jobTypes.includes(job.jobType)
-          );
+        params.append('page', pagination.page.toString());
+        params.append('limit', pagination.limit.toString());
+        
+        // Fetch data from API
+        const response = await fetch(`/api/jobs?${params.toString()}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch jobs');
         }
         
-        // Filtragem por nível de experiência
-        if (filters.experienceLevels.length > 0) {
-          filteredJobs = filteredJobs.filter(job => 
-            filters.experienceLevels.includes(job.experienceLevel)
-          );
-        }
+        const data = await response.json();
+        setJobs(data.jobs);
+        setPagination(data.pagination);
         
-        // Filtragem por indústria/área
-        if (filters.industries.length > 0) {
-          filteredJobs = filteredJobs.filter(job => 
-            job.industry && filters.industries.includes(job.industry)
-          );
-        }
-        
-        // Filtragem por localização/região
-        if (filters.locations.length > 0) {
-          filteredJobs = filteredJobs.filter(job => 
-            job.regionType && filters.locations.includes(job.regionType)
-          );
-        }
-        
-        setJobs(filteredJobs);
-        setIsLoading(false);
-      }, 300); // Pequeno atraso para simular a chamada de API
+      } catch (err: any) {
+        console.error('Error fetching jobs:', err);
+        setError('Failed to load jobs. Please try again later.');
+        setJobs([]);
+      } finally {
+        setLoading(false);
+      }
     };
     
     fetchJobs();
-  }, [searchTerm, filters, initialJobs]);
+  }, [
+    searchTerm, 
+    selectedJobTypes, 
+    selectedExperienceLevels, 
+    selectedIndustries, 
+    selectedLocations,
+    pagination.page
+  ]);
 
-  const handleSearch = (term: string) => {
-    setSearchTerm(term);
+  // Handle search
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+    setPagination(prev => ({ ...prev, page: 1 })); // Reset to first page on new search
   };
 
-  const handleFilterChange = (newFilters: {
-    jobTypes: string[];
-    experienceLevels: string[];
-    industries: string[];
-    locations: string[];
-  }) => {
-    setFilters(newFilters);
+  // Handle filter changes
+  const handleJobTypeChange = (types: string[]) => {
+    setSelectedJobTypes(types);
+    setPagination(prev => ({ ...prev, page: 1 }));
   };
+
+  const handleExperienceLevelChange = (levels: string[]) => {
+    setSelectedExperienceLevels(levels);
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  const handleIndustryChange = (industries: string[]) => {
+    setSelectedIndustries(industries);
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  const handleLocationChange = (locations: string[]) => {
+    setSelectedLocations(locations);
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setSelectedJobTypes([]);
+    setSelectedExperienceLevels([]);
+    setSelectedIndustries([]);
+    setSelectedLocations([]);
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  // Handle pagination
+  const handleNextPage = () => {
+    if (pagination.page < pagination.pages) {
+      setPagination(prev => ({ ...prev, page: prev.page + 1 }));
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (pagination.page > 1) {
+      setPagination(prev => ({ ...prev, page: prev.page - 1 }));
+    }
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = searchTerm || 
+    selectedJobTypes.length > 0 || 
+    selectedExperienceLevels.length > 0 ||
+    selectedIndustries.length > 0 ||
+    selectedLocations.length > 0;
 
   return (
     <Layout>
-      <Head>
-        <title>RemoteJobsBR - Vagas Remotas Internacionais</title>
-        <meta name="description" content="Encontre vagas remotas em empresas internacionais para profissionais brasileiros" />
-      </Head>
-
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-gray-900 mb-3">
-            Vagas Remotas Internacionais
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        <section className="mb-8">
+          <h1 className="text-2xl font-bold mb-6">
+            Vagas remotas para Brasileiros
           </h1>
-          <p className="text-gray-600">
-            Oportunidades em empresas estrangeiras para profissionais brasileiros
-          </p>
-        </div>
-
-        {/* Barra de pesquisa */}
-        <SearchBar onSearch={handleSearch} />
-
-        {/* Filtros */}
-        <SimpleFilter onFilterChange={handleFilterChange} />
-
-        {/* Status e contagem de resultados */}
-        <div className="mb-6 flex justify-between items-center">
-          <p className="text-gray-600">
-            Exibindo <span className="font-medium">{jobs.length}</span> vagas
-          </p>
           
-          {Object.values(filters).some(f => f.length > 0) && (
-            <button
-              onClick={() => setFilters({ jobTypes: [], experienceLevels: [], industries: [], locations: [] })}
-              className="text-primary-600 hover:text-primary-800 text-sm font-medium flex items-center"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              Limpar todos os filtros
-            </button>
-          )}
-        </div>
-
-        {/* Lista de vagas */}
-        <div className="space-y-6">
-          {isLoading ? (
-            <div className="flex justify-center py-20">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Filters */}
+            <div className="lg:w-1/4">
+              <SimpleFilter
+                selectedJobTypes={selectedJobTypes}
+                selectedExperienceLevels={selectedExperienceLevels}
+                selectedIndustries={selectedIndustries}
+                selectedLocations={selectedLocations}
+                onJobTypeChange={handleJobTypeChange}
+                onExperienceLevelChange={handleExperienceLevelChange}
+                onIndustryChange={handleIndustryChange}
+                onLocationChange={handleLocationChange}
+                onClearFilters={handleClearFilters}
+              />
             </div>
-          ) : jobs.length > 0 ? (
-            jobs.map(job => (
-              <div key={job.id} className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
-                <JobCard job={job} />
+            
+            {/* Job Listings */}
+            <div className="lg:w-3/4">
+              <SearchBar 
+                value={searchTerm}
+                onChange={handleSearch}
+              />
+              
+              <div className="flex justify-between items-center mt-6 mb-4">
+                <div className="text-gray-600">
+                  {loading ? (
+                    'Carregando vagas...'
+                  ) : (
+                    <>
+                      {pagination.total} vagas encontradas
+                      {hasActiveFilters && (
+                        <button 
+                          onClick={handleClearFilters}
+                          className="ml-3 text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          Limpar filtros
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-            ))
-          ) : (
-            <div className="text-center py-10">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <h2 className="text-xl font-bold text-gray-700 mb-2">Nenhuma vaga encontrada</h2>
-              <p className="text-gray-600">
-                Tente ajustar seus filtros ou realizar uma nova busca.
-              </p>
+              
+              {/* Error Message */}
+              {error && (
+                <div className="bg-red-100 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+                  {error}
+                </div>
+              )}
+              
+              {/* Loading State */}
+              {loading ? (
+                <div className="space-y-4">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="border border-gray-200 rounded-lg p-6 animate-pulse">
+                      <div className="h-5 bg-gray-200 rounded w-1/3 mb-4"></div>
+                      <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
+                      <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                      <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  {/* Job Listings */}
+                  {jobs.length > 0 ? (
+                    <div className="space-y-4">
+                      {jobs.map((job) => (
+                        <JobCard key={job.id} job={job} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 border border-gray-200 rounded-lg">
+                      <p className="text-gray-500">Nenhuma vaga encontrada com os filtros selecionados.</p>
+                      <button 
+                        onClick={handleClearFilters}
+                        className="mt-2 text-blue-600 hover:text-blue-800"
+                      >
+                        Limpar filtros
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Pagination */}
+                  {pagination.pages > 1 && (
+                    <div className="flex justify-center mt-8">
+                      <nav className="inline-flex">
+                        <button
+                          onClick={handlePrevPage}
+                          disabled={pagination.page === 1}
+                          className={`px-4 py-2 border border-gray-300 rounded-l-md ${
+                            pagination.page === 1 
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                              : 'bg-white text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          Anterior
+                        </button>
+                        <div className="px-4 py-2 border-t border-b border-gray-300 bg-white text-gray-700">
+                          Página {pagination.page} de {pagination.pages}
+                        </div>
+                        <button
+                          onClick={handleNextPage}
+                          disabled={pagination.page === pagination.pages}
+                          className={`px-4 py-2 border border-gray-300 rounded-r-md ${
+                            pagination.page === pagination.pages 
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                              : 'bg-white text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          Próxima
+                        </button>
+                      </nav>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </section>
+      </main>
     </Layout>
   );
-}
-
-export const getServerSideProps: GetServerSideProps = async () => {
-  // Aqui faremos a integração com o Prisma e o banco de dados
-  // Por enquanto, retornaremos os dados de exemplo
-  
-  // Exemplo de como seria com Prisma:
-  // const jobsData = await prisma.job.findMany({
-  //   where: { status: 'ACTIVE' },
-  //   include: { company: true },
-  //   orderBy: { createdAt: 'desc' },
-  //   take: 10,
-  // });
-  // 
-  // const initialJobs = jobsData.map(job => ({
-  //   ...job,
-  //   createdAt: job.createdAt.toISOString(),
-  //   updatedAt: job.updatedAt.toISOString(),
-  // }));
-  
-  // Usando dados de exemplo
-  const initialJobs = MOCK_JOBS_DATA;
-  
-  return {
-    props: {
-      initialJobs,
-    },
-  };
-}; 
+} 

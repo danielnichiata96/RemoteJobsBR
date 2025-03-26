@@ -3,7 +3,20 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   images: {
-    domains: ['avatars.githubusercontent.com', 'lh3.googleusercontent.com', 'via.placeholder.com'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'avatars.githubusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'placehold.co',
+      }
+    ],
   },
   i18n: {
     locales: ['pt-BR', 'en-US'],

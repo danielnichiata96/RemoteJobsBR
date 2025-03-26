@@ -1,18 +1,18 @@
-const { PrismaClient } = require('@prisma/client');
+import { PrismaClient } from '@prisma/client';
 
-// Use a simple variable to maintain a single instance
-let prismaInstance;
+// Usar uma simples variável global para manter uma única instância
+let prisma: PrismaClient;
 
-function getPrismaInstance() {
-  if (!prismaInstance) {
-    prismaInstance = new PrismaClient({
-      log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+if (process.env.NODE_ENV === 'production') {
+  prisma = new PrismaClient();
+} else {
+  // No desenvolvimento, usar uma variável global para evitar múltiplas instâncias
+  if (!global.prisma) {
+    global.prisma = new PrismaClient({
+      log: ['query', 'error', 'warn'],
     });
   }
-  return prismaInstance;
+  prisma = global.prisma;
 }
 
-// Export the prisma instance
-const prisma = getPrismaInstance();
-
-module.exports = { prisma }; 
+export { prisma }; 
