@@ -30,19 +30,28 @@ export function LoginForm() {
       setIsLoading(true);
       setError(null);
 
+      console.log("Tentando login com email:", data.email);
+      
       const result = await signIn("credentials", {
         redirect: false,
         email: data.email,
         password: data.password,
       });
 
+      console.log("Resultado do login:", result);
+
       if (result?.error) {
+        console.error("Erro de login:", result.error);
         setError(result.error);
         return;
       }
 
-      router.push("/");
+      // Obter a URL de callback ou redirecionar para a página inicial
+      const callbackUrl = router.query.callbackUrl as string || "/";
+      console.log("Redirecionando para:", callbackUrl);
+      router.push(callbackUrl);
     } catch (error) {
+      console.error("Erro inesperado durante login:", error);
       setError("Ocorreu um erro ao fazer login. Tente novamente.");
     } finally {
       setIsLoading(false);

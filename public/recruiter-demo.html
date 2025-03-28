@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo de Componentes de Recrutador</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .component-preview {
+      border: 1px solid #e5e7eb;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    .component-preview img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <header class="bg-white shadow">
+    <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <h1 class="text-3xl font-bold text-gray-900">Portal do Recrutador - Demonstração</h1>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <div class="mb-6">
+      <p class="mb-4 text-gray-700">
+        Esta página mostra os componentes desenvolvidos para o portal do recrutador. 
+        Estes componentes são implementados usando React, TypeScript, Tailwind CSS e apresentam 
+        funcionalidades completas para gerenciamento de vagas e candidatos.
+      </p>
+
+      <section class="mb-12">
+        <h2 class="text-2xl font-semibold mb-4">Dashboard do Recrutador</h2>
+        <p class="mb-4 text-gray-700">
+          O dashboard apresenta estatísticas importantes como vagas ativas, candidaturas recebidas, 
+          entrevistas agendadas e um histórico de atividades recentes.
+        </p>
+        <div class="component-preview">
+          <img src="https://i.imgur.com/8FzVJIj.png" alt="Dashboard do Recrutador" />
+        </div>
+        <div class="mt-2 text-sm text-gray-500">
+          <strong>Funcionalidades:</strong>
+          <ul class="list-disc pl-5 mt-1">
+            <li>Exibição de estatísticas de recrutamento</li>
+            <li>Listagem de atividades recentes com timeline</li>
+            <li>Links rápidos para ações comuns</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="mb-12">
+        <h2 class="text-2xl font-semibold mb-4">Gerenciamento de Vagas</h2>
+        <p class="mb-4 text-gray-700">
+          Permite que o recrutador visualize, edite e gerencie todas as vagas publicadas pela empresa.
+        </p>
+        <div class="component-preview">
+          <img src="https://i.imgur.com/JKnMXTe.png" alt="Gerenciamento de Vagas" />
+        </div>
+        <div class="mt-2 text-sm text-gray-500">
+          <strong>Funcionalidades:</strong>
+          <ul class="list-disc pl-5 mt-1">
+            <li>Listagem de todas as vagas publicadas</li>
+            <li>Filtragem por status (ativa, encerrada, rascunho)</li>
+            <li>Ações rápidas para editar e encerrar vagas</li>
+            <li>Visualização de candidaturas por vaga</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="mb-12">
+        <h2 class="text-2xl font-semibold mb-4">Formulário de Publicação de Vaga</h2>
+        <p class="mb-4 text-gray-700">
+          Formulário completo para criar e editar vagas, com validação de campos e suporte para várias informações relevantes.
+        </p>
+        <div class="component-preview">
+          <img src="https://i.imgur.com/y8DP5Wi.png" alt="Formulário de Publicação de Vaga" />
+        </div>
+        <div class="mt-2 text-sm text-gray-500">
+          <strong>Funcionalidades:</strong>
+          <ul class="list-disc pl-5 mt-1">
+            <li>Validação completa de formulário usando Zod e React Hook Form</li>
+            <li>Suporte para informações detalhadas da vaga</li>
+            <li>Seleção de habilidades/tecnologias com tags</li>
+            <li>Configuração de requisitos, responsabilidades e benefícios</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="mb-12">
+        <h2 class="text-2xl font-semibold mb-4">Revisão de Candidaturas</h2>
+        <p class="mb-4 text-gray-700">
+          Interface para revisar e gerenciar candidaturas recebidas para uma vaga específica.
+        </p>
+        <div class="component-preview">
+          <img src="https://i.imgur.com/NTB4YoR.png" alt="Revisão de Candidaturas - Lista" />
+        </div>
+        <div class="component-preview mt-4">
+          <img src="https://i.imgur.com/6JFLx4F.png" alt="Revisão de Candidaturas - Modal" />
+        </div>
+        <div class="mt-2 text-sm text-gray-500">
+          <strong>Funcionalidades:</strong>
+          <ul class="list-disc pl-5 mt-1">
+            <li>Listagem de candidatos com informações essenciais</li>
+            <li>Filtragem por status de candidatura</li>
+            <li>Modal detalhado com informações completas do candidato</li>
+            <li>Gerenciamento de fluxo de recrutamento (analisar, entrevistar, contratar, rejeitar)</li>
+            <li>Acesso a currículo e carta de apresentação</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="mb-12">
+        <h2 class="text-2xl font-semibold mb-4">Interface de Mensagens</h2>
+        <p class="mb-4 text-gray-700">
+          Sistema de chat para comunicação direta entre recrutadores e candidatos.
+        </p>
+        <div class="component-preview">
+          <img src="https://i.imgur.com/p7XGLQ5.png" alt="Interface de Mensagens" />
+        </div>
+        <div class="mt-2 text-sm text-gray-500">
+          <strong>Funcionalidades:</strong>
+          <ul class="list-disc pl-5 mt-1">
+            <li>Lista de contatos com indicadores de mensagens não lidas</li>
+            <li>Interface de chat completa com histórico de mensagens</li>
+            <li>Suporte para envio de arquivos e anexos</li>
+            <li>Indicadores de status online/offline</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+
+    <div class="bg-white shadow-md rounded-lg p-6 mb-6">
+      <h2 class="text-xl font-semibold mb-4">Implementação e Integração</h2>
+      <p class="mb-4 text-gray-700">
+        Estes componentes foram implementados usando as seguintes tecnologias:
+      </p>
+      <ul class="list-disc pl-5 mb-4 text-gray-700">
+        <li>React e TypeScript para os componentes de interface</li>
+        <li>Tailwind CSS para estilização</li>
+        <li>React Hook Form e Zod para validação de formulários</li>
+        <li>Componentes de UI do HeroIcons para ícones</li>
+      </ul>
+      <p class="mb-4 text-gray-700">
+        Para implementar estes componentes em um projeto real, você precisará:
+      </p>
+      <ol class="list-decimal pl-5 mb-4 text-gray-700">
+        <li>Conectar os componentes a APIs reais para buscar e salvar dados</li>
+        <li>Implementar autenticação e controle de acesso</li>
+        <li>Ajustar as interfaces para corresponder às estruturas de dados do seu backend</li>
+        <li>Adicionar tratamento de erros e feedback visual</li>
+      </ol>
+    </div>
+  </main>
+
+  <footer class="bg-white shadow mt-8 py-4">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <p class="text-center text-gray-500 text-sm">
+        © 2023 RemoteJobsBR. Todos os direitos reservados.
+      </p>
+    </div>
+  </footer>
+</body>
+</html> 

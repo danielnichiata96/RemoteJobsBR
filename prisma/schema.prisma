@@ -54,6 +54,19 @@ enum ApplicationStatus {
   WITHDRAWN
 }
 
+enum UserActivityType {
+  PROFILE_UPDATE
+  PASSWORD_CHANGE
+  RESUME_UPDATE
+  SKILLS_UPDATE
+  ACCOUNT_DELETION
+  LOGIN
+  LOGOUT
+  JOB_APPLICATION
+  JOB_CREATION
+  JOB_UPDATE
+}
+
 // MODELOS
 
 model User {
@@ -102,12 +115,13 @@ model User {
   subscriptionEndsAt  DateTime?
 
   // Relacionamentos
-  accounts      Account[]
-  sessions      Session[]
-  jobs          Job[]           @relation("CompanyJobs")
-  applications  Application[]   @relation("CandidateApplications")
-  savedJobs     SavedJob[]
-  newsletter    Newsletter?
+  accounts        Account[]
+  sessions        Session[]
+  jobs            Job[]             @relation("CompanyJobs")
+  applications    Application[]     @relation("CandidateApplications")
+  savedJobs       SavedJob[]
+  newsletter      Newsletter?
+  activityLogs    UserActivityLog[]
 }
 
 model Account {
@@ -246,4 +260,16 @@ model Newsletter {
 
   // Relacionamentos
   candidate       User?     @relation(fields: [candidateId], references: [id])
+}
+
+model UserActivityLog {
+  id              String            @id @default(cuid())
+  userId          String
+  actionType      UserActivityType
+  details         String?           @db.Text
+  createdAt       DateTime          @default(now())
+  ipAddress       String?
+
+  // Relacionamentos
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 } 
