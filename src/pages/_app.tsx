@@ -4,9 +4,9 @@ import Head from 'next/head';
 import '../styles/globals.css';
 
 export default function App({ 
-  Component, 
-  pageProps: { session, ...pageProps } 
-}: AppProps) {
+      Component, 
+      pageProps: { session, ...pageProps } 
+    }) {
   return (
     <SessionProvider session={session}>
       <Head>

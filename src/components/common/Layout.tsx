@@ -16,6 +16,7 @@ export default function Layout({
 }: LayoutProps) {
   const { data: session } = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -52,41 +53,47 @@ export default function Layout({
                       Dashboard
                     </Link>
                   )}
-                  <div className="relative group">
+                  <div className="relative">
                     <button
                       className="flex items-center text-gray-700 hover:text-primary-600 font-medium"
+                      onClick={() => setIsMenuOpen(!isMenuOpen)}
                     >
                       <span className="mr-1">{session.user.name || 'Minha Conta'}</span>
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                       </svg>
                     </button>
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10 hidden group-hover:block">
-                      <Link href="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                        Meu Perfil
-                      </Link>
-                      <Link href="/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                        Minhas Candidaturas
-                      </Link>
-                      <Link href="/saved-jobs" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                        Vagas Salvas
-                      </Link>
-                      <button
-                        onClick={() => signOut()}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      >
-                        Sair
-                      </button>
-                    </div>
+                    {isMenuOpen && (
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
+                        <Link href="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                          Meu Perfil
+                        </Link>
+                        <Link href="/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                          Minhas Candidaturas
+                        </Link>
+                        <Link href="/saved-jobs" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                          Vagas Salvas
+                        </Link>
+                        <button
+                          onClick={() => {
+                            signOut();
+                            setIsMenuOpen(false);
+                          }}
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                          Sair
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </>
               ) : (
                 <>
-                  <Link href="/login" className="text-gray-700 hover:text-primary-600 font-medium">
+                  <Link href="/auth/login" className="text-gray-700 hover:text-primary-600 font-medium">
                     Login
                   </Link>
                   <Link 
-                    href="/register" 
+                    href="/auth/register" 
                     className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
                   >
                     Cadastrar
@@ -196,15 +203,15 @@ export default function Layout({
               ) : (
                 <>
                   <Link
-                    href="/login"
+                    href="/auth/login"
                     className="text-gray-700 hover:text-primary-600 py-2 font-medium"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     Login
                   </Link>
                   <Link
-                    href="/register"
-                    className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md font-medium w-full text-center"
+                    href="/auth/register"
+                    className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md font-medium transition-colors inline-block"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     Cadastrar

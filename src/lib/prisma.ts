@@ -1,18 +1,13 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from "@prisma/client";
 
-// Usar uma simples variável global para manter uma única instância
-let prisma: PrismaClient;
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
 
-if (process.env.NODE_ENV === 'production') {
-  prisma = new PrismaClient();
-} else {
-  // No desenvolvimento, usar uma variável global para evitar múltiplas instâncias
-  if (!global.prisma) {
-    global.prisma = new PrismaClient({
-      log: ['query', 'error', 'warn'],
-    });
-  }
-  prisma = global.prisma;
-}
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: ["query"],
+  });
 
-export { prisma }; 
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma; 
