@@ -1,7 +1,35 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]';
-import prisma from '@/lib/prisma';
+import { JobStatus, JobType, ExperienceLevel, Currency } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+
+// Schema para validação da vaga
+const jobSchema = z.object({
+  title: z.string().min(5, 'Título deve ter pelo menos 5 caracteres'),
+  description: z.string().min(30, 'Descrição deve ter pelo menos 30 caracteres'),
+  requirements: z.string().min(30, 'Requisitos devem ter pelo menos 30 caracteres'),
+  responsibilities: z.string().min(30, 'Responsabilidades devem ter pelo menos 30 caracteres'),
+  benefits: z.string().optional(),
+  jobType: z.nativeEnum(JobType),
+  experienceLevel: z.nativeEnum(ExperienceLevel),
+  skills: z.array(z.string()),
+  tags: z.array(z.string()).optional().default([]),
+  location: z.string(),
+  country: z.string(),
+  workplaceType: z.string(),
+  minSalary: z.number().optional(),
+  maxSalary: z.number().optional(),
+  currency: z.nativeEnum(Currency).optional(),
+  salaryCycle: z.string().optional(),
+  showSalary: z.boolean().optional().default(false),
+  status: z.nativeEnum(JobStatus).optional().default(JobStatus.DRAFT),
+  visas: z.array(z.string()).optional().default([]),
+  languages: z.array(z.string()),
+  applicationUrl: z.string().url().optional(),
+  applicationEmail: z.string().email().optional(),
+});
 
 export default async function handler(
   req: NextApiRequest,
@@ -14,35 +42,63 @@ export default async function handler(
     return res.status(401).json({ error: 'Não autorizado' });
   }
 
-  // Verificar se o usuário é um recrutador
+  // Verificar se o usuário é um recrutador com role COMPANY
   const user = await prisma.user.findUnique({
-    where: { email: session.user.email as string },
-    include: { recruiter: true },
+    where: { 
+      email: session.user.email as string,
+      role: 'COMPANY'
+    }
   });
 
-  if (!user?.recruiter) {
+  if (!user) {
     return res.status(403).json({ error: 'Acesso apenas para recrutadores' });
   }
 
   // Verificar método da requisição
   if (req.method === 'GET') {
     try {
-      // Buscar todas as vagas da empresa do recrutador
+      // Parâmetros de paginação e filtros
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const status = req.query.status as JobStatus | undefined;
+      const search = req.query.search as string | undefined;
+      
+      // Construir query base
+      const where = {
+        companyId: user.id,
+        ...(status ? { status } : {}),
+        ...(search ? {
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+            { skills: { has: search } }
+          ]
+        } : {})
+      };
+      
+      // Contar total de vagas
+      const totalJobs = await prisma.job.count({ where });
+      
+      // Buscar vagas com paginação
       const jobs = await prisma.job.findMany({
-        where: {
-          companyId: user.recruiter.companyId,
-        },
+        where,
         select: {
           id: true,
           title: true,
           location: true,
-          salary: true,
-          type: true,
-          description: true,
-          requirements: true,
+          country: true,
+          workplaceType: true,
+          jobType: true,
+          experienceLevel: true,
+          skills: true,
+          status: true,
           createdAt: true,
-          updatedAt: true,
-          isActive: true,
+          publishedAt: true,
+          minSalary: true,
+          maxSalary: true,
+          currency: true,
+          viewCount: true,
+          applicantCount: true,
           _count: {
             select: {
               applications: true,
@@ -52,9 +108,19 @@ export default async function handler(
         orderBy: {
           createdAt: 'desc',
         },
+        skip: (page - 1) * limit,
+        take: limit,
       });
 
-      return res.status(200).json({ jobs });
+      return res.status(200).json({ 
+        jobs,
+        pagination: {
+          page,
+          limit,
+          totalJobs,
+          totalPages: Math.ceil(totalJobs / limit)
+        }
+      });
     } catch (error) {
       console.error('Erro ao buscar vagas:', error);
       return res.status(500).json({ error: 'Erro ao processar a solicitação' });
@@ -62,44 +128,39 @@ export default async function handler(
   } else if (req.method === 'POST') {
     try {
       // Validar dados da nova vaga
-      const { 
-        title, 
-        description, 
-        requirements, 
-        location, 
-        salary, 
-        type,
-        isActive = true
-      } = req.body;
-
-      // Verificar campos obrigatórios
-      if (!title || !description) {
-        return res.status(400).json({ error: 'Título e descrição são obrigatórios' });
+      const validationResult = jobSchema.safeParse(req.body);
+      
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: 'Dados inválidos',
+          details: validationResult.error.format()
+        });
       }
-
+      
+      const jobData = validationResult.data;
+      
       // Criar nova vaga
       const newJob = await prisma.job.create({
         data: {
-          title,
-          description,
-          requirements,
-          location,
-          salary,
-          type,
-          isActive,
-          company: {
-            connect: {
-              id: user.recruiter.companyId,
-            },
-          },
+          ...jobData,
+          companyId: user.id,
+          publishedAt: jobData.status === JobStatus.ACTIVE ? new Date() : null,
         },
       });
 
-      return res.status(201).json({ job: newJob });
+      return res.status(201).json({ 
+        success: true,
+        message: 'Vaga criada com sucesso',
+        job: newJob 
+      });
     } catch (error) {
       console.error('Erro ao criar vaga:', error);
       return res.status(500).json({ error: 'Erro ao processar a solicitação' });
     }
+  } else if (req.method === 'PUT') {
+    return res.status(400).json({ 
+      error: 'Para atualizar uma vaga específica, utilize o endpoint /api/recruiter/jobs/[id]' 
+    });
   }
 
   // Método não permitido
