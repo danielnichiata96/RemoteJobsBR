@@ -43,10 +43,12 @@ export default function NewJob(props) {
       country: formData.get('country'),
       workplaceType: formData.get('workplaceType'),
       skills: formData.get('skills')?.toString().split(',').map(s => s.trim()).filter(Boolean) || [],
+      tags: formData.get('skills')?.toString().split(',').map(s => s.trim()).filter(Boolean) || [], // Usar mesmas skills como tags
+      status: 'DRAFT', // Inicialmente criada como rascunho
     };
 
     try {
-      const response = await fetch('/api/jobs', {
+      const response = await fetch('/api/recruiter/jobs', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -57,7 +59,7 @@ export default function NewJob(props) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Erro ao criar vaga');
+        throw new Error(data.error || data.message || 'Erro ao criar vaga');
       }
 
       // Redirecionar para a página de detalhes da vaga ou lista de vagas
