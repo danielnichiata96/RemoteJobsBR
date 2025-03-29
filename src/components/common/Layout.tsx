@@ -45,6 +45,11 @@ export default function Layout({
                 Sobre
               </Link>
               
+              {/* Botão para recrutadores internacionais (em inglês) */}
+              <Link href="/auth/recruiter" className="text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md font-medium transition-colors">
+                Post a Job
+              </Link>
+              
               {session ? (
                 <>
                   {session.user.role === 'COMPANY' && (
@@ -149,6 +154,15 @@ export default function Layout({
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Sobre
+              </Link>
+              
+              {/* Botão para recrutadores no menu mobile */}
+              <Link 
+                href="/auth/recruiter"
+                className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-medium transition-colors text-center"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Post a Job
               </Link>
               
               {session ? (

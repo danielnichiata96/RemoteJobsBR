@@ -4,6 +4,7 @@ import JobCard from '../components/jobs/JobCard';
 import SearchBar from '../components/jobs/SearchBar';
 import SimpleFilter from '../components/jobs/SimpleFilter';
 import { Job } from '../types/job';
+import Link from 'next/link';
 
 export default function Home(props) {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -137,6 +138,54 @@ export default function Home(props) {
 
   return (
     <Layout>
+      {/* Seção para recrutadores internacionais - em inglês */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white py-8 border-b border-blue-700">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="md:flex md:justify-between md:items-center">
+            <div className="max-w-2xl mb-6 md:mb-0">
+              <h2 className="text-2xl md:text-3xl font-bold mb-2">
+                Are you hiring Brazilian tech talent?
+              </h2>
+              <p className="text-blue-100 mb-4">
+                Post remote job opportunities and reach thousands of skilled Brazilian professionals looking for international opportunities.
+              </p>
+              <ul className="text-blue-100 mb-6 space-y-1">
+                <li className="flex items-center">
+                  <svg className="h-5 w-5 mr-2 text-blue-300" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Access a pool of skilled and diverse professionals
+                </li>
+                <li className="flex items-center">
+                  <svg className="h-5 w-5 mr-2 text-blue-300" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Timezone compatibility with North America
+                </li>
+                <li className="flex items-center">
+                  <svg className="h-5 w-5 mr-2 text-blue-300" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Competitive rates and high-quality work
+                </li>
+              </ul>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow-md max-w-md w-full">
+              <h3 className="text-blue-800 font-bold text-xl mb-4">Ready to hire top Brazilian talent?</h3>
+              <Link 
+                href="/auth/recruiter" 
+                className="w-full block text-center bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-md font-medium transition-colors"
+              >
+                Post a Job
+              </Link>
+              <p className="text-gray-600 text-sm mt-3 text-center">
+                No credit card required. Free job posting for a limited time.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <main className="max-w-7xl mx-auto px-4 py-8">
         <section className="mb-8">
           <h1 className="text-2xl font-bold mb-6">
