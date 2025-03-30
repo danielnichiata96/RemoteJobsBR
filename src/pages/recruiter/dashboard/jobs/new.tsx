@@ -31,23 +31,28 @@ export default function NewJob(props) {
     setFormError('');
 
     const formData = new FormData(e.currentTarget);
+    
+    // Extrair e converter os dados do formulário para o formato correto
     const jobData = {
-      title: formData.get('title'),
-      description: formData.get('description'),
-      requirements: formData.get('requirements'),
-      responsibilities: formData.get('responsibilities'),
-      benefits: formData.get('benefits'),
-      jobType: formData.get('jobType'),
-      experienceLevel: formData.get('experienceLevel'),
-      location: formData.get('location'),
-      country: formData.get('country'),
-      workplaceType: formData.get('workplaceType'),
-      skills: formData.get('skills')?.toString().split(',').map(s => s.trim()).filter(Boolean) || [],
-      tags: formData.get('skills')?.toString().split(',').map(s => s.trim()).filter(Boolean) || [], // Usar mesmas skills como tags
+      title: formData.get('title') as string,
+      description: formData.get('description') as string,
+      requirements: formData.get('requirements') as string,
+      responsibilities: formData.get('responsibilities') as string,
+      benefits: formData.get('benefits') as string || undefined,
+      jobType: formData.get('jobType') as string,
+      experienceLevel: formData.get('experienceLevel') as string,
+      location: formData.get('location') as string,
+      country: formData.get('country') as string,
+      workplaceType: formData.get('workplaceType') as string,
+      skills: (formData.get('skills') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
+      tags: (formData.get('skills') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [], // Usar mesmas skills como tags
+      languages: [], // Valor padrão para satisfazer o modelo
       status: 'DRAFT', // Inicialmente criada como rascunho
     };
 
     try {
+      console.log('Enviando dados:', jobData);
+      
       const response = await fetch('/api/recruiter/jobs', {
         method: 'POST',
         headers: {
@@ -59,12 +64,14 @@ export default function NewJob(props) {
       const data = await response.json();
 
       if (!response.ok) {
+        console.error('Erro na requisição:', data);
         throw new Error(data.error || data.message || 'Erro ao criar vaga');
       }
 
       // Redirecionar para a página de detalhes da vaga ou lista de vagas
       router.push('/recruiter/dashboard/jobs');
     } catch (error: any) {
+      console.error('Erro capturado:', error);
       setFormError(error.message || 'Ocorreu um erro ao criar a vaga');
     } finally {
       setIsSubmitting(false);
@@ -250,14 +257,13 @@ export default function NewJob(props) {
                   </div>
 
                   <div className="col-span-6">
-                    <label htmlFor="responsibilities" className="block text-sm font-medium text-gray-700">Responsabilidades *</label>
+                    <label htmlFor="responsibilities" className="block text-sm font-medium text-gray-700">Responsabilidades</label>
                     <textarea
                       id="responsibilities"
                       name="responsibilities"
                       rows={4}
-                      required
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                      placeholder="Detalhe as responsabilidades do cargo..."
+                      placeholder="Descreva as responsabilidades do cargo..."
                     ></textarea>
                   </div>
 

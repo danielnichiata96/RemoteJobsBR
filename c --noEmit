@@ -1,0 +1,9 @@
+[33mcommit db266616b40aeb0dbce86028704ad52089ecb290[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mapi-vagas-anterior[m[33m)[m
+Author: Daniel Nichiata <danielnichiatta@gmail.com>
+Date:   Sat Mar 29 15:43:14 2025 -0300
+
+    Configuração do SendGrid e ajustes no formulário de criação de vagas
+
+ .env.example                               | 39 [32m++++++++++++++++++++++[m[31m--------[m
+ src/pages/recruiter/dashboard/jobs/new.tsx |  6 [32m+++[m[31m--[m
+ 2 files changed, 33 insertions(+), 12 deletions(-)

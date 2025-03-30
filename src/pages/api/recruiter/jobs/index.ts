@@ -1,16 +1,16 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]';
-import { JobStatus, JobType, ExperienceLevel, Currency } from '@prisma/client';
+import { JobStatus, JobType, ExperienceLevel, Currency, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 
-// Schema para validação da vaga
+// Schema para validação da vaga (ajustado para corresponder ao formulário)
 const jobSchema = z.object({
   title: z.string().min(5, 'Título deve ter pelo menos 5 caracteres'),
   description: z.string().min(30, 'Descrição deve ter pelo menos 30 caracteres'),
   requirements: z.string().min(30, 'Requisitos devem ter pelo menos 30 caracteres'),
-  responsibilities: z.string().min(30, 'Responsabilidades devem ter pelo menos 30 caracteres'),
+  responsibilities: z.string().min(30, 'Responsabilidades devem ter pelo menos 30 caracteres').optional(),
   benefits: z.string().optional(),
   jobType: z.nativeEnum(JobType),
   experienceLevel: z.nativeEnum(ExperienceLevel),
@@ -26,7 +26,7 @@ const jobSchema = z.object({
   showSalary: z.boolean().optional().default(false),
   status: z.nativeEnum(JobStatus).optional().default(JobStatus.DRAFT),
   visas: z.array(z.string()).optional().default([]),
-  languages: z.array(z.string()),
+  languages: z.array(z.string()).optional().default([]),
   applicationUrl: z.string().url().optional(),
   applicationEmail: z.string().email().optional(),
 });
@@ -64,17 +64,19 @@ export default async function handler(
       const search = req.query.search as string | undefined;
       
       // Construir query base
-      const where = {
+      const where: Prisma.JobWhereInput = {
         companyId: user.id,
-        ...(status ? { status } : {}),
-        ...(search ? {
-          OR: [
-            { title: { contains: search, mode: 'insensitive' } },
-            { description: { contains: search, mode: 'insensitive' } },
-            { skills: { has: search } }
-          ]
-        } : {})
+        ...(status ? { status } : {})
       };
+      
+      // Adicionar condição de busca se necessário
+      if (search) {
+        where.OR = [
+          { title: { contains: search, mode: 'insensitive' as Prisma.QueryMode } },
+          { description: { contains: search, mode: 'insensitive' as Prisma.QueryMode } },
+          { skills: { has: search } }
+        ];
+      }
       
       // Contar total de vagas
       const totalJobs = await prisma.job.count({ where });
@@ -127,10 +129,13 @@ export default async function handler(
     }
   } else if (req.method === 'POST') {
     try {
+      console.log('Dados recebidos:', JSON.stringify(req.body, null, 2));
+      
       // Validar dados da nova vaga
       const validationResult = jobSchema.safeParse(req.body);
       
       if (!validationResult.success) {
+        console.error('Erros de validação:', validationResult.error.format());
         return res.status(400).json({ 
           error: 'Dados inválidos',
           details: validationResult.error.format()
@@ -138,11 +143,16 @@ export default async function handler(
       }
       
       const jobData = validationResult.data;
+      console.log('Dados validados:', JSON.stringify(jobData, null, 2));
+      
+      // Se responsabilidades não for fornecido, usar uma string padrão
+      const responsibilities = jobData.responsibilities || 'Responsabilidades a definir';
       
       // Criar nova vaga
       const newJob = await prisma.job.create({
         data: {
           ...jobData,
+          responsibilities,
           companyId: user.id,
           publishedAt: jobData.status === JobStatus.ACTIVE ? new Date() : null,
         },
@@ -153,9 +163,12 @@ export default async function handler(
         message: 'Vaga criada com sucesso',
         job: newJob 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao criar vaga:', error);
-      return res.status(500).json({ error: 'Erro ao processar a solicitação' });
+      return res.status(500).json({ 
+        error: 'Erro ao processar a solicitação', 
+        details: error.message 
+      });
     }
   } else if (req.method === 'PUT') {
     return res.status(400).json({ 

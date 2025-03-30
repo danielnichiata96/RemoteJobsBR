@@ -108,6 +108,7 @@ model User {
   applications  Application[]   @relation("CandidateApplications")
   savedJobs     SavedJob[]
   newsletter    Newsletter?
+  resetTokens   PasswordResetToken[]
 }
 
 model Account {
@@ -246,4 +247,16 @@ model Newsletter {
 
   // Relacionamentos
   candidate       User?     @relation(fields: [candidateId], references: [id])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Relacionamentos
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 } 
