@@ -1,31 +1,122 @@
-import { useState } from 'react';
-import { GetStaticPaths, GetStaticProps } from 'next';
+import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
-import { format } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Layout from '@/components/common/Layout';
+import { Job, JobType, ExperienceLevel } from '@/types/job';
 import WideJobCard from '@/components/jobs/WideJobCard';
-import { Job, JobType, ExperienceLevel } from '@/types/models';
-import { MOCK_JOBS } from '@/pages/index';
 
-interface JobDetailProps {
-  job: Job;
-  similarJobs: Job[];
+// Função para buscar detalhes da vaga pelo ID
+async function fetchJobById(id: string): Promise<Job | null> {
+  try {
+    // Extrair o ID interno da vaga
+    let internalId = id;
+    if (id.includes('_')) {
+      // Se for um ID no formato 'provider_id', extrair o ID
+      internalId = id.split('_')[1];
+    }
+    
+    const response = await fetch(`/api/jobs/${internalId}`);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Falha ao buscar vaga' }));
+      throw new Error(errorData.error || 'Falha ao buscar vaga');
+    }
+    
+    const data = await response.json();
+    
+    // Se o ID original tiver um prefixo, garantir que o ID na resposta mantenha esse prefixo
+    if (id !== internalId && data) {
+      data.id = id; // Preservar o ID original com prefixo
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Erro ao buscar vaga:', error);
+    throw error;
+  }
 }
 
-export default function JobDetail({ job, similarJobs }: JobDetailProps) {
-  const router = useRouter();
-  const [showApplicationForm, setShowApplicationForm] = useState(false);
-  const [coverLetter, setCoverLetter] = useState('');
-  const [resumeUrl, setResumeUrl] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+// Função para buscar vagas similares
+async function fetchSimilarJobs(id: string): Promise<Job[]> {
+  try {
+    // Extrair o ID interno da vaga
+    let internalId = id;
+    if (id.includes('_')) {
+      internalId = id.split('_')[1];
+    }
+    
+    const response = await fetch(`/api/jobs/similar?id=${internalId}`);
+    if (!response.ok) {
+      console.warn('Falha ao buscar vagas similares:', response.status);
+      return [];
+    }
+    
+    const data = await response.json();
+    
+    // Para cada vaga similar, se o ID original tiver um prefixo, adicionar esse prefixo
+    if (id !== internalId && data && Array.isArray(data)) {
+      const prefix = id.split('_')[0];
+      return data.map(job => ({
+        ...job,
+        id: job.id.includes('_') ? job.id : `${prefix}_${job.id}`
+      }));
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Erro ao buscar vagas similares:', error);
+    return [];
+  }
+}
 
-  // Redirecionamento ou fallback para página 404 se a vaga não for encontrada
-  if (router.isFallback) {
+export default function JobDetail() {
+  const router = useRouter();
+  const { id } = router.query;
+  const [job, setJob] = useState<Job | null>(null);
+  const [similarJobs, setSimilarJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    // Não fazer nada se o roteamento não estiver pronto ou o ID não estiver disponível
+    if (!router.isReady || !id) return;
+
+    const loadJobDetails = async () => {
+      setLoading(true);
+      try {
+        const jobData = await fetchJobById(id as string);
+        if (jobData) {
+          setJob(jobData);
+          
+          // Buscar vagas similares
+          const similar = await fetchSimilarJobs(id as string);
+          setSimilarJobs(similar);
+        } else {
+          setError('Vaga não encontrada');
+        }
+      } catch (err) {
+        console.error('Erro ao carregar detalhes da vaga:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+        setError(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadJobDetails();
+  }, [id, router.isReady]); // Adicionado router.isReady à lista de dependências
+
+  const getFormattedDate = (date: Date | string) => {
+    const dateObj = date instanceof Date ? date : new Date(date);
+    return formatDistanceToNow(dateObj, { locale: ptBR, addSuffix: true });
+  };
+
+  if (loading) {
     return (
       <Layout title="Carregando... - RemoteJobsBR">
         <div className="container mx-auto px-4 py-16 text-center">
@@ -40,14 +131,16 @@ export default function JobDetail({ job, similarJobs }: JobDetailProps) {
     );
   }
 
-  if (!job) {
+  if (error || !job) {
     return (
       <Layout title="Vaga não encontrada - RemoteJobsBR">
         <div className="container mx-auto px-4 py-16 text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-4">Vaga não encontrada</h1>
-          <p className="text-gray-600 mb-8">A vaga que você está procurando não existe ou foi removida.</p>
-          <Link 
-            href="/jobs" 
+          <p className="text-gray-600 mb-8">
+            {error || 'A vaga que você está procurando não existe ou foi removida.'}
+          </p>
+          <Link
+            href="/jobs"
             className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-md font-medium transition duration-200"
           >
             Ver todas as vagas
@@ -58,8 +151,13 @@ export default function JobDetail({ job, similarJobs }: JobDetailProps) {
   }
 
   // Formatar dados da vaga
-  const formatJobType = (type: JobType) => {
+  const formatJobType = (type: string) => {
     const typeMap: Record<string, string> = {
+      'full-time': 'Tempo Integral',
+      'part-time': 'Meio Período',
+      'contract': 'Contrato',
+      'internship': 'Estágio',
+      'freelance': 'Freelance',
       'FULL_TIME': 'Tempo Integral',
       'PART_TIME': 'Meio Período',
       'CONTRACT': 'Contrato',
@@ -69,8 +167,12 @@ export default function JobDetail({ job, similarJobs }: JobDetailProps) {
     return typeMap[type] || type;
   };
 
-  const formatExperience = (level: ExperienceLevel) => {
+  const formatExperience = (level: string) => {
     const levelMap: Record<string, string> = {
+      'entry-level': 'Júnior',
+      'mid-level': 'Pleno',
+      'senior-level': 'Sênior',
+      'lead-level': 'Líder',
       'ENTRY': 'Júnior',
       'MID': 'Pleno',
       'SENIOR': 'Sênior',
@@ -78,112 +180,57 @@ export default function JobDetail({ job, similarJobs }: JobDetailProps) {
     };
     return levelMap[level] || level;
   };
-
-  const formatSalary = () => {
-    if (!job.showSalary || (!job.minSalary && !job.maxSalary)) {
-      return 'Não informado';
-    }
-
-    const formatValue = (value: number) => {
-      return new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: job.currency || 'BRL',
-        maximumFractionDigits: 0,
-      }).format(value);
-    };
-    
-    let result = '';
-    if (job.minSalary && job.maxSalary) {
-      result = `${formatValue(job.minSalary)} - ${formatValue(job.maxSalary)}`;
-    } else if (job.minSalary) {
-      result = `A partir de ${formatValue(job.minSalary)}`;
-    } else if (job.maxSalary) {
-      result = `Até ${formatValue(job.maxSalary)}`;
-    }
-    
-    if (job.salaryCycle) {
-      const cycleMap: Record<string, string> = {
-        'hourly': '/hora',
-        'monthly': '/mês',
-        'yearly': '/ano'
-      };
-      result += ` ${cycleMap[job.salaryCycle] || ''}`;
-    }
-    
-    return result;
-  };
-
-  const formatDate = (date: Date) => {
-    return format(new Date(date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-  };
-
-  // Funções para lidar com o formulário de aplicação
-  const handleApply = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    setSubmitting(true);
-    setMessage(null);
-    
-    try {
-      // Simulação de API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Simulação de resposta bem-sucedida
-      setMessage({
-        type: 'success',
-        text: 'Candidatura enviada com sucesso! Em breve a empresa entrará em contato.'
-      });
-      
-      // Limpar formulário
-      setCoverLetter('');
-      setResumeUrl('');
-      
-      // Fechar formulário após um tempo
-      setTimeout(() => {
-        setShowApplicationForm(false);
-      }, 3000);
-      
-    } catch (error) {
-      setMessage({
-        type: 'error',
-        text: 'Ocorreu um erro ao enviar sua candidatura. Por favor, tente novamente.'
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  
+  // Obter o nome da empresa corretamente
+  const companyName = typeof job.company === 'object' ? job.company.name : job.company;
+  
+  // Obter o logo da empresa corretamente
+  const companyLogo = typeof job.company === 'object' ? job.company.logo || job.company.image : job.companyLogo;
+  
+  // Obter as tags corretamente
+  const tags = job.tags || job.skills || [];
 
   return (
-    <Layout title={`${job.title} - ${job.company?.name || 'Empresa'} | RemoteJobsBR`}>
+    <Layout title={`${job.title} - ${companyName} | RemoteJobsBR`}>
       <Head>
-        <meta name="description" content={`${job.title} - ${job.company?.name}. ${job.description.substring(0, 160)}...`} />
+        <meta name="description" content={`${job.title} - ${companyName}. ${job.description.substring(0, 160)}...`} />
       </Head>
 
       <div className="bg-white">
         <div className="container mx-auto px-4 py-8">
-          <Link href="/jobs" className="text-primary-600 hover:text-primary-800 flex items-center mb-6">
+          <button 
+            onClick={() => {
+              router.push({
+                pathname: '/',
+                query: { _t: Date.now() } // Adicionar timestamp para forçar recarregamento
+              });
+            }} 
+            className="text-primary-600 hover:text-primary-800 flex items-center mb-6"
+          >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
             </svg>
             Voltar para a lista de vagas
-          </Link>
+          </button>
           
           <div className="bg-white p-6 rounded-lg shadow-md mb-8">
             <div className="flex flex-col md:flex-row items-start gap-6">
               <div className="flex-shrink-0">
-                {job.company?.logo ? (
+                {companyLogo && !imgError ? (
                   <div className="w-24 h-24 relative">
                     <Image 
-                      src={job.company.logo} 
-                      alt={`${job.company.name} logo`}
-                      fill
+                      src={companyLogo} 
+                      alt={`${companyName} logo`}
+                      width={80}
+                      height={80}
                       className="object-contain rounded-md"
+                      onError={() => setImgError(true)}
                     />
                   </div>
                 ) : (
                   <div className="w-24 h-24 bg-gray-100 rounded-md flex items-center justify-center">
                     <span className="text-gray-500 font-bold text-3xl">
-                      {job.company?.name.charAt(0) || 'C'}
+                      {companyName.charAt(0)}
                     </span>
                   </div>
                 )}
@@ -195,7 +242,7 @@ export default function JobDetail({ job, similarJobs }: JobDetailProps) {
                 </h1>
                 
                 <p className="text-xl text-gray-700 mb-4">
-                  {job.company?.name || 'Empresa Confidencial'}
+                  {companyName}
                 </p>
                 
                 <div className="flex flex-wrap gap-4 mb-6">
@@ -221,21 +268,23 @@ export default function JobDetail({ job, similarJobs }: JobDetailProps) {
                     <span>{formatExperience(job.experienceLevel)}</span>
                   </div>
                   
-                  <div className="flex items-center text-gray-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>{formatSalary()}</span>
-                  </div>
+                  {job.salary && (
+                    <div className="flex items-center text-gray-600">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>{job.salary}</span>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex flex-wrap gap-2 mb-6">
-                  {job.skills.map((skill, index) => (
+                  {tags.map((tag, index) => (
                     <span 
                       key={index}
                       className="bg-primary-50 text-primary-800 text-sm font-medium px-3 py-1 rounded-full"
                     >
-                      {skill}
+                      {tag}
                     </span>
                   ))}
                 </div>
@@ -244,16 +293,18 @@ export default function JobDetail({ job, similarJobs }: JobDetailProps) {
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  <span>Publicada em {job.publishedAt ? formatDate(job.publishedAt) : formatDate(job.createdAt)}</span>
+                  <span>Publicada {getFormattedDate(job.createdAt)}</span>
                 </div>
                 
                 <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={() => setShowApplicationForm(true)}
+                  <a
+                    href={job.applicationUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium transition duration-200"
                   >
                     Candidatar-se
-                  </button>
+                  </a>
                   
                   <button
                     className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-2 rounded-md font-medium transition duration-200 flex items-center"
@@ -277,97 +328,52 @@ export default function JobDetail({ job, similarJobs }: JobDetailProps) {
             </div>
           </div>
           
-          {showApplicationForm && (
-            <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Candidate-se para {job.title}</h2>
-              
-              <form onSubmit={handleApply}>
-                <div className="mb-4">
-                  <label htmlFor="coverLetter" className="block text-gray-700 font-medium mb-2">
-                    Carta de Apresentação
-                  </label>
-                  <textarea
-                    id="coverLetter"
-                    rows={6}
-                    className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Descreva por que você é a pessoa certa para essa vaga..."
-                    value={coverLetter}
-                    onChange={(e) => setCoverLetter(e.target.value)}
-                    required
-                  ></textarea>
-                </div>
-                
-                <div className="mb-6">
-                  <label htmlFor="resume" className="block text-gray-700 font-medium mb-2">
-                    Link para seu currículo (LinkedIn, Google Drive, etc)
-                  </label>
-                  <input
-                    type="url"
-                    id="resume"
-                    className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="https://..."
-                    value={resumeUrl}
-                    onChange={(e) => setResumeUrl(e.target.value)}
-                    required
-                  />
-                </div>
-                
-                {message && (
-                  <div className={`p-4 mb-6 rounded-md ${message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-                    {message.text}
-                  </div>
-                )}
-                
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowApplicationForm(false)}
-                    className="mr-3 text-gray-700 hover:text-gray-900 font-medium"
-                    disabled={submitting}
-                  >
-                    Cancelar
-                  </button>
-                  
-                  <button
-                    type="submit"
-                    className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={submitting}
-                  >
-                    {submitting ? 'Enviando...' : 'Enviar Candidatura'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-          
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="md:col-span-2">
               <div className="bg-white p-6 rounded-lg shadow-md mb-8">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Descrição da Vaga</h2>
                 <div className="prose max-w-none">
-                  <p className="whitespace-pre-line mb-6">{job.description}</p>
+                  {/* Renderizar HTML da descrição de forma segura */}
+                  <div 
+                    dangerouslySetInnerHTML={{ __html: job.description }} 
+                    className="mb-6"
+                  />
                 </div>
               </div>
               
-              <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">Responsabilidades</h2>
-                <div className="prose max-w-none">
-                  <p className="whitespace-pre-line mb-6">{job.responsibilities}</p>
+              {/* Mostrar outras seções se tiver os dados */}
+              {job.responsibilities && (
+                <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+                  <h2 className="text-xl font-bold text-gray-900 mb-4">Responsabilidades</h2>
+                  <div className="prose max-w-none">
+                    <div 
+                      dangerouslySetInnerHTML={{ __html: job.responsibilities }} 
+                      className="mb-6"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
               
-              <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">Requisitos</h2>
-                <div className="prose max-w-none">
-                  <p className="whitespace-pre-line mb-6">{job.requirements}</p>
+              {job.requirements && (
+                <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+                  <h2 className="text-xl font-bold text-gray-900 mb-4">Requisitos</h2>
+                  <div className="prose max-w-none">
+                    <div 
+                      dangerouslySetInnerHTML={{ __html: job.requirements }} 
+                      className="mb-6"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
               
               {job.benefits && (
                 <div className="bg-white p-6 rounded-lg shadow-md mb-8">
                   <h2 className="text-xl font-bold text-gray-900 mb-4">Benefícios</h2>
                   <div className="prose max-w-none">
-                    <p className="whitespace-pre-line">{job.benefits}</p>
+                    <div 
+                      dangerouslySetInnerHTML={{ __html: job.benefits }} 
+                      className="mb-6"
+                    />
                   </div>
                 </div>
               )}
@@ -377,42 +383,28 @@ export default function JobDetail({ job, similarJobs }: JobDetailProps) {
               <div className="bg-white p-6 rounded-lg shadow-md mb-8 sticky top-6">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Sobre a Empresa</h2>
                 
-                {job.company && (
-                  <div>
-                    <h3 className="font-bold text-gray-800 mb-2">{job.company.name}</h3>
-                    
-                    <div className="flex items-center mb-4">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <span className="text-gray-600">{job.country}</span>
-                    </div>
-                    
-                    {job.company.website && (
-                      <a 
-                        href={job.company.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary-600 hover:text-primary-800 flex items-center mb-2"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                        </svg>
-                        Website da Empresa
-                      </a>
-                    )}
-                    
-                    <div className="mt-4">
-                      <button
-                        onClick={() => setShowApplicationForm(true)}
-                        className="w-full bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium transition duration-200"
-                      >
-                        Candidatar-se
-                      </button>
-                    </div>
+                <div>
+                  <h3 className="font-bold text-gray-800 mb-4">{companyName}</h3>
+                  
+                  <div className="flex items-center mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-gray-600">{job.location}</span>
                   </div>
-                )}
+                  
+                  <div className="mt-4">
+                    <a 
+                      href={job.applicationUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium transition duration-200 block text-center"
+                    >
+                      Candidatar-se
+                    </a>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -432,46 +424,4 @@ export default function JobDetail({ job, similarJobs }: JobDetailProps) {
       </div>
     </Layout>
   );
-}
-
-export const getStaticPaths: GetStaticPaths = async () => {
-  // Em um cenário real, buscaríamos as vagas mais populares 
-  // ou recentes para pre-render
-  const paths = MOCK_JOBS.map((job) => ({
-    params: { id: job.id },
-  }));
-
-  return { paths, fallback: true };
-};
-
-export const getStaticProps: GetStaticProps = async ({ params }) => {
-  const jobId = params?.id as string;
-
-  // Em um cenário real, buscaríamos do banco de dados
-  const job = MOCK_JOBS.find((job) => job.id === jobId);
-  
-  // Se não encontrar a vaga, retorna 404
-  if (!job) {
-    return {
-      notFound: true,
-    };
-  }
-
-  // Buscamos vagas similares baseadas em skills ou categorias
-  const similarJobs = MOCK_JOBS
-    .filter((j) => 
-      j.id !== job.id && 
-      (j.experienceLevel === job.experienceLevel || 
-        j.skills.some(skill => job.skills.includes(skill)))
-    )
-    .slice(0, 3);
-
-  return {
-    props: {
-      job,
-      similarJobs,
-    },
-    // Revalidar a cada 1 hora
-    revalidate: 3600,
-  };
-}; 
+} 

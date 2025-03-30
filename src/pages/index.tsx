@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import Layout from '../components/common/Layout';
 import JobCard from '../components/jobs/JobCard';
 import SearchBar from '../components/jobs/SearchBar';
@@ -7,6 +8,7 @@ import { Job } from '../types/job';
 import Link from 'next/link';
 
 export default function Home(props) {
+  const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([]);
@@ -21,9 +23,28 @@ export default function Home(props) {
     limit: 20,
     pages: 0
   });
+  const [forceRefresh, setForceRefresh] = useState(0);
 
-  // Fetch jobs from API
+  // Reiniciar a página quando o usuário retornar da página de detalhes
   useEffect(() => {
+    const handleRouteChange = (url: string) => {
+      if (url === '/') {
+        // Forçar recarregamento quando retornar à página inicial
+        setForceRefresh(prev => prev + 1);
+      }
+    };
+
+    router.events.on('routeChangeComplete', handleRouteChange);
+    return () => {
+      router.events.off('routeChangeComplete', handleRouteChange);
+    };
+  }, [router.events]);
+
+  // Fetch jobs from API - Only when we're actually on the home page
+  useEffect(() => {
+    // Verificar se estamos na página inicial
+    if (router.pathname !== '/') return;
+  
     const fetchJobs = async () => {
       setLoading(true);
       setError(null);
@@ -48,6 +69,9 @@ export default function Home(props) {
         
         params.append('page', pagination.page.toString());
         params.append('limit', pagination.limit.toString());
+        
+        // Adicionar timestamp para prevenir cache
+        params.append('_t', Date.now().toString());
         
         // Fetch data from API
         const response = await fetch(`/api/jobs?${params.toString()}`);
@@ -76,7 +100,9 @@ export default function Home(props) {
     selectedExperienceLevels, 
     selectedIndustries, 
     selectedLocations,
-    pagination.page
+    pagination.page,
+    router.pathname,
+    forceRefresh
   ]);
 
   // Handle search
