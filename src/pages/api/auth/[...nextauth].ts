@@ -1,8 +1,13 @@
 import NextAuth, { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import LinkedInProvider from 'next-auth/providers/linkedin';
+import EmailProvider from 'next-auth/providers/email';
+import CredentialsProvider from 'next-auth/providers/credentials';
 import { prisma } from '@/lib/prisma';
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { UserRole } from '@prisma/client';
+import { parse } from 'cookie';
+import bcrypt from 'bcrypt';
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -15,18 +20,78 @@ export const authOptions: NextAuthOptions = {
       clientId: process.env.LINKEDIN_CLIENT_ID || '',
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',
     }),
+    EmailProvider({
+      server: process.env.EMAIL_SERVER,
+      from: process.env.EMAIL_FROM,
+      maxAge: 24 * 60 * 60, // 24 hours
+    }),
+    CredentialsProvider({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Senha", type: "password" }
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error("Email e senha são obrigatórios");
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email }
+        });
+
+        if (!user || !user.password) {
+          throw new Error("Usuário não encontrado");
+        }
+
+        const isValidPassword = await bcrypt.compare(
+          credentials.password,
+          user.password
+        );
+
+        if (!isValidPassword) {
+          throw new Error("Senha incorreta");
+        }
+
+        return user;
+      }
+    }),
   ],
   pages: {
     signIn: '/login',
     signOut: '/',
-    error: '/login',
+    error: '/auth/error',
+    verifyRequest: '/auth/verify-request',
     newUser: '/register',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account, profile, email, credentials }) {
+      // Verificar se há cookie de role ao fazer login
+      if (account?.provider === 'email' && user) {
+        try {
+          // Se o usuário estiver fazendo login com email, verificar cookie para role
+          const cookies = parse(
+            (email?.verificationRequest as any)?.cookies || ''
+          );
+          
+          if (cookies?.auth_role === 'COMPANY') {
+            // Definir papel como COMPANY
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { role: UserRole.COMPANY },
+            });
+          }
+        } catch (error) {
+          console.error('Erro ao verificar cookie:', error);
+        }
+      }
+      return true;
+    },
+    async jwt({ token, user, account, profile, trigger, session }) {
+      // Se for um novo login, atualizar token com dados do usuário
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role;
+        token.role = (user as any).role || UserRole.CANDIDATE;
       }
       return token;
     },

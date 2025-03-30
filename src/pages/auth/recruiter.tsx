@@ -3,7 +3,7 @@ import { signIn } from 'next-auth/react';
 import Head from 'next/head';
 import Link from 'next/link';
 
-export default function RecruiterLogin(props) {
+export default function RecruiterLogin({}) {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -15,6 +15,20 @@ export default function RecruiterLogin(props) {
     setMessage('');
 
     try {
+      // Primeiro, definir o papel do usuário como COMPANY via cookie
+      const intentResponse = await fetch('/api/auth/register-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ intent: 'COMPANY' }),
+      });
+
+      if (!intentResponse.ok) {
+        throw new Error('Falha ao registrar intenção de login como recrutador');
+      }
+
+      // Agora enviar o magic link
       const result = await signIn('email', {
         email,
         callbackUrl: '/recruiter/dashboard',
@@ -22,6 +36,7 @@ export default function RecruiterLogin(props) {
       });
 
       if (result?.error) {
+        console.error('Erro no signIn:', result.error);
         setMessage('Ocorreu um erro ao enviar o link. Por favor, tente novamente.');
         setIsSuccess(false);
       } else {
@@ -30,6 +45,7 @@ export default function RecruiterLogin(props) {
         setEmail('');
       }
     } catch (error) {
+      console.error('Erro no processo de login:', error);
       setMessage('Ocorreu um erro ao enviar o link. Por favor, tente novamente.');
       setIsSuccess(false);
     } finally {

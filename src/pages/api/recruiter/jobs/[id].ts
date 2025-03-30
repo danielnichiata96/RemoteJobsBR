@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]';
-import { JobStatus, JobType, ExperienceLevel, Currency } from '@prisma/client';
+import { JobStatus, JobType, ExperienceLevel, Currency, Prisma, UserRole } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 
@@ -46,11 +46,10 @@ export default async function handler(
   const user = await prisma.user.findUnique({
     where: { 
       email: session.user.email as string,
-      role: 'COMPANY'
     }
   });
 
-  if (!user) {
+  if (!user || (user.role !== UserRole.COMPANY && user.role !== 'COMPANY')) {
     return res.status(403).json({ error: 'Acesso apenas para recrutadores' });
   }
 
