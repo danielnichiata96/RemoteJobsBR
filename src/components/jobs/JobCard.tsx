@@ -75,7 +75,19 @@ export default function JobCard({ job }: JobCardProps) {
             </h3>
           </Link>
           
-          <p className="text-gray-700 mb-2">{companyName}</p>
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-gray-700">{companyName}</p>
+            {job.companyVerified && (
+              <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            )}
+            {job.source !== 'direct' && (
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                via {job.source}
+              </span>
+            )}
+          </div>
           
           <div className="flex flex-wrap gap-2 mb-3">
             <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded">
@@ -121,14 +133,15 @@ export default function JobCard({ job }: JobCardProps) {
           
           <div className="flex justify-between items-center mt-4">
             <span className="text-xs text-gray-500">
-              Publicada há {getFormattedDate(job.createdAt)}
+              Publicada há {getFormattedDate(job.publishedAt || job.createdAt)}
             </span>
             
             <Link 
-              href={`/jobs/${job.id.replace('greenhouse_', '')}`}
+              href={job.source === 'direct' ? `/jobs/${job.id}` : (job.sourceUrl || `/jobs/${job.id}`)}
               className="text-primary-600 hover:text-primary-800 text-sm font-medium"
+              target={job.source === 'direct' ? undefined : '_blank'}
             >
-              Ver detalhes →
+              Ver detalhes {job.source === 'direct' ? '→' : '↗'}
             </Link>
           </div>
         </div>

@@ -1,8 +1,8 @@
-const axios = require('axios');
-const { prisma: db } = require('../lib/prisma');
-const pMap = require('p-map');
-const pino = require('pino');
-const { decode } = require('html-entities');
+import axios from 'axios';
+import { prisma } from '../lib/prisma';
+import pMap from 'p-map';
+import pino from 'pino';
+import { JobProcessingService } from '../lib/services/jobProcessingService';
 
 const logger = pino({
   transport: {
@@ -276,111 +276,87 @@ function processJobContent(content: string): string {
   }
 }
 
+const jobProcessor = new JobProcessingService();
+
 async function processAndSaveJob(job: GreenhouseJob, jobDetails: any, company: Company) {
-  // Extract skills from content
-  const skills = new Set<string>();
-  const content = jobDetails.content.toLowerCase();
-  const commonSkills = ['javascript', 'python', 'java', 'react', 'node.js', 'typescript', 'aws', 'sql'];
-  commonSkills.forEach(skill => {
-    if (content.includes(skill.toLowerCase())) {
-      skills.add(skill);
-    }
-  });
-
-  // Process and clean the content
-  const processedContent = processJobContent(jobDetails.content);
-
-  // First ensure the company exists and get its ID
-  const companyEmail = `${company.boardToken}@greenhouse.example.com`;
-  
   try {
-    const companyUser = await db.user.upsert({
-      where: {
-        email: companyEmail
-      },
-      update: {
-        name: company.name,
-        isActive: true
-      },
-      create: {
-        email: companyEmail,
-        name: company.name,
-        role: 'COMPANY',
-        isActive: true
+    const enrichedJob = {
+      ...job,
+      content: jobDetails.content,
+      company: {
+        ...company,
+        logo: null, // Add company logo if available
+        website: null // Add company website if available
       }
-    });
+    };
 
-    // Then create/update the job using the company's ID
-    await db.job.upsert({
-      where: {
-        id: `greenhouse_${job.id}`
-      },
-      update: {
-        title: job.title,
-        description: processedContent,
-        location: job.location.name,
-        country: 'Worldwide',
-        workplaceType: 'REMOTE',
-        status: 'ACTIVE',
-        companyId: companyUser.id, // Use the company's ID
-        skills: Array.from(skills),
-        applicationUrl: job.absolute_url,
-        updatedAt: new Date(job.updated_at),
-        jobType: 'FULL_TIME',
-        experienceLevel: 'MID',
-        requirements: 'See job description',
-        responsibilities: 'See job description'
-      },
-      create: {
-        id: `greenhouse_${job.id}`,
-        title: job.title,
-        description: processedContent,
-        location: job.location.name,
-        country: 'Worldwide',
-        workplaceType: 'REMOTE',
-        status: 'ACTIVE',
-        companyId: companyUser.id, // Use the company's ID
-        skills: Array.from(skills),
-        applicationUrl: job.absolute_url,
-        jobType: 'FULL_TIME',
-        experienceLevel: 'MID',
-        requirements: 'See job description',
-        responsibilities: 'See job description'
-      }
-    });
-  } catch (error) {
-    logger.error(
-      { company: company.name, error: error?.message || 'Unknown error' },
-      'Error creating/updating company or job'
+    logger.info(
+      { company: company.name, jobId: job.id },
+      'Processing job'
     );
-    throw error;
+    
+    const success = await jobProcessor.processAndSaveJob('greenhouse', enrichedJob);
+    
+    if (!success) {
+      logger.warn(
+        { company: company.name, jobId: job.id },
+        'Job was not processed/saved'
+      );
+    } else {
+      // Log para debug: verificar se a vaga foi salva com a fonte correta
+      const savedJob = await prisma.job.findFirst({
+        where: {
+          source_sourceId: {
+            source: 'greenhouse',
+            sourceId: String(job.id)
+          }
+        },
+        select: {
+          id: true,
+          source: true,
+          sourceId: true,
+          title: true
+        }
+      });
+      
+      logger.info(
+        { 
+          company: company.name, 
+          jobId: job.id,
+          savedJob
+        },
+        'Job processed and saved'
+      );
+    }
+  } catch (error: any) {
+    logger.error(
+      { company: company.name, jobId: job.id, error: error?.message || 'Unknown error' },
+      'Error processing job'
+    );
   }
 }
 
 async function fetchAndProcessCompanyJobs(company: Company) {
   try {
-    logger.info({ company: company.name }, '→ Iniciando busca');
+    logger.info({ company: company.name }, '→ Starting job fetch');
     
     const response = await axios.get(
       `https://boards-api.greenhouse.io/v1/boards/${company.boardToken}/jobs`
     );
 
     const allJobs = response.data.jobs;
-    const remoteJobs = allJobs.filter(isRemoteJob);
     
     logger.info(
       { 
         company: company.name, 
-        totalJobs: allJobs.length, 
-        remoteJobs: remoteJobs.length,
-        acceptanceRate: `${((remoteJobs.length / allJobs.length) * 100).toFixed(1)}%`
+        totalJobs: allJobs.length
       },
-      '+ Vagas encontradas'
+      '+ Jobs found'
     );
 
-    // Processamento paralelo de jobs (sem logs individuais)
+    // Process jobs in parallel
     await pMap(
-      remoteJobs,
+      allJobs,
       async (job: GreenhouseJob) => {
         try {
           const jobDetails = await axios.get(
@@ -390,7 +366,7 @@ async function fetchAndProcessCompanyJobs(company: Company) {
         } catch (error: any) {
           logger.error(
             { company: company.name, jobId: job.id, error: error?.message || 'Unknown error' },
-            '❌ Erro ao processar vaga'
+            '❌ Error processing job'
           );
         }
       },
@@ -401,33 +377,27 @@ async function fetchAndProcessCompanyJobs(company: Company) {
     );
 
     logger.info(
-      { 
-        company: company.name, 
-        processedJobs: remoteJobs.length,
-        acceptanceRate: `${((remoteJobs.length / allJobs.length) * 100).toFixed(1)}%`
-      },
-      '✓ Processamento finalizado'
+      { company: company.name },
+      '✓ Processing completed'
     );
   } catch (error: any) {
     logger.error(
       { company: company.name, error: error?.message || 'Unknown error' },
-      'x Erro ao buscar vagas'
+      'x Error fetching jobs'
     );
   }
 }
 
 async function main() {
-  logger.info('>> Iniciando busca de vagas no Greenhouse');
+  logger.info('>> Starting Greenhouse job fetch');
   
   const stats = {
     startTime: new Date(),
     companiesProcessed: 0,
-    totalCompanies: companies.length,
-    totalJobs: 0,
-    totalRemoteJobs: 0
+    totalCompanies: companies.length
   };
 
-  // Processamento paralelo de empresas
+  // Process companies in parallel
   await pMap(
     companies,
     async (company: Company) => {
@@ -443,16 +413,14 @@ async function main() {
   const endTime = new Date();
   const duration = (endTime.getTime() - stats.startTime.getTime()) / 1000;
 
-  // Buscar estatísticas finais do banco
-  const finalStats = await db.$transaction([
-    db.job.count({
+  // Get final stats from database
+  const finalStats = await prisma.$transaction([
+    prisma.job.count({
       where: {
-        id: {
-          startsWith: 'greenhouse_'
-        }
+        source: 'greenhouse'
       }
     }),
-    db.user.count({
+    prisma.user.count({
       where: {
         email: {
           endsWith: '@greenhouse.example.com'
@@ -470,7 +438,7 @@ async function main() {
       durationSeconds: duration,
       durationMinutes: (duration / 60).toFixed(1)
     },
-    '== Processo finalizado =='
+    '== Process completed =='
   );
 }
 
@@ -479,5 +447,5 @@ main()
     logger.error(error, 'Error in main process');
   })
   .finally(async () => {
-    await db.$disconnect();
+    await prisma.$disconnect();
   }); 

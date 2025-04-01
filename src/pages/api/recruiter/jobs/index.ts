@@ -147,13 +147,21 @@ export default async function handler(
       // Se responsabilidades não for fornecido, usar uma string padrão
       const responsibilities = jobData.responsibilities || 'Responsabilidades a definir';
       
+      // Normalizar a data de publicação para vagas ativas
+      let publishedAt = null;
+      if (jobData.status === JobStatus.ACTIVE) {
+        publishedAt = new Date();
+        console.log('Nova vaga ativa, definindo publishedAt:', publishedAt.toISOString());
+      }
+      
       // Criar nova vaga
       const newJob = await prisma.job.create({
         data: {
           ...jobData,
           responsibilities,
           companyId: user.id,
-          publishedAt: jobData.status === JobStatus.ACTIVE ? new Date() : null,
+          publishedAt,
+          source: 'direct' // Garantir que vagas criadas pelo recrutador são marcadas como diretas
         },
       });
 

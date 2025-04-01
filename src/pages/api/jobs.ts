@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             OR: [
               { title: { contains: search as string, mode: 'insensitive' } },
               { description: { contains: search as string, mode: 'insensitive' } },
-              { skills: { hasSome: [(search as string)] } },
+              { skills: { hasSome: search.split(' ') } },
               { company: { name: { contains: search as string, mode: 'insensitive' } } }
             ]
           }
@@ -64,26 +64,126 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ...statusFilter,
       };
       
-      // Fetch jobs with company info
-      const jobs = await prisma.job.findMany({
-        where,
-        include: {
-          company: {
-            select: {
-              id: true,
-              name: true,
-              logo: true,
-              industry: true
-            }
-          }
-        },
-        skip,
-        take: limitNum,
-        orderBy: { publishedAt: 'desc' }
-      });
+      // Verificar se temos exatamente o ID da vaga que queremos debugar
+      const debugJobId = req.query.debug_id as string;
+      if (debugJobId) {
+        where.id = debugJobId;
+      }
       
-      // Get total count
-      const totalJobs = await prisma.job.count({ where });
+      // Garantir que incluímos o relacionamento com a empresa corretamente
+      const includeCompany = {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            logo: true,
+            industry: true,
+            isVerified: true
+          }
+        }
+      };
+
+      // IMPLEMENTAÇÃO DO SISTEMA DE PRIORIDADE PARA VAGAS DIRETAS
+      
+      let jobs = [];
+      let totalJobs = 0;
+      
+      // Apenas na primeira página damos destaque para vagas diretas
+      if (pageNum === 1) {
+        // 1. Buscar até 10 vagas diretas, que terão prioridade
+        const directJobs = await prisma.job.findMany({
+          where: {
+            ...where,
+            source: 'direct',
+            // Garantir que não pega vagas com IDs do Greenhouse
+            id: {
+              not: { startsWith: 'greenhouse_' }
+            }
+          },
+          include: includeCompany,
+          orderBy: [
+            { publishedAt: 'desc' },
+            { createdAt: 'desc' }
+          ],
+          take: 10
+        });
+        
+        // 2. Calcular quantas vagas ainda precisamos para completar o limite da página
+        const remainingSlots = limitNum - directJobs.length;
+        
+        // 3. Buscar vagas de outras fontes para completar a página
+        const otherSourceJobs = remainingSlots > 0 ? 
+          await prisma.job.findMany({
+            where: {
+              ...where,
+              OR: [
+                { source: { not: 'direct' } },
+                { 
+                  // Incluir também vagas que são erroneamente marcadas como 'direct' mas têm ID do Greenhouse
+                  source: 'direct',
+                  id: { startsWith: 'greenhouse_' }
+                }
+              ]
+            },
+            include: includeCompany,
+            orderBy: [
+              { publishedAt: 'desc' },
+              { createdAt: 'desc' }
+            ],
+            take: remainingSlots
+          }) : [];
+        
+        // 4. Combinar os resultados, com vagas diretas primeiro
+        jobs = [...directJobs, ...otherSourceJobs];
+      } else {
+        // Para páginas subsequentes, precisamos ajustar a paginação
+        // Contar quantas vagas diretas existem no total
+        const totalDirectJobs = await prisma.job.count({
+          where: {
+            ...where,
+            source: 'direct'
+          }
+        });
+        
+        // Contar vagas de outras fontes
+        const totalOtherJobs = await prisma.job.count({
+          where: {
+            ...where,
+            source: { not: 'direct' }
+          }
+        });
+        
+        // Se temos menos de 10 vagas diretas, então a primeira página tem todas elas
+        // mais algumas vagas de outras fontes
+        const directJobsOnFirstPage = Math.min(totalDirectJobs, 10);
+        
+        // Vagas de outras fontes na primeira página
+        const otherJobsOnFirstPage = Math.min(limitNum - directJobsOnFirstPage, totalOtherJobs);
+        
+        // Total de vagas na primeira página
+        const totalOnFirstPage = directJobsOnFirstPage + otherJobsOnFirstPage;
+        
+        // Ajustar o cálculo de skip
+        // A página 2 começa após todas as vagas da página 1
+        const adjustedSkip = (pageNum === 2) ? totalOnFirstPage : 
+                             (pageNum > 2) ? totalOnFirstPage + (pageNum - 2) * limitNum : 
+                             skip;
+        
+        // Buscar vagas normalmente com skip ajustado
+        jobs = await prisma.job.findMany({
+          where,
+          include: includeCompany,
+          orderBy: [
+            { publishedAt: 'desc' },
+            { createdAt: 'desc' }
+          ],
+          skip: adjustedSkip,
+          take: limitNum
+        });
+      }
+      
+      // Calcular o total geral de vagas para paginação
+      totalJobs = await prisma.job.count({ where });
       
       // Format the jobs for the frontend
       const formattedJobs = jobs.map(job => ({
@@ -91,6 +191,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         title: job.title,
         company: job.company.name,
         companyLogo: job.company.logo || null,
+        companyVerified: job.company.isVerified,
         location: job.location,
         description: truncateDescription(job.description),
         jobType: formatJobType(job.jobType),
@@ -100,9 +201,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ? formatSalary(job.minSalary, job.maxSalary, job.currency, job.salaryCycle) 
           : null,
         createdAt: job.createdAt,
+        publishedAt: job.publishedAt,
         applicationUrl: job.applicationUrl,
         industry: job.company.industry || 'tech',
-        regionType: determineRegionType(job.location, job.country)
+        regionType: determineRegionType(job.location, job.country),
+        source: job.source,
+        sourceUrl: job.sourceUrl,
+        sourceLogo: job.sourceLogo
       }));
       
       // Return response with pagination

@@ -29,6 +29,7 @@ const jobUpdateSchema = z.object({
   languages: z.array(z.string()).optional(),
   applicationUrl: z.string().url().optional(),
   applicationEmail: z.string().email().optional(),
+  publishedAt: z.union([z.date(), z.string()]).optional(),
 });
 
 export default async function handler(
@@ -130,29 +131,92 @@ export default async function handler(
   // Método PUT - Atualizar vaga
   else if (req.method === 'PUT') {
     try {
-      // Validar dados da atualização
-      const validationResult = jobUpdateSchema.safeParse(req.body);
+      const jobData = req.body;
       
-      if (!validationResult.success) {
-        return res.status(400).json({ 
-          error: 'Dados inválidos',
-          details: validationResult.error.format()
-        });
+      console.log('Received job update data:', JSON.stringify(jobData, null, 2));
+      
+      const validatedData = jobUpdateSchema.safeParse(jobData);
+      
+      if (!validatedData.success) {
+        console.error('Validation error:', validatedData.error.format());
+        return res.status(400).json({ error: 'Invalid job data', details: validatedData.error.format() });
       }
-      
-      const updateData = validationResult.data;
+
+      const data = validatedData.data;
       
       // Verificar mudança de status para publicação
       const publishData = {};
-      if (updateData.status === JobStatus.ACTIVE && job.status !== JobStatus.ACTIVE) {
+      
+      // If the client specified a publishedAt value, use it
+      if (data.publishedAt !== undefined) {
+        // Normalize date format, ensuring we get a valid JS Date object
+        // This handles different regional date formats by using UTC
+        let publishedAt;
+        
+        try {
+          // Try to parse the date if it's a string
+          if (typeof data.publishedAt === 'string') {
+            publishedAt = new Date(data.publishedAt);
+            
+            // Check if date is valid
+            if (isNaN(publishedAt.getTime())) {
+              // If it's not valid, use current date
+              console.warn('Invalid date format detected, using current date instead');
+              publishedAt = new Date();
+            }
+          } else {
+            // If it's already a Date object, use it
+            publishedAt = data.publishedAt;
+          }
+          
+          // Verify the year to catch potential date format confusion
+          const year = publishedAt.getFullYear();
+          if (year > 2030 || year < 2020) {
+            console.warn(`Suspicious year detected: ${year}, using current date instead`);
+            publishedAt = new Date();
+          }
+        } catch (e) {
+          console.error('Error parsing date:', e);
+          publishedAt = new Date();
+        }
+        
+        Object.assign(publishData, { publishedAt });
+        
+        // Debug logging
+        console.log('Normalized publishedAt date:', {
+          original: data.publishedAt,
+          normalized: publishedAt,
+          timestamp: publishedAt.toISOString()
+        });
+      } 
+      // Otherwise, set publishedAt automatically when job becomes active
+      else if (data.status === JobStatus.ACTIVE && job.status !== JobStatus.ACTIVE) {
+        const publishedAt = new Date();
+        Object.assign(publishData, { publishedAt });
+        
+        // Debug logging
+        console.log('Setting new publishedAt for newly activated job:', publishedAt);
+      }
+
+      // For sorting on homepage, ensure all active jobs have a publishedAt date
+      if (data.status === JobStatus.ACTIVE && !job.publishedAt && !publishData.publishedAt) {
         Object.assign(publishData, { publishedAt: new Date() });
       }
+      
+      // Log for debugging
+      console.log('Updating job:', { 
+        id: jobId, 
+        oldStatus: job.status,
+        newStatus: data.status,
+        oldPublishedAt: job.publishedAt,
+        newPublishedAt: publishData.publishedAt || 'unchanged'
+      });
       
       // Atualizar a vaga
       const updatedJob = await prisma.job.update({
         where: { id: jobId },
         data: {
-          ...updateData,
+          ...data,
           ...publishData
         }
       });
@@ -205,5 +269,6 @@ export default async function handler(
   }
 
   // Método não permitido
-  return res.status(405).json({ error: 'Método não permitido' });
+  res.setHeader('Allow', ['GET', 'PUT', 'DELETE']);
+  res.status(405).end(`Method ${req.method} Not Allowed`);
 } 
