@@ -7,7 +7,193 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ENUMS
+model User {
+  id                 String               @id @default(cuid())
+  email              String               @unique
+  name               String
+  password           String?
+  image              String?
+  role               UserRole
+  emailVerified      DateTime?
+  isActive           Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  title              String?
+  bio                String?
+  location           String?
+  phone              String?
+  resumeUrl          String?
+  linkedinUrl        String?
+  githubUrl          String?
+  portfolioUrl       String?
+  desiredSalary      Float?
+  availableForWork   Boolean              @default(true)
+  preferredWorkTypes String[]             @default([])
+  preferredLocations String[]             @default([])
+  yearsOfExperience  Int?
+  experienceLevel    ExperienceLevel?
+  skills             String[]             @default([])
+  languages          Json[]               @default([])
+  description        String?
+  industry           String?
+  website            String?
+  logo               String?
+  size               String?
+  foundedYear        Int?
+  contactName        String?
+  contactEmail       String?
+  contactPhone       String?
+  twitterUrl         String?
+  isVerified         Boolean              @default(false)
+  subscriptionTier   String?
+  subscriptionEndsAt DateTime?
+  accounts           Account[]
+  applications       Application[]        @relation("CandidateApplications")
+  jobs               Job[]                @relation("CompanyJobs")
+  newsletter         Newsletter?
+  resetTokens        PasswordResetToken[]
+  savedJobs          SavedJob[]
+  sessions           Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Job {
+  id               String          @id @default(cuid())
+  companyId        String
+  title            String
+  description      String
+  requirements     String
+  responsibilities String
+  benefits         String?
+  jobType          JobType
+  experienceLevel  ExperienceLevel
+  skills           String[]
+  tags             String[]
+  location         String
+  country          String
+  workplaceType    String
+  minSalary        Float?
+  maxSalary        Float?
+  currency         Currency?
+  salaryCycle      String?
+  showSalary       Boolean         @default(false)
+  status           JobStatus       @default(DRAFT)
+  visas            String[]
+  languages        String[]
+  applicationUrl   String?
+  applicationEmail String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  publishedAt      DateTime?
+  expiresAt        DateTime?
+  viewCount        Int             @default(0)
+  applicantCount   Int             @default(0)
+  applications     Application[]
+  company          User            @relation("CompanyJobs", fields: [companyId], references: [id])
+  savedBy          SavedJob[]
+}
+
+model Application {
+  id              String            @id @default(cuid())
+  jobId           String
+  candidateId     String
+  coverLetter     String?
+  resumeUrl       String?
+  additionalInfo  String?
+  status          ApplicationStatus @default(SUBMITTED)
+  feedback        String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  readByCompany   Boolean           @default(false)
+  interviewDate   DateTime?
+  candidate       User              @relation("CandidateApplications", fields: [candidateId], references: [id])
+  job             Job               @relation(fields: [jobId], references: [id])
+  interviewEvents InterviewEvent[]
+}
+
+model InterviewEvent {
+  id            String      @id @default(cuid())
+  applicationId String
+  type          String
+  notes         String?
+  date          DateTime?
+  location      String?
+  createdAt     DateTime    @default(now())
+  createdBy     String
+  application   Application @relation(fields: [applicationId], references: [id])
+}
+
+model SavedJob {
+  id          String   @id @default(cuid())
+  jobId       String
+  candidateId String
+  createdAt   DateTime @default(now())
+  candidate   User     @relation(fields: [candidateId], references: [id])
+  job         Job      @relation(fields: [jobId], references: [id])
+
+  @@unique([candidateId, jobId])
+}
+
+model Newsletter {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  firstName        String?
+  jobTypes         String[]
+  experienceLevels String[]
+  skills           String[]
+  frequency        String
+  isActive         Boolean   @default(true)
+  confirmedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  lastSentAt       DateTime?
+  candidateId      String?   @unique
+  candidate        User?     @relation(fields: [candidateId], references: [id])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 enum UserRole {
   CANDIDATE
   COMPANY
@@ -53,210 +239,3 @@ enum ApplicationStatus {
   REJECTED
   WITHDRAWN
 }
-
-// MODELOS
-
-model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String
-  password      String?
-  image         String?
-  role          UserRole
-  emailVerified DateTime?
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  // Campos do Candidato
-  title               String?
-  bio                 String?  @db.Text
-  location            String?
-  phone               String?
-  resumeUrl           String?
-  linkedinUrl         String?
-  githubUrl           String?
-  portfolioUrl        String?
-  desiredSalary       Float?
-  availableForWork    Boolean  @default(true)
-  preferredWorkTypes  String[] @default([])
-  preferredLocations  String[] @default([])
-  yearsOfExperience   Int?
-  experienceLevel     ExperienceLevel?
-  skills              String[] @default([])
-  languages           Json[]   @default([])
-
-  // Campos da Empresa
-  description         String?  @db.Text
-  industry            String?
-  website             String?
-  logo                String?
-  size                String?
-  foundedYear         Int?
-  contactName         String?
-  contactEmail        String?
-  contactPhone        String?
-  twitterUrl          String?
-  isVerified          Boolean  @default(false)
-  subscriptionTier    String?
-  subscriptionEndsAt  DateTime?
-
-  // Relacionamentos
-  accounts      Account[]
-  sessions      Session[]
-  jobs          Job[]           @relation("CompanyJobs")
-  applications  Application[]   @relation("CandidateApplications")
-  savedJobs     SavedJob[]
-  newsletter    Newsletter?
-  resetTokens   PasswordResetToken[]
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-}
-
-model Job {
-  id                String          @id @default(cuid())
-  companyId         String
-  title             String
-  description       String          @db.Text
-  requirements      String          @db.Text
-  responsibilities  String          @db.Text
-  benefits          String?         @db.Text
-  jobType           JobType
-  experienceLevel   ExperienceLevel
-  skills            String[]
-  tags              String[]
-  location          String
-  country           String
-  workplaceType     String
-  minSalary         Float?
-  maxSalary         Float?
-  currency          Currency?
-  salaryCycle       String?
-  showSalary        Boolean         @default(false)
-  status            JobStatus       @default(DRAFT)
-  visas             String[]
-  languages         String[]
-  applicationUrl    String?
-  applicationEmail  String?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  publishedAt       DateTime?
-  expiresAt         DateTime?
-  viewCount         Int             @default(0)
-  applicantCount    Int             @default(0)
-
-  // Relacionamentos
-  company       User            @relation("CompanyJobs", fields: [companyId], references: [id])
-  applications  Application[]
-  savedBy       SavedJob[]
-}
-
-model Application {
-  id              String            @id @default(cuid())
-  jobId           String
-  candidateId     String
-  coverLetter     String?           @db.Text
-  resumeUrl       String?
-  additionalInfo  String?           @db.Text
-  status          ApplicationStatus @default(SUBMITTED)
-  feedback        String?           @db.Text
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  readByCompany   Boolean           @default(false)
-  interviewDate   DateTime?
-
-  // Relacionamentos
-  job             Job               @relation(fields: [jobId], references: [id])
-  candidate       User              @relation("CandidateApplications", fields: [candidateId], references: [id])
-  interviewEvents InterviewEvent[]
-}
-
-model InterviewEvent {
-  id              String    @id @default(cuid())
-  applicationId   String
-  type            String
-  notes           String?   @db.Text
-  date            DateTime?
-  location        String?
-  createdAt       DateTime  @default(now())
-  createdBy       String
-
-  // Relacionamentos
-  application     Application @relation(fields: [applicationId], references: [id])
-}
-
-model SavedJob {
-  id          String   @id @default(cuid())
-  jobId       String
-  candidateId String
-  createdAt   DateTime @default(now())
-
-  // Relacionamentos
-  job         Job      @relation(fields: [jobId], references: [id])
-  candidate   User     @relation(fields: [candidateId], references: [id])
-
-  @@unique([candidateId, jobId])
-}
-
-model Newsletter {
-  id              String    @id @default(cuid())
-  email           String    @unique
-  firstName       String?
-  jobTypes        String[]
-  experienceLevels String[]
-  skills          String[]
-  frequency       String
-  isActive        Boolean   @default(true)
-  confirmedAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  lastSentAt      DateTime?
-  candidateId     String?   @unique
-
-  // Relacionamentos
-  candidate       User?     @relation(fields: [candidateId], references: [id])
-}
-
-model PasswordResetToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  userId    String
-  expiresAt DateTime
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  // Relacionamentos
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-} 

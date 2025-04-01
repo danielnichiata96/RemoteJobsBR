@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { hash } from 'bcrypt';
-import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
 
 // Schema de validação para o registro
 const registerSchema = z.object({
@@ -43,7 +43,7 @@ export default async function handler(
     }
 
     // Criptografar a senha
-    const hashedPassword = await hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Criar o usuário
     const user = await prisma.user.create({

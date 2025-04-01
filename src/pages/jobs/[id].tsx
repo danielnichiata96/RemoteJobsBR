@@ -9,6 +9,31 @@ import Layout from '@/components/common/Layout';
 import { Job, JobType, ExperienceLevel } from '@/types/job';
 import WideJobCard from '@/components/jobs/WideJobCard';
 
+// Função para obter uma imagem padrão
+function getDefaultLogo(companyName: string | any): string {
+  if (!companyName) return '';
+  
+  // Se companyName for um objeto, usar o nome
+  const name = typeof companyName === 'string' ? companyName : (companyName?.name || '');
+  if (!name) return '';
+  
+  // Usar API token se disponível (como variável de ambiente)
+  const apiToken = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN || '';
+  const tokenParam = apiToken ? `?token=${apiToken}` : '';
+  
+  // Verificar se o nome da empresa contém um domínio
+  const domainPattern = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
+  
+  // Se o nome parece ser um domínio, use-o diretamente
+  if (domainPattern.test(name.toLowerCase())) {
+    return `https://img.logo.dev/${name.toLowerCase()}${tokenParam}`;
+  }
+  
+  // Caso contrário, adicione .com para tentar obter um logotipo genérico
+  const formattedName = name.trim().toLowerCase().replace(/\s+/g, '') + '.com';
+  return `https://img.logo.dev/${formattedName}${tokenParam}`;
+}
+
 // Função para buscar detalhes da vaga pelo ID
 async function fetchJobById(id: string): Promise<Job | null> {
   try {
@@ -73,7 +98,7 @@ async function fetchSimilarJobs(id: string): Promise<Job[]> {
   }
 }
 
-export default function JobDetail() {
+export default function JobDetail(props) {
   const router = useRouter();
   const { id } = router.query;
   const [job, setJob] = useState<Job | null>(null);
@@ -185,7 +210,9 @@ export default function JobDetail() {
   const companyName = typeof job.company === 'object' ? job.company.name : job.company;
   
   // Obter o logo da empresa corretamente
-  const companyLogo = typeof job.company === 'object' ? job.company.logo || job.company.image : job.companyLogo;
+  const companyLogo = typeof job.company === 'object' 
+    ? job.company.logo || job.company.image || getDefaultLogo(companyName)
+    : job.companyLogo || getDefaultLogo(companyName);
   
   // Obter as tags corretamente
   const tags = job.tags || job.skills || [];

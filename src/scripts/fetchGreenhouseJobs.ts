@@ -2,6 +2,7 @@ const axios = require('axios');
 const { prisma: db } = require('../lib/prisma');
 const pMap = require('p-map');
 const pino = require('pino');
+const { decode } = require('html-entities');
 
 const logger = pino({
   transport: {
@@ -240,6 +241,41 @@ const isRemoteJob = (job: GreenhouseJob): boolean => {
   return false;
 };
 
+function processJobContent(content: string): string {
+  if (!content) return '';
+  
+  try {
+    // Decode HTML entities
+    let processedContent = decode(content);
+    
+    // Fix common formatting issues
+    processedContent = processedContent
+      // Remove multiple consecutive line breaks
+      .replace(/(\r\n|\n|\r){3,}/g, '\n\n')
+      // Fix spacing around list items
+      .replace(/(<\/li>)(?!\n)/g, '</li>\n')
+      // Fix spacing around paragraphs
+      .replace(/(<\/p>)(?!\n)/g, '</p>\n')
+      // Fix spacing around headers
+      .replace(/(<\/h[1-6]>)(?!\n)/g, '$1\n')
+      // Fix spacing around divs
+      .replace(/(<\/div>)(?!\n)/g, '</div>\n')
+      // Remove empty paragraphs
+      .replace(/<p>\s*<\/p>/g, '')
+      // Remove empty divs
+      .replace(/<div>\s*<\/div>/g, '')
+      // Fix double spaces
+      .replace(/\s{2,}/g, ' ')
+      // Trim whitespace
+      .trim();
+
+    return processedContent;
+  } catch (error) {
+    logger.error('Error processing job content:', error);
+    return content; // Return original content if processing fails
+  }
+}
+
 async function processAndSaveJob(job: GreenhouseJob, jobDetails: any, company: Company) {
   // Extract skills from content
   const skills = new Set<string>();
@@ -251,68 +287,74 @@ async function processAndSaveJob(job: GreenhouseJob, jobDetails: any, company: C
     }
   });
 
-  // Create or update job in database
-  await db.job.upsert({
-    where: {
-      id: `greenhouse_${job.id}`
-    },
-    update: {
-      title: job.title,
-      description: jobDetails.content,
-      location: job.location.name,
-      country: 'Worldwide',
-      workplaceType: 'REMOTE',
-      status: 'ACTIVE',
-      company: {
-        connectOrCreate: {
-          where: {
-            email: `${company.boardToken}@greenhouse.example.com`
-          },
-          create: {
-            email: `${company.boardToken}@greenhouse.example.com`,
-            name: company.name,
-            role: 'COMPANY',
-            isActive: true
-          }
-        }
+  // Process and clean the content
+  const processedContent = processJobContent(jobDetails.content);
+
+  // First ensure the company exists and get its ID
+  const companyEmail = `${company.boardToken}@greenhouse.example.com`;
+  
+  try {
+    const companyUser = await db.user.upsert({
+      where: {
+        email: companyEmail
       },
-      skills: Array.from(skills),
-      applicationUrl: job.absolute_url,
-      updatedAt: new Date(job.updated_at),
-      jobType: 'FULL_TIME',
-      experienceLevel: 'MID',
-      requirements: 'See job description',
-      responsibilities: 'See job description'
-    },
-    create: {
-      id: `greenhouse_${job.id}`,
-      title: job.title,
-      description: jobDetails.content,
-      location: job.location.name,
-      country: 'Worldwide',
-      workplaceType: 'REMOTE',
-      status: 'ACTIVE',
-      company: {
-        connectOrCreate: {
-          where: {
-            email: `${company.boardToken}@greenhouse.example.com`
-          },
-          create: {
-            email: `${company.boardToken}@greenhouse.example.com`,
-            name: company.name,
-            role: 'COMPANY',
-            isActive: true
-          }
-        }
+      update: {
+        name: company.name,
+        isActive: true
       },
-      skills: Array.from(skills),
-      applicationUrl: job.absolute_url,
-      jobType: 'FULL_TIME',
-      experienceLevel: 'MID',
-      requirements: 'See job description',
-      responsibilities: 'See job description'
-    }
-  });
+      create: {
+        email: companyEmail,
+        name: company.name,
+        role: 'COMPANY',
+        isActive: true
+      }
+    });
+
+    // Then create/update the job using the company's ID
+    await db.job.upsert({
+      where: {
+        id: `greenhouse_${job.id}`
+      },
+      update: {
+        title: job.title,
+        description: processedContent,
+        location: job.location.name,
+        country: 'Worldwide',
+        workplaceType: 'REMOTE',
+        status: 'ACTIVE',
+        companyId: companyUser.id, // Use the company's ID
+        skills: Array.from(skills),
+        applicationUrl: job.absolute_url,
+        updatedAt: new Date(job.updated_at),
+        jobType: 'FULL_TIME',
+        experienceLevel: 'MID',
+        requirements: 'See job description',
+        responsibilities: 'See job description'
+      },
+      create: {
+        id: `greenhouse_${job.id}`,
+        title: job.title,
+        description: processedContent,
+        location: job.location.name,
+        country: 'Worldwide',
+        workplaceType: 'REMOTE',
+        status: 'ACTIVE',
+        companyId: companyUser.id, // Use the company's ID
+        skills: Array.from(skills),
+        applicationUrl: job.absolute_url,
+        jobType: 'FULL_TIME',
+        experienceLevel: 'MID',
+        requirements: 'See job description',
+        responsibilities: 'See job description'
+      }
+    });
+  } catch (error) {
+    logger.error(
+      { company: company.name, error: error?.message || 'Unknown error' },
+      'Error creating/updating company or job'
+    );
+    throw error;
+  }
 }
 
 async function fetchAndProcessCompanyJobs(company: Company) {

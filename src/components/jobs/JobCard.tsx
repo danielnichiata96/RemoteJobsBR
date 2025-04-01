@@ -12,6 +12,34 @@ interface JobCardProps {
 export default function JobCard({ job }: JobCardProps) {
   const [imgError, setImgError] = useState(false);
   
+  // Função para obter um logo padrão do logo.dev com base no nome da empresa
+  const getLogoFromCompanyName = (companyName: string): string => {
+    // Usar API token se disponível
+    const apiToken = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN || '';
+    const tokenParam = apiToken ? `?token=${apiToken}` : '';
+    
+    // Verificar se o nome da empresa contém um domínio
+    const domainPattern = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
+    
+    // Se o nome parece ser um domínio, use-o diretamente
+    if (domainPattern.test(companyName.toLowerCase())) {
+      return `https://img.logo.dev/${companyName.toLowerCase()}${tokenParam}`;
+    }
+    
+    // Caso contrário, adicione .com para tentar obter um logotipo genérico
+    // Este é um fallback, pois o Logo.dev funciona melhor com domínios
+    const formattedName = companyName.trim().toLowerCase().replace(/\s+/g, '') + '.com';
+    return `https://img.logo.dev/${formattedName}${tokenParam}`;
+  };
+  
+  // Determinar o logo a ser usado
+  let companyName = typeof job.company === 'string' ? job.company : (job.company?.name || 'Empresa');
+  let companyLogo = job.companyLogo;
+  
+  if (!companyLogo) {
+    companyLogo = getLogoFromCompanyName(companyName);
+  }
+  
   // Função para garantir que temos um objeto Date válido
   const getFormattedDate = (date: Date | string) => {
     const dateObj = date instanceof Date ? date : new Date(date);
@@ -21,11 +49,11 @@ export default function JobCard({ job }: JobCardProps) {
   return (
     <div className="card hover:shadow-lg transition-shadow duration-200">
       <div className="flex items-start">
-        {job.companyLogo && !imgError ? (
+        {companyLogo && !imgError ? (
           <div className="flex-shrink-0 mr-4">
             <Image 
-              src={job.companyLogo} 
-              alt={`${job.company} logo`}
+              src={companyLogo} 
+              alt={`${companyName} logo`}
               width={60}
               height={60}
               className="rounded-md"
@@ -35,19 +63,19 @@ export default function JobCard({ job }: JobCardProps) {
         ) : (
           <div className="flex-shrink-0 mr-4 w-[60px] h-[60px] bg-gray-200 rounded-md flex items-center justify-center">
             <span className="text-gray-500 font-bold text-xl">
-              {job.company.charAt(0)}
+              {companyName.charAt(0)}
             </span>
           </div>
         )}
         
         <div className="flex-1">
-          <Link href={`/jobs/${job.id}`}>
+          <Link href={`/jobs/${job.id.replace('greenhouse_', '')}`}>
             <h3 className="text-xl font-semibold text-primary-700 hover:text-primary-800 mb-1">
               {job.title}
             </h3>
           </Link>
           
-          <p className="text-gray-700 mb-2">{job.company}</p>
+          <p className="text-gray-700 mb-2">{companyName}</p>
           
           <div className="flex flex-wrap gap-2 mb-3">
             <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded">
@@ -97,7 +125,7 @@ export default function JobCard({ job }: JobCardProps) {
             </span>
             
             <Link 
-              href={`/jobs/${job.id}`}
+              href={`/jobs/${job.id.replace('greenhouse_', '')}`}
               className="text-primary-600 hover:text-primary-800 text-sm font-medium"
             >
               Ver detalhes →

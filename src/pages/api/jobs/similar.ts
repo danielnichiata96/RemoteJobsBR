@@ -6,174 +6,122 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Apenas método GET é permitido
+  // Apenas GET é permitido
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
   try {
-    // Obter ID da vaga
-    const jobId = req.query.jobId as string;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+    const { id } = req.query;
     
-    if (!jobId) {
-      return res.status(400).json({ error: 'ID da vaga não fornecido' });
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ error: 'ID de vaga não fornecido ou inválido' });
     }
 
-    // Buscar a vaga de referência
-    const referenceJob = await prisma.job.findUnique({
-      where: { id: jobId },
-      select: {
-        id: true,
-        title: true,
-        tags: true,
-        skills: true,
-        location: true,
-        country: true,
-        workplaceType: true,
-        jobType: true,
-        experienceLevel: true,
-        companyId: true
-      }
-    });
+    const formattedId = id.startsWith('greenhouse_') ? id : `greenhouse_${id}`;
     
-    if (!referenceJob) {
-      return res.status(404).json({ error: 'Vaga não encontrada' });
-    }
-
-    // Buscar vagas similares baseadas em tags, localização e skills
-    const similarJobs = await prisma.job.findMany({
-      where: {
-        id: { not: jobId }, // Excluir a vaga de referência
-        status: JobStatus.ACTIVE, // Apenas vagas ativas
-        OR: [
-          // Vagas com tags semelhantes
-          {
-            tags: referenceJob.tags && referenceJob.tags.length > 0 
-              ? { hasSome: referenceJob.tags } 
-              : undefined
-          },
-          // Vagas com skills semelhantes
-          {
-            skills: referenceJob.skills && referenceJob.skills.length > 0 
-              ? { hasSome: referenceJob.skills } 
-              : undefined
-          },
-          // Vagas na mesma localização
-          {
-            location: referenceJob.location 
-              ? { equals: referenceJob.location } 
-              : undefined
-          },
-          // Vagas no mesmo país
-          {
-            country: referenceJob.country 
-              ? { equals: referenceJob.country } 
-              : undefined
-          },
-          // Vagas com mesmo tipo de trabalho
-          {
-            workplaceType: referenceJob.workplaceType 
-              ? { equals: referenceJob.workplaceType } 
-              : undefined
-          },
-          // Vagas com mesmo tipo de contrato
-          {
-            jobType: referenceJob.jobType 
-              ? { equals: referenceJob.jobType } 
-              : undefined
-          },
-          // Vagas com mesmo nível de experiência
-          {
-            experienceLevel: referenceJob.experienceLevel 
-              ? { equals: referenceJob.experienceLevel } 
-              : undefined
-          }
-        ]
+    // Buscar a vaga original para obter tags e skills
+    const originalJob = await prisma.job.findUnique({
+      where: { 
+        id: formattedId,
+        status: JobStatus.ACTIVE
       },
       select: {
         id: true,
-        title: true,
-        companyId: true,
+        tags: true,
+        skills: true,
+        jobType: true,
+        experienceLevel: true
+      }
+    });
+
+    if (!originalJob) {
+      return res.status(404).json({ error: 'Vaga original não encontrada' });
+    }
+
+    // Buscar vagas similares com base nas tags, skills e outros critérios
+    const similarJobs = await prisma.job.findMany({
+      where: {
+        id: { not: originalJob.id }, // Excluir a vaga original
+        status: JobStatus.ACTIVE,
+        OR: [
+          // Vagas com tags similares
+          originalJob.tags && originalJob.tags.length > 0
+            ? { tags: { hasSome: originalJob.tags } }
+            : {},
+          // Vagas com skills similares
+          originalJob.skills && originalJob.skills.length > 0
+            ? { skills: { hasSome: originalJob.skills } }
+            : {},
+          // Vagas com o mesmo tipo de trabalho
+          { jobType: originalJob.jobType },
+          // Vagas com o mesmo nível de experiência
+          { experienceLevel: originalJob.experienceLevel }
+        ]
+      },
+      include: {
         company: {
           select: {
             name: true,
-            logoUrl: true
+            image: true,
+            website: true
           }
-        },
-        location: true,
-        country: true,
-        minSalary: true,
-        maxSalary: true,
-        currency: true,
-        jobType: true,
-        experienceLevel: true,
-        workplaceType: true,
-        tags: true,
-        skills: true,
-        createdAt: true,
-        publishedAt: true,
-        viewCount: true
+        }
       },
-      orderBy: [
-        // Priorizar vagas da mesma empresa
-        {
-          companyId: referenceJob.companyId 
-            ? (referenceJob.companyId === referenceJob.companyId ? 'asc' : 'desc') 
-            : 'asc'
-        },
-        { viewCount: 'desc' },  // Vagas populares
-        { createdAt: 'desc' }   // Vagas mais recentes
-      ],
-      take: limit
+      take: 6 // Limitar a 6 vagas similares
     });
 
-    // Calcular e retornar pontuação de relevância para cada vaga
-    const jobsWithRelevanceScore = similarJobs.map(job => {
-      let relevanceScore = 0;
+    // Mapear vagas para o formato correto
+    const formattedSimilarJobs = similarJobs.map(job => {
+      // Determinar o logo da empresa
+      let companyLogo = job.company.image;
       
-      // Pontuação por tags semelhantes
-      if (referenceJob.tags && referenceJob.tags.length > 0 && job.tags) {
-        const matchingTags = referenceJob.tags.filter(tag => job.tags.includes(tag));
-        relevanceScore += (matchingTags.length / referenceJob.tags.length) * 0.4; // 40% do peso
-      }
-      
-      // Pontuação por skills semelhantes
-      if (referenceJob.skills && referenceJob.skills.length > 0 && job.skills) {
-        const matchingSkills = referenceJob.skills.filter(skill => job.skills.includes(skill));
-        relevanceScore += (matchingSkills.length / referenceJob.skills.length) * 0.3; // 30% do peso
-      }
-      
-      // Pontuação por localização
-      if (job.location === referenceJob.location) {
-        relevanceScore += 0.15; // 15% do peso
-      }
-      
-      // Pontuação por país
-      if (job.country === referenceJob.country) {
-        relevanceScore += 0.1; // 10% do peso
-      }
-      
-      // Pontuação por tipo de trabalho
-      if (job.workplaceType === referenceJob.workplaceType) {
-        relevanceScore += 0.05; // 5% do peso
+      if (!companyLogo && job.company.website) {
+        const domain = extractDomain(job.company.website);
+        if (domain) {
+          // Usar API token se disponível
+          const apiToken = process.env.LOGO_DEV_TOKEN || '';
+          const tokenParam = apiToken ? `?token=${apiToken}` : '';
+          companyLogo = `https://img.logo.dev/${domain}${tokenParam}`;
+        }
       }
       
       return {
-        ...job,
-        relevanceScore: Math.min(1, relevanceScore) // Limitar a 1 (100%)
+        id: job.id,
+        title: job.title,
+        company: job.company.name,
+        companyLogo: companyLogo,
+        location: job.location,
+        description: job.shortDescription || "",
+        jobType: job.jobType,
+        experienceLevel: job.experienceLevel,
+        createdAt: job.createdAt,
+        publishedAt: job.publishedAt
       };
     });
 
-    return res.status(200).json({
-      referenceJob: {
-        id: referenceJob.id,
-        title: referenceJob.title
-      },
-      similarJobs: jobsWithRelevanceScore.sort((a, b) => b.relevanceScore - a.relevanceScore)
-    });
+    return res.status(200).json(formattedSimilarJobs);
   } catch (error) {
     console.error('Erro ao buscar vagas similares:', error);
-    return res.status(500).json({ error: 'Erro ao processar a solicitação' });
+    return res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+}
+
+// Função para extrair domínio de uma URL
+function extractDomain(url: string): string | null {
+  try {
+    // Adicionar https:// se não existir
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+    
+    const domain = new URL(url).hostname;
+    return domain;
+  } catch (error) {
+    console.error('Erro ao extrair domínio:', error);
+    return null;
   }
 } 

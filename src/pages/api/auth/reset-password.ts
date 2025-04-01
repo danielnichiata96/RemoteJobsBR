@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { hash } from 'bcrypt';
-import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
 
 // Schema de validação para redefinição de senha
 const resetPasswordSchema = z.object({
@@ -51,7 +51,7 @@ export default async function handler(
     }
 
     // Criptografar a nova senha
-    const hashedPassword = await hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Atualizar a senha do usuário
     await prisma.user.update({

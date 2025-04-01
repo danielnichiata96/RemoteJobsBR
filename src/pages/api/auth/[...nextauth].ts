@@ -3,11 +3,13 @@ import GoogleProvider from 'next-auth/providers/google';
 import LinkedInProvider from 'next-auth/providers/linkedin';
 import EmailProvider from 'next-auth/providers/email';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { prisma } from '@/lib/prisma';
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { prisma } from '@/lib/prisma';
 import { UserRole } from '@prisma/client';
 import { parse } from 'cookie';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
+import { isLocalDomain } from "@/utils/isLocalDomain";
+import { z } from "zod";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
