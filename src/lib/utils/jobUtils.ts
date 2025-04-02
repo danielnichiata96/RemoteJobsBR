@@ -93,7 +93,7 @@ export function parseSections(content: string): {
     if (blockLower.includes('requirements') || blockLower.includes('qualifications')) {
       sections.requirements += block;
     }
-    else if (blockLower.includes('responsibilities') || blockLower.includes('what you'll do')) {
+    else if (blockLower.includes('responsibilities') || blockLower.includes('what you\'ll do')) {
       sections.responsibilities += block;
     }
     else if (blockLower.includes('benefits') || blockLower.includes('what we offer')) {
@@ -136,4 +136,4 @@ export function isRemoteJob(location: string, description: string): boolean {
   
   // Then check for remote indicators
   return remoteIndicators.some(pattern => textToCheck.includes(pattern));
-} 
+}

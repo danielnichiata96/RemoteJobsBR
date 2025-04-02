@@ -94,8 +94,7 @@ model Job {
   id               String          @id @default(cuid())
   source           String          @default("direct")  // "direct", "greenhouse", "linkedin", etc.
   sourceId         String?         // Original ID from the source
-  sourceLogo       String?         // Logo URL from the source
-  sourceUrl        String?         // Original job URL
+  // sourceLogo       String?         // Logo URL from the source (removed because it doesn't exist in DB)
   companyId        String
   title            String
   description      String
@@ -204,15 +203,14 @@ model JobSource {
   id            String   @id @default(cuid())
   name          String
   type          String   @default("greenhouse")
-  isEnabled     Boolean  @default(true)
+  active        Boolean  @default(true)
   url           String?
   logoUrl       String?
   apiKey        String?
   apiEndpoint   String?
-  config        Json     @default("{}")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  lastFetched   DateTime?
+  configuration Json     @default("{}")
 
   @@unique([name, type])
 }
@@ -262,3 +260,9 @@ enum ApplicationStatus {
   REJECTED
   WITHDRAWN
 }
+
+enum SalaryRange {
+  LOW
+  MEDIUM
+  HIGH
+} 

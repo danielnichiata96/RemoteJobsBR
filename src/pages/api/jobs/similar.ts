@@ -63,7 +63,7 @@ export default async function handler(
         company: {
           select: {
             name: true,
-            image: true,
+            logo: true,
             website: true
           }
         }
@@ -74,7 +74,7 @@ export default async function handler(
     // Mapear vagas para o formato correto
     const formattedSimilarJobs = similarJobs.map(job => {
       // Determinar o logo da empresa
-      let companyLogo = job.company.image;
+      let companyLogo = job.company.logo;
       
       if (!companyLogo && job.company.website) {
         const domain = extractDomain(job.company.website);

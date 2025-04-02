@@ -6,24 +6,22 @@ async function cleanDatabase() {
   
   try {
     // Primeiro deletar as vagas pois elas têm referência para companies
-    await prisma.job.deleteMany({
+    const deletedJobs = await prisma.job.deleteMany({
       where: {
-        id: {
-          startsWith: 'greenhouse_'
-        }
+        source: 'greenhouse'
       }
     });
-    console.log('✓ Jobs deleted');
+    console.log(`✓ ${deletedJobs.count} vagas do Greenhouse deletadas`);
 
     // Depois deletar as companies criadas pelo script
-    await prisma.user.deleteMany({
+    const deletedCompanies = await prisma.user.deleteMany({
       where: {
         email: {
           endsWith: '@greenhouse.example.com'
         }
       }
     });
-    console.log('✓ Companies deleted');
+    console.log(`✓ ${deletedCompanies.count} empresas do Greenhouse deletadas`);
 
     console.log('Database cleaned successfully!');
   } catch (error) {

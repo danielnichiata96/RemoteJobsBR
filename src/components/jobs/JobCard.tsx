@@ -33,7 +33,15 @@ export default function JobCard({ job }: JobCardProps) {
   };
   
   // Determinar o logo a ser usado
-  let companyName = typeof job.company === 'string' ? job.company : (job.company?.name || 'Empresa');
+  let companyName = '';
+  if (typeof job.company === 'string') {
+    companyName = job.company;
+  } else if (job.company && typeof job.company === 'object') {
+    companyName = job.company.name || 'Empresa';
+  } else {
+    companyName = 'Empresa';
+  }
+  
   let companyLogo = job.companyLogo;
   
   if (!companyLogo) {

@@ -31,7 +31,7 @@ export default async function handler(
     try {
       job = await prisma.job.findUnique({
         where: { 
-          id: jobId.startsWith('greenhouse_') ? jobId : `greenhouse_${jobId}`,
+          id: jobId,
           status: JobStatus.ACTIVE // Apenas vagas ativas
         },
         include: {

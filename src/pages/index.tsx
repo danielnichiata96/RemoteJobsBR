@@ -44,6 +44,10 @@ export default function Home(props) {
   useEffect(() => {
     // Verificar se estamos na página inicial
     if (router.pathname !== '/') return;
+    
+    // Force a refresh whenever we load the page
+    const timestamp = Date.now();
+    console.log(`Fetching jobs at ${new Date(timestamp).toISOString()}`);
   
     const fetchJobs = async () => {
       setLoading(true);
@@ -71,7 +75,7 @@ export default function Home(props) {
         params.append('limit', pagination.limit.toString());
         
         // Adicionar timestamp para prevenir cache
-        params.append('_t', Date.now().toString());
+        params.append('_t', timestamp.toString());
         
         // Fetch data from API
         const response = await fetch(`/api/jobs?${params.toString()}`);

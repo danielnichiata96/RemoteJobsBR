@@ -1,17 +1,18 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../lib/prisma';
+import { JobType, ExperienceLevel, Currency, JobStatus } from '@prisma/client'; // Import enums
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'GET') {
     try {
       const { 
-        search = '', 
-        jobTypes = [], 
+        page = '1', 
+        limit = '20',
+        search = '',
+        jobTypes = [],
         experienceLevels = [],
         industries = [],
-        locations = [],
-        page = '1', 
-        limit = '10' 
+        locations = []
       } = req.query;
       
       // Convert params
@@ -19,196 +20,211 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const limitNum = parseInt(limit as string, 10);
       const skip = (pageNum - 1) * limitNum;
       
-      // Build filter conditions
-      const searchFilter = search
+      // Build search filter
+      const searchFilter = search 
         ? {
             OR: [
               { title: { contains: search as string, mode: 'insensitive' } },
               { description: { contains: search as string, mode: 'insensitive' } },
-              { skills: { hasSome: search.split(' ') } },
+              { skills: { has: search as string } },
               { company: { name: { contains: search as string, mode: 'insensitive' } } }
             ]
           }
         : {};
-      
-      // Job type filter
-      const jobTypeFilter = (jobTypes as string[])?.length > 0
-        ? { jobType: { in: (jobTypes as string[]) } }
-        : {};
-        
-      // Experience level filter
-      const experienceLevelFilter = (experienceLevels as string[])?.length > 0
-        ? { experienceLevel: { in: (experienceLevels as string[]) } }
+
+      // Build job type filter
+      const jobTypeFilter = jobTypes && Array.isArray(jobTypes) && jobTypes.length > 0
+        ? {
+            jobType: {
+              in: jobTypes.map(type => {
+                // Map frontend value to enum value if needed
+                switch(type) {
+                  case 'full-time': return JobType.FULL_TIME;
+                  case 'part-time': return JobType.PART_TIME;
+                  case 'contract': return JobType.CONTRACT;
+                  case 'internship': return JobType.INTERNSHIP;
+                  case 'freelance': return JobType.FREELANCE;
+                  default: return type as JobType;
+                }
+              })
+            }
+          }
         : {};
 
-      // Industry filter (using tags as proxy)
-      const industryFilter = (industries as string[])?.length > 0
-        ? { tags: { hasSome: (industries as string[]) } }
+      // Build experience level filter
+      const experienceLevelFilter = experienceLevels && Array.isArray(experienceLevels) && experienceLevels.length > 0
+        ? {
+            experienceLevel: {
+              in: experienceLevels.map(level => {
+                // Map frontend value to enum value if needed
+                switch(level) {
+                  case 'entry-level': return ExperienceLevel.ENTRY;
+                  case 'mid-level': return ExperienceLevel.MID;
+                  case 'senior-level': return ExperienceLevel.SENIOR;
+                  case 'lead': return ExperienceLevel.LEAD;
+                  default: return level as ExperienceLevel;
+                }
+              })
+            }
+          }
         : {};
-      
-      // Location filter (using custom logic)
-      const locationFilter = (locations as string[])?.length > 0
+
+      // Build industry filter
+      const industryFilter = industries && Array.isArray(industries) && industries.length > 0
+        ? {
+            company: {
+              industry: {
+                in: industries as string[]
+              }
+            }
+          }
+        : {};
+
+      // Build location filter using helper
+      const locationFilter = locations && Array.isArray(locations) && locations.length > 0
         ? buildLocationFilter(locations as string[])
         : {};
-        
-      // Only active jobs
-      const statusFilter = { status: 'ACTIVE' };
-        
+      
       // Combine all filters
       const where = {
+        status: JobStatus.ACTIVE,
         ...searchFilter,
         ...jobTypeFilter,
         ...experienceLevelFilter,
         ...industryFilter,
         ...locationFilter,
-        ...statusFilter,
       };
       
-      // Verificar se temos exatamente o ID da vaga que queremos debugar
-      const debugJobId = req.query.debug_id as string;
-      if (debugJobId) {
-        where.id = debugJobId;
-      }
-      
-      // Garantir que incluímos o relacionamento com a empresa corretamente
-      const includeCompany = {
-        company: {
-          select: {
-            id: true,
-            name: true,
-            logo: true,
-            industry: true,
-            isVerified: true
-          }
-        }
-      };
+      // Fetching with combined where clause
+      const totalJobs = await prisma.job.count({ where });
 
-      // IMPLEMENTAÇÃO DO SISTEMA DE PRIORIDADE PARA VAGAS DIRETAS
+      // Debug: Verificar a distribuição de empresas
+      console.log('Verificando distribuição de empresas entre vagas ativas:');
+      const companyDistribution = await prisma.job.groupBy({
+        by: ['companyId'],
+        where: { status: JobStatus.ACTIVE },
+        _count: { _all: true }
+      });
       
-      let jobs = [];
-      let totalJobs = 0;
+      // Buscar nomes das empresas para o log
+      const companyIds = companyDistribution.map(item => item.companyId);
+      const companies = await prisma.user.findMany({
+        where: { id: { in: companyIds }, role: 'COMPANY' },
+        select: { id: true, name: true }
+      });
       
-      // Apenas na primeira página damos destaque para vagas diretas
-      if (pageNum === 1) {
-        // 1. Buscar até 10 vagas diretas, que terão prioridade
-        const directJobs = await prisma.job.findMany({
-          where: {
-            ...where,
-            source: 'direct',
-            // Garantir que não pega vagas com IDs do Greenhouse
-            id: {
-              not: { startsWith: 'greenhouse_' }
+      // Criar mapa de ID -> nome
+      const companyMap = new Map(companies.map(c => [c.id, c.name]));
+      
+      // Logar distribuição
+      companyDistribution.forEach(item => {
+        console.log(`Empresa: ${companyMap.get(item.companyId) || item.companyId}, Vagas ativas: ${item._count._all}`);
+      });
+
+      const jobs = await prisma.job.findMany({
+        where,
+        orderBy: [
+          // Ordenação por data (mais recente primeiro)
+          { publishedAt: 'desc' },
+          { createdAt: 'desc' }
+        ],
+        skip: skip,
+        take: limitNum,
+        select: {
+          id: true,
+          source: true,
+          sourceId: true,
+          companyId: true,
+          title: true,
+          description: true,
+          requirements: true,
+          responsibilities: true,
+          benefits: true,
+          jobType: true,
+          experienceLevel: true,
+          skills: true,
+          tags: true,
+          location: true,
+          country: true,
+          workplaceType: true,
+          minSalary: true,
+          maxSalary: true,
+          currency: true,
+          salaryCycle: true,
+          showSalary: true,
+          status: true,
+          visas: true,
+          languages: true,
+          applicationUrl: true,
+          applicationEmail: true,
+          createdAt: true,
+          updatedAt: true,
+          publishedAt: true,
+          expiresAt: true,
+          viewCount: true,
+          applicantCount: true,
+          applications: {
+            select: {
+              id: true
             }
           },
-          include: includeCompany,
-          orderBy: [
-            { publishedAt: 'desc' },
-            { createdAt: 'desc' }
-          ],
-          take: 10
-        });
-        
-        // 2. Calcular quantas vagas ainda precisamos para completar o limite da página
-        const remainingSlots = limitNum - directJobs.length;
-        
-        // 3. Buscar vagas de outras fontes para completar a página
-        const otherSourceJobs = remainingSlots > 0 ? 
-          await prisma.job.findMany({
-            where: {
-              ...where,
-              OR: [
-                { source: { not: 'direct' } },
-                { 
-                  // Incluir também vagas que são erroneamente marcadas como 'direct' mas têm ID do Greenhouse
-                  source: 'direct',
-                  id: { startsWith: 'greenhouse_' }
-                }
-              ]
-            },
-            include: includeCompany,
-            orderBy: [
-              { publishedAt: 'desc' },
-              { createdAt: 'desc' }
-            ],
-            take: remainingSlots
-          }) : [];
-        
-        // 4. Combinar os resultados, com vagas diretas primeiro
-        jobs = [...directJobs, ...otherSourceJobs];
-      } else {
-        // Para páginas subsequentes, precisamos ajustar a paginação
-        // Contar quantas vagas diretas existem no total
-        const totalDirectJobs = await prisma.job.count({
-          where: {
-            ...where,
-            source: 'direct'
+          company: {
+            select: {
+              id: true,
+              name: true,
+              logo: true,
+              industry: true,
+              isVerified: true
+            }
+          },
+          savedBy: {
+            select: {
+              id: true
+            }
           }
-        });
-        
-        // Contar vagas de outras fontes
-        const totalOtherJobs = await prisma.job.count({
-          where: {
-            ...where,
-            source: { not: 'direct' }
-          }
-        });
-        
-        // Se temos menos de 10 vagas diretas, então a primeira página tem todas elas
-        // mais algumas vagas de outras fontes
-        const directJobsOnFirstPage = Math.min(totalDirectJobs, 10);
-        
-        // Vagas de outras fontes na primeira página
-        const otherJobsOnFirstPage = Math.min(limitNum - directJobsOnFirstPage, totalOtherJobs);
-        
-        // Total de vagas na primeira página
-        const totalOnFirstPage = directJobsOnFirstPage + otherJobsOnFirstPage;
-        
-        // Ajustar o cálculo de skip
-        // A página 2 começa após todas as vagas da página 1
-        const adjustedSkip = (pageNum === 2) ? totalOnFirstPage : 
-                             (pageNum > 2) ? totalOnFirstPage + (pageNum - 2) * limitNum : 
-                             skip;
-        
-        // Buscar vagas normalmente com skip ajustado
-        jobs = await prisma.job.findMany({
-          where,
-          include: includeCompany,
-          orderBy: [
-            { publishedAt: 'desc' },
-            { createdAt: 'desc' }
-          ],
-          skip: adjustedSkip,
-          take: limitNum
-        });
-      }
-      
-      // Calcular o total geral de vagas para paginação
-      totalJobs = await prisma.job.count({ where });
+        }
+      });
       
       // Format the jobs for the frontend
-      const formattedJobs = jobs.map(job => ({
-        id: job.id,
-        title: job.title,
-        company: job.company.name,
-        companyLogo: job.company.logo || null,
-        companyVerified: job.company.isVerified,
-        location: job.location,
-        description: truncateDescription(job.description),
-        jobType: formatJobType(job.jobType),
-        experienceLevel: formatExperienceLevel(job.experienceLevel),
-        tags: job.skills,
-        salary: job.showSalary && job.minSalary && job.maxSalary 
-          ? formatSalary(job.minSalary, job.maxSalary, job.currency, job.salaryCycle) 
-          : null,
-        createdAt: job.createdAt,
-        publishedAt: job.publishedAt,
-        applicationUrl: job.applicationUrl,
-        industry: job.company.industry || 'tech',
-        regionType: determineRegionType(job.location, job.country),
-        source: job.source,
-        sourceUrl: job.sourceUrl,
-        sourceLogo: job.sourceLogo
-      }));
+      const formattedJobs = jobs.map(job => {
+        // Clean up the location data - override US-specific locations with general "Remote" indication
+        let cleanedLocation = job.location;
+        if (cleanedLocation && (
+            cleanedLocation.includes("US-") || 
+            cleanedLocation.includes("United States") ||
+            cleanedLocation.includes("Seattle") ||
+            cleanedLocation.includes("San Francisco") ||
+            cleanedLocation.includes("New York") ||
+            cleanedLocation.includes("Chicago")
+        )) {
+          cleanedLocation = job.country === 'LATAM' ? 'Remote - Latin America' : 'Remote - Worldwide';
+        }
+        
+        // Add debug info for company
+        console.log(`Processing job ${job.id} for company: ${JSON.stringify(job.company)}`);
+        
+        return {
+          id: job.id,
+          title: job.title,
+          company: job.company.name || 'Empresa',
+          companyLogo: job.company.logo || null,
+          companyVerified: job.company.isVerified,
+          location: cleanedLocation,
+          description: truncateDescription(job.description),
+          jobType: formatJobType(job.jobType),
+          experienceLevel: formatExperienceLevel(job.experienceLevel),
+          tags: job.skills,
+          salary: job.showSalary && job.minSalary && job.maxSalary 
+            ? formatSalary(job.minSalary, job.maxSalary, job.currency, job.salaryCycle) 
+            : null,
+          createdAt: job.createdAt,
+          publishedAt: job.publishedAt,
+          applicationUrl: job.applicationUrl,
+          industry: job.company.industry || 'tech',
+          regionType: determineRegionType(cleanedLocation, job.country),
+          source: job.source
+        };
+      });
       
       // Return response with pagination
       return res.status(200).json({
@@ -222,64 +238,71 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     } catch (error) {
       console.error('Error fetching jobs:', error);
+      if (error instanceof Error) {
+           console.error(error.message);
+           if ('code' in error) { 
+               console.error(`Prisma Error Code: ${error.code}`);
+           }
+       }
       return res.status(500).json({ error: 'Failed to fetch jobs' });
     }
   } else {
-    // Only allow GET method
     res.setHeader('Allow', ['GET']);
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 }
 
 // Helper functions
-function truncateDescription(description: string): string {
-  const maxLength = 200;
-  if (description.length <= maxLength) return description;
-  return description.substring(0, maxLength) + '...';
+function truncateDescription(description: string | null): string {
+    if (!description) return '';
+    const maxLength = 200;
+    if (description.length <= maxLength) return description;
+    return description.substring(0, maxLength) + '...';
 }
 
-function formatJobType(jobType: string): string {
-  const mapping: Record<string, string> = {
-    'FULL_TIME': 'full-time',
-    'PART_TIME': 'part-time',
-    'CONTRACT': 'contract',
-    'INTERNSHIP': 'internship',
-    'FREELANCE': 'freelance'
-  };
-  return mapping[jobType] || jobType.toLowerCase();
+function formatJobType(jobType: JobType | null): string {
+    if (!jobType) return '-';
+    const mapping: Record<JobType, string> = {
+        [JobType.FULL_TIME]: 'Tempo Integral',
+        [JobType.PART_TIME]: 'Meio Período',
+        [JobType.CONTRACT]: 'Contrato',
+        [JobType.INTERNSHIP]: 'Estágio',
+        [JobType.FREELANCE]: 'Freelance'
+    };
+    return mapping[jobType] || jobType;
 }
 
-function formatExperienceLevel(level: string): string {
-  const mapping: Record<string, string> = {
-    'ENTRY': 'entry-level',
-    'MID': 'mid-level',
-    'SENIOR': 'senior-level',
-    'LEAD': 'lead-level'
-  };
-  return mapping[level] || level.toLowerCase();
+function formatExperienceLevel(level: ExperienceLevel | null): string {
+    if (!level) return '-';
+    const mapping: Record<ExperienceLevel, string> = {
+        [ExperienceLevel.ENTRY]: 'Júnior',
+        [ExperienceLevel.MID]: 'Pleno',
+        [ExperienceLevel.SENIOR]: 'Sênior',
+        [ExperienceLevel.LEAD]: 'Líder'
+    };
+    return mapping[level] || level;
 }
 
-function formatSalary(min: number, max: number, currency: string | null, cycle: string | null): string {
-  const currencySymbol = getCurrencySymbol(currency || 'USD');
-  const formattedMin = Math.round(min).toLocaleString();
-  const formattedMax = Math.round(max).toLocaleString();
-  const period = cycle ? `/${cycle.toLowerCase()}` : '';
-  
-  return `${currencySymbol} ${formattedMin} - ${formattedMax}${period}`;
+function formatSalary(min: number, max: number, currency: Currency | null, cycle: string | null): string {
+    const currencySymbol = getCurrencySymbol(currency || Currency.USD); // Default to USD
+    const formattedMin = Math.round(min).toLocaleString('pt-BR'); // Use locale for formatting
+    const formattedMax = Math.round(max).toLocaleString('pt-BR');
+    const period = cycle ? `/${cycle.toLowerCase()}` : '';
+    return `${currencySymbol} ${formattedMin} - ${formattedMax}${period}`;
 }
 
-function getCurrencySymbol(currency: string): string {
-  const symbols: Record<string, string> = {
-    'USD': '$',
-    'EUR': '€',
-    'BRL': 'R$'
-  };
-  return symbols[currency] || currency;
+function getCurrencySymbol(currency: Currency): string {
+    const symbols: Record<Currency, string> = {
+        [Currency.USD]: '$',
+        [Currency.EUR]: '€',
+        [Currency.BRL]: 'R$'
+    };
+    return symbols[currency] || currency;
 }
 
 function determineRegionType(location: string, country: string): string {
-  const locationLower = location.toLowerCase();
-  const countryLower = country.toLowerCase();
+  const locationLower = location?.toLowerCase() || '';
+  const countryLower = country?.toLowerCase() || '';
   
   if (locationLower.includes('brazil') || countryLower.includes('brazil') || 
       locationLower.includes('brasil') || countryLower.includes('brasil')) {
@@ -289,7 +312,7 @@ function determineRegionType(location: string, country: string): string {
   if (locationLower.includes('latin america') || locationLower.includes('latam') ||
       countryLower.includes('latin america') || countryLower.includes('latam') ||
       ['argentina', 'mexico', 'colombia', 'chile', 'peru'].some(
-        country => locationLower.includes(country) || countryLower.includes(country)
+        c => locationLower.includes(c) || countryLower.includes(c)
       )) {
     return 'latam';
   }
@@ -300,7 +323,7 @@ function determineRegionType(location: string, country: string): string {
 function buildLocationFilter(locations: string[]): Record<string, any> {
   if (!locations || locations.length === 0) return {};
   
-  const conditions = [];
+  const conditions: any[] = []; // Explicitly type as any[] or a more specific type
   
   if (locations.includes('brazil')) {
     conditions.push(
@@ -334,6 +357,10 @@ function buildLocationFilter(locations: string[]): Record<string, any> {
       { country: { contains: 'Global', mode: 'insensitive' } }
     );
   }
+  
+  // If only worldwide is selected, we might want to exclude explicitly LATAM/Brazil jobs?
+  // Example: if (locations.length === 1 && locations[0] === 'worldwide') { ... add NOT condition ... }
+  // For now, keep it simple: OR condition for all selected.
   
   return conditions.length > 0 ? { OR: conditions } : {};
 } 
