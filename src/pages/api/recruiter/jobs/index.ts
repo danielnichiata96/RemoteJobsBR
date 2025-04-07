@@ -27,8 +27,8 @@ const jobSchema = z.object({
   status: z.nativeEnum(JobStatus).optional().default(JobStatus.DRAFT),
   visas: z.array(z.string()).optional().default([]),
   languages: z.array(z.string()).optional().default([]),
-  applicationUrl: z.string().url().optional(),
-  applicationEmail: z.string().email().optional(),
+  applicationUrl: z.string().min(3, 'URL inválida').optional().nullable(),
+  applicationEmail: z.string().email().optional().nullable(),
 });
 
 export default async function handler(
@@ -141,8 +141,20 @@ export default async function handler(
         });
       }
       
-      const jobData = validationResult.data;
-      console.log('Dados validados:', JSON.stringify(jobData, null, 2));
+      let jobData = validationResult.data;
+      
+      // Normalizar a applicationUrl antes de salvar
+      if (jobData.applicationUrl && !jobData.applicationUrl.startsWith('http://') && !jobData.applicationUrl.startsWith('https://')) {
+          if (!jobData.applicationUrl.includes('.')) { // Verificação muito básica se parece um domínio
+              // Se não parece um domínio válido, talvez limpar ou lançar erro?
+              // Por ora, vamos apenas limpar para evitar salvar dados inválidos.
+              console.warn(`URL de aplicação inválida fornecida e não prefixada: ${jobData.applicationUrl}`);
+              jobData = { ...jobData, applicationUrl: null }; // Limpar URL inválida
+          } else {
+              console.log(`Prefixando URL de aplicação: ${jobData.applicationUrl}`);
+              jobData = { ...jobData, applicationUrl: `https://${jobData.applicationUrl}` };
+          }
+      }
       
       // Se responsabilidades não for fornecido, usar uma string padrão
       const responsibilities = jobData.responsibilities || 'Responsabilidades a definir';

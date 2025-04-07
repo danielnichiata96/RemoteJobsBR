@@ -32,21 +32,28 @@ export default function Login(props) {
     setError('');
     
     try {
+      const callbackUrl = (router.query.returnTo as string) || (userType === 'recruiter' ? '/recruiter/dashboard' : '/');
+      
       const result = await signIn('credentials', {
         email: formData.email,
         password: formData.password,
         redirect: false,
-        callbackUrl: '/'
+        callbackUrl
       });
       
       if (result?.error) {
-        setError(result.error);
+        if (result.error === "NO_PASSWORD") {
+          setError("Esta conta foi criada usando link mágico ou login social. Por favor, use esse método para entrar.");
+        } else {
+          setError("Credenciais inválidas. Verifique seu email e senha.");
+        }
         setIsLoading(false);
       } else if (result?.url) {
         router.push(result.url);
       }
     } catch (error) {
-      setError('Ocorreu um erro durante o login. Tente novamente.');
+      console.error("Login catch error:", error);
+      setError('Ocorreu um erro inesperado durante o login. Tente novamente.');
       setIsLoading(false);
     }
   };

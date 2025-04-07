@@ -3,43 +3,23 @@ import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { GetServerSideProps, InferGetServerSidePropsType } from 'next';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/pages/api/auth/[...nextauth]';
+import { prisma } from '@/lib/prisma';
+import { Job, JobStatus, UserRole } from '@prisma/client';
 
-export default function EditJob(props) {
+export default function EditJob({ job, error }: InferGetServerSidePropsType<typeof getServerSideProps>) {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const { id } = router.query;
-  const [job, setJob] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formError, setFormError] = useState('');
+  const [formError, setFormError] = useState(error || '');
 
-  // Fetch job data when component mounts
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/recruiter');
-      return;
     }
-
-    if (id && status === 'authenticated') {
-      fetchJobData();
-    }
-  }, [id, status]);
-
-  const fetchJobData = async () => {
-    try {
-      const response = await fetch(`/api/recruiter/jobs/${id}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch job data');
-      }
-      const data = await response.json();
-      setJob(data);
-    } catch (error) {
-      console.error('Error fetching job:', error);
-      setFormError('Failed to load job data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [status, router]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -47,6 +27,13 @@ export default function EditJob(props) {
     setFormError('');
 
     const formData = new FormData(e.currentTarget);
+    
+    const jobId = job?.id;
+    if (!jobId) {
+        setFormError('Erro: ID da vaga não encontrado.');
+        setIsSubmitting(false);
+        return;
+    }
     
     const jobData = {
       title: formData.get('title') as string,
@@ -60,21 +47,20 @@ export default function EditJob(props) {
       country: formData.get('country') as string,
       workplaceType: formData.get('workplaceType') as string,
       skills: (formData.get('skills') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
-      tags: (formData.get('skills') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
       languages: job?.languages || [],
       status: formData.get('status') as string || job?.status,
       source: 'direct',
       applicationUrl: formData.get('applicationUrl') as string || null,
       applicationEmail: formData.get('applicationEmail') as string || null,
       showSalary: formData.get('showSalary') === 'on',
-      minSalary: formData.get('minSalary') ? parseInt(formData.get('minSalary') as string) : null,
-      maxSalary: formData.get('maxSalary') ? parseInt(formData.get('maxSalary') as string) : null,
+      minSalary: formData.get('minSalary') ? parseInt(formData.get('minSalary') as string, 10) : null,
+      maxSalary: formData.get('maxSalary') ? parseInt(formData.get('maxSalary') as string, 10) : null,
       currency: formData.get('currency') as string || 'BRL',
       salaryCycle: formData.get('salaryCycle') as string || 'month',
     };
 
     try {
-      const response = await fetch(`/api/recruiter/jobs/${id}`, {
+      const response = await fetch(`/api/recruiter/jobs/${jobId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -85,30 +71,42 @@ export default function EditJob(props) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || 'Error updating job');
+        let errorMessage = data.error || data.message || 'Erro ao atualizar a vaga';
+        if (data.details && Array.isArray(data.details)) {
+            errorMessage = data.details.map((d: any) => `${d.path.join('.')}: ${d.message}`).join('; ');
+        }
+        throw new Error(errorMessage);
       }
 
-      router.push('/recruiter/dashboard/jobs');
+      router.push('/recruiter/dashboard/jobs?updated=true');
     } catch (error: any) {
-      console.error('Error caught:', error);
-      setFormError(error.message || 'An error occurred while updating the job');
+      console.error('Erro ao atualizar vaga:', error);
+      setFormError(error.message || 'Ocorreu um erro ao atualizar a vaga');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (isLoading) {
+  if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="min-h-screen flex items-center justify-center text-red-600">
+        Erro: {error}
       </div>
     );
+  }
+  
+  if (!job) {
+      return (
+          <div className="min-h-screen flex items-center justify-center text-red-600">
+              Erro: Vaga não encontrada ou falha ao carregar.
+          </div>
+      );
   }
 
   return (
     <>
       <Head>
-        <title>Edit Job | RemoteJobsBR</title>
+        <title>Editar Vaga | {job?.title || 'RemoteJobsBR'}</title>
       </Head>
 
       <div className="min-h-screen bg-gray-50">
@@ -175,7 +173,7 @@ export default function EditJob(props) {
                       name="title"
                       id="title"
                       required
-                      defaultValue={job?.title}
+                      defaultValue={job.title}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="Ex: Senior React Developer"
                     />
@@ -187,7 +185,7 @@ export default function EditJob(props) {
                       id="jobType"
                       name="jobType"
                       required
-                      defaultValue={job?.jobType}
+                      defaultValue={job.jobType}
                       className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     >
                       <option value="FULL_TIME">Full Time</option>
@@ -204,7 +202,7 @@ export default function EditJob(props) {
                       id="experienceLevel"
                       name="experienceLevel"
                       required
-                      defaultValue={job?.experienceLevel}
+                      defaultValue={job.experienceLevel}
                       className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     >
                       <option value="ENTRY">Entry Level</option>
@@ -221,7 +219,7 @@ export default function EditJob(props) {
                       name="location"
                       id="location"
                       required
-                      defaultValue={job?.location}
+                      defaultValue={job.location}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="Ex: Remote, São Paulo"
                     />
@@ -234,7 +232,7 @@ export default function EditJob(props) {
                       name="country"
                       id="country"
                       required
-                      defaultValue={job?.country || "Brazil"}
+                      defaultValue={job.country}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                     />
                   </div>
@@ -245,7 +243,7 @@ export default function EditJob(props) {
                       id="workplaceType"
                       name="workplaceType"
                       required
-                      defaultValue={job?.workplaceType}
+                      defaultValue={job.workplaceType}
                       className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     >
                       <option value="remote">Remote</option>
@@ -261,7 +259,7 @@ export default function EditJob(props) {
                       name="skills"
                       id="skills"
                       required
-                      defaultValue={job?.skills?.join(', ')}
+                      defaultValue={job.skills?.join(', ')}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="Ex: React, Node.js, TypeScript"
                     />
@@ -274,7 +272,7 @@ export default function EditJob(props) {
                       name="description"
                       rows={4}
                       required
-                      defaultValue={job?.description}
+                      defaultValue={job.description}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="Describe the job in detail..."
                     ></textarea>
@@ -287,7 +285,7 @@ export default function EditJob(props) {
                       name="requirements"
                       rows={4}
                       required
-                      defaultValue={job?.requirements}
+                      defaultValue={job.requirements}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="List the job requirements..."
                     ></textarea>
@@ -299,7 +297,7 @@ export default function EditJob(props) {
                       id="responsibilities"
                       name="responsibilities"
                       rows={4}
-                      defaultValue={job?.responsibilities}
+                      defaultValue={job.responsibilities}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="Describe the job responsibilities..."
                     ></textarea>
@@ -311,7 +309,7 @@ export default function EditJob(props) {
                       id="benefits"
                       name="benefits"
                       rows={4}
-                      defaultValue={job?.benefits}
+                      defaultValue={job.benefits}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="List the benefits offered..."
                     ></textarea>
@@ -323,7 +321,7 @@ export default function EditJob(props) {
                       type="url"
                       name="applicationUrl"
                       id="applicationUrl"
-                      defaultValue={job?.applicationUrl}
+                      defaultValue={job.applicationUrl}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="Ex: https://yourcompany.com/careers/apply"
                     />
@@ -335,7 +333,7 @@ export default function EditJob(props) {
                       type="email"
                       name="applicationEmail"
                       id="applicationEmail"
-                      defaultValue={job?.applicationEmail}
+                      defaultValue={job.applicationEmail}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="Ex: jobs@yourcompany.com"
                     />
@@ -347,7 +345,7 @@ export default function EditJob(props) {
                         id="showSalary"
                         name="showSalary"
                         type="checkbox"
-                        defaultChecked={job?.showSalary}
+                        defaultChecked={job.showSalary}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <label htmlFor="showSalary" className="ml-2 block text-sm text-gray-700">
@@ -362,7 +360,7 @@ export default function EditJob(props) {
                       type="number"
                       name="minSalary"
                       id="minSalary"
-                      defaultValue={job?.minSalary}
+                      defaultValue={job.minSalary}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="Ex: 5000"
                     />
@@ -374,7 +372,7 @@ export default function EditJob(props) {
                       type="number"
                       name="maxSalary"
                       id="maxSalary"
-                      defaultValue={job?.maxSalary}
+                      defaultValue={job.maxSalary}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       placeholder="Ex: 8000"
                     />
@@ -385,7 +383,7 @@ export default function EditJob(props) {
                     <select
                       id="currency"
                       name="currency"
-                      defaultValue={job?.currency || "BRL"}
+                      defaultValue={job.currency || "BRL"}
                       className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     >
                       <option value="BRL">BRL (R$)</option>
@@ -399,7 +397,7 @@ export default function EditJob(props) {
                     <select
                       id="salaryCycle"
                       name="salaryCycle"
-                      defaultValue={job?.salaryCycle || "month"}
+                      defaultValue={job.salaryCycle || "month"}
                       className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     >
                       <option value="month">Per Month</option>
@@ -413,7 +411,7 @@ export default function EditJob(props) {
                     <select
                       id="status"
                       name="status"
-                      defaultValue={job?.status}
+                      defaultValue={job.status}
                       className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     >
                       <option value="DRAFT">Draft</option>
@@ -439,4 +437,51 @@ export default function EditJob(props) {
       </div>
     </>
   );
-} 
+}
+
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  const session = await getServerSession(context.req, context.res, authOptions);
+  const { id } = context.params as { id: string };
+
+  if (!session || !session.user?.email || (session.user.role !== UserRole.COMPANY && session.user.role !== 'COMPANY')) {
+    return {
+      redirect: {
+        destination: '/auth/recruiter?error=unauthorized',
+        permanent: false,
+      },
+    };
+  }
+
+  try {
+    const job = await prisma.job.findUnique({
+      where: { id: id },
+      include: { company: true }
+    });
+
+    if (!job || job.company.email !== session.user.email) {
+        return {
+            props: { 
+                job: null, 
+                error: 'Vaga não encontrada ou acesso negado.' 
+            },
+        };
+    }
+
+    const serializableJob = JSON.parse(JSON.stringify(job));
+
+    return {
+      props: { 
+        job: serializableJob, 
+        error: null 
+      },
+    };
+  } catch (error) {
+    console.error(`Erro ao buscar vaga ${id} para edição:`, error);
+    return {
+      props: { 
+        job: null, 
+        error: 'Erro ao carregar dados da vaga.' 
+      },
+    };
+  }
+}; 

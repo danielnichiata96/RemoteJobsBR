@@ -11,25 +11,24 @@ const jobUpdateSchema = z.object({
   description: z.string().min(30, 'Descrição deve ter pelo menos 30 caracteres').optional(),
   requirements: z.string().min(30, 'Requisitos devem ter pelo menos 30 caracteres').optional(),
   responsibilities: z.string().min(30, 'Responsabilidades devem ter pelo menos 30 caracteres').optional(),
-  benefits: z.string().optional(),
+  benefits: z.string().optional().nullable(),
   jobType: z.nativeEnum(JobType).optional(),
   experienceLevel: z.nativeEnum(ExperienceLevel).optional(),
   skills: z.array(z.string()).optional(),
-  tags: z.array(z.string()).optional(),
   location: z.string().optional(),
   country: z.string().optional(),
   workplaceType: z.string().optional(),
-  minSalary: z.number().optional(),
-  maxSalary: z.number().optional(),
+  minSalary: z.number().optional().nullable(),
+  maxSalary: z.number().optional().nullable(),
   currency: z.nativeEnum(Currency).optional(),
   salaryCycle: z.string().optional(),
   showSalary: z.boolean().optional(),
   status: z.nativeEnum(JobStatus).optional(),
   visas: z.array(z.string()).optional(),
   languages: z.array(z.string()).optional(),
-  applicationUrl: z.string().url().optional(),
-  applicationEmail: z.string().email().optional(),
-  publishedAt: z.union([z.date(), z.string()]).optional(),
+  applicationUrl: z.string().min(3, 'URL inválida').optional().nullable(),
+  applicationEmail: z.string().email().optional().nullable(),
+  publishedAt: z.union([z.date(), z.string()]).optional().nullable(),
 });
 
 export default async function handler(
@@ -131,7 +130,7 @@ export default async function handler(
   // Método PUT - Atualizar vaga
   else if (req.method === 'PUT') {
     try {
-      const jobData = req.body;
+      let jobData = req.body; // Usar let para permitir modificação
       
       console.log('Received job update data:', JSON.stringify(jobData, null, 2));
       
@@ -142,8 +141,20 @@ export default async function handler(
         return res.status(400).json({ error: 'Invalid job data', details: validatedData.error.format() });
       }
 
-      const data = validatedData.data;
+      let data = validatedData.data; // Usar let para permitir modificação
       
+      // --- Adicionar Normalização da applicationUrl --- 
+      if (data.applicationUrl && !data.applicationUrl.startsWith('http://') && !data.applicationUrl.startsWith('https://')) {
+          if (!data.applicationUrl.includes('.')) { 
+              console.warn(`URL de aplicação inválida fornecida na atualização e não prefixada: ${data.applicationUrl}`);
+              data = { ...data, applicationUrl: null }; // Limpar URL inválida
+          } else {
+              console.log(`Prefixando URL de aplicação na atualização: ${data.applicationUrl}`);
+              data = { ...data, applicationUrl: `https://${data.applicationUrl}` };
+          }
+      }
+      // --- Fim da Normalização ---
+
       // Verificar mudança de status para publicação
       const publishData = {};
       

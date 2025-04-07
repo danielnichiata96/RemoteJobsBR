@@ -8,11 +8,16 @@ export default function RecruiterDashboard(props) {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [publishedJobsCount, setPublishedJobsCount] = useState<number | null>(null);
+  const [applicationsCount, setApplicationsCount] = useState<number | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
   
-  // Verificar se o usuário está autenticado
+  // Verificar se o usuário está autenticado e buscar estatísticas
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/recruiter');
+      return; // Sai cedo se não autenticado
     }
     
     // Mostrar mensagem de sucesso se o parâmetro verified=true estiver presente
@@ -25,6 +30,32 @@ export default function RecruiterDashboard(props) {
       }, 5000);
       
       return () => clearTimeout(timeout);
+    }
+
+    // Buscar estatísticas se autenticado
+    if (status === 'authenticated') {
+      const fetchStats = async () => {
+        setIsLoadingStats(true);
+        setStatsError(null);
+        try {
+          const response = await fetch('/api/recruiter/dashboard/stats');
+          if (!response.ok) {
+            throw new Error('Falha ao buscar estatísticas');
+          }
+          const data = await response.json();
+          setPublishedJobsCount(data.publishedJobsCount);
+          setApplicationsCount(data.applicationsCount);
+        } catch (error: any) {
+          console.error("Erro ao buscar stats:", error);
+          setStatsError(error.message || 'Erro ao carregar dados do dashboard.');
+          setPublishedJobsCount(0); // Define como 0 em caso de erro para não mostrar null
+          setApplicationsCount(0);
+        } finally {
+          setIsLoadingStats(false);
+        }
+      };
+
+      fetchStats();
     }
   }, [status, router, router.query.verified]);
 
@@ -49,7 +80,9 @@ export default function RecruiterDashboard(props) {
             <div className="flex justify-between h-16">
               <div className="flex">
                 <div className="flex-shrink-0 flex items-center">
-                  <span className="text-blue-600 text-xl font-bold">RemoteJobsBR</span>
+                  <Link href="/" className="text-blue-600 text-xl font-bold hover:text-blue-700">
+                    RemoteJobsBR
+                  </Link>
                 </div>
                 <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
                   <Link href="/recruiter/dashboard" className="border-blue-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
@@ -89,6 +122,21 @@ export default function RecruiterDashboard(props) {
             </div>
           )}
           
+          {statsError && (
+            <div className="mb-6 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-sm">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm">{statsError}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="bg-white overflow-hidden shadow-sm sm:rounded-lg">
             <div className="p-6 bg-white border-b border-gray-200">
               <h1 className="text-2xl font-semibold text-gray-800">Dashboard do Recrutador</h1>
@@ -112,7 +160,11 @@ export default function RecruiterDashboard(props) {
                           </dt>
                           <dd>
                             <div className="text-lg font-medium text-gray-900">
-                              0
+                              {isLoadingStats ? (
+                                <span className="animate-pulse h-5 w-8 bg-gray-300 inline-block rounded"></span>
+                              ) : (
+                                publishedJobsCount ?? 0
+                              )}
                             </div>
                           </dd>
                         </dl>
@@ -143,7 +195,11 @@ export default function RecruiterDashboard(props) {
                           </dt>
                           <dd>
                             <div className="text-lg font-medium text-gray-900">
-                              0
+                              {isLoadingStats ? (
+                                <span className="animate-pulse h-5 w-8 bg-gray-300 inline-block rounded"></span>
+                              ) : (
+                                applicationsCount ?? 0
+                              )}
                             </div>
                           </dd>
                         </dl>

@@ -111,7 +111,7 @@ export default function RecruiterLogin({}) {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Já tem uma conta?{' '}
-              <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
+              <Link href="/login?type=recruiter" className="font-medium text-blue-600 hover:text-blue-500">
                 Faça login
               </Link>
             </p>

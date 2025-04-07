@@ -288,18 +288,19 @@ export default function NewJob(props) {
                   </div>
 
                   <div className="col-span-6">
-                    <label htmlFor="applicationUrl" className="block text-sm font-medium text-gray-700">URL para Candidatura</label>
+                    <label htmlFor="applicationUrl" className="block text-sm font-medium text-gray-700">URL para Candidatura (Opcional)</label>
                     <input
-                      type="url"
+                      type="text"
                       name="applicationUrl"
                       id="applicationUrl"
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                      placeholder="Ex: https://suaempresa.com/careers/apply"
+                      placeholder="https://seu-site.com/aplicar"
                     />
+                    <p className="mt-1 text-xs text-gray-500">Link externo onde candidatos podem se aplicar.</p>
                   </div>
 
                   <div className="col-span-6">
-                    <label htmlFor="applicationEmail" className="block text-sm font-medium text-gray-700">Email para Candidatura</label>
+                    <label htmlFor="applicationEmail" className="block text-sm font-medium text-gray-700">Email para Candidatura (Opcional)</label>
                     <input
                       type="email"
                       name="applicationEmail"

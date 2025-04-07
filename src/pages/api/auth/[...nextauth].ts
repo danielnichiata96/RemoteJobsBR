@@ -8,7 +8,6 @@ import { prisma } from '@/lib/prisma';
 import { UserRole } from '@prisma/client';
 import { parse } from 'cookie';
 import bcrypt from 'bcryptjs';
-import { isLocalDomain } from "@/utils/isLocalDomain";
 import { z } from "zod";
 
 export const authOptions: NextAuthOptions = {
@@ -42,8 +41,14 @@ export const authOptions: NextAuthOptions = {
           where: { email: credentials.email }
         });
 
-        if (!user || !user.password) {
-          throw new Error("Usuário não encontrado");
+        if (!user) {
+          console.log(`[authorize] User not found: ${credentials.email}`);
+          throw new Error("Credenciais inválidas");
+        }
+
+        if (!user.password) {
+          console.log(`[authorize] User ${user.id} has no password (magic/social)`);
+          throw new Error("NO_PASSWORD");
         }
 
         const isValidPassword = await bcrypt.compare(
@@ -52,9 +57,11 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isValidPassword) {
-          throw new Error("Senha incorreta");
+          console.log(`[authorize] Invalid password for user ${user.id}`);
+          throw new Error("Credenciais inválidas");
         }
 
+        console.log(`[authorize] Credentials valid for user ${user.id}`);
         return user;
       }
     }),

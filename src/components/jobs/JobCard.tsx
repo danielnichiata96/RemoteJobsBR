@@ -58,19 +58,19 @@ export default function JobCard({ job }: JobCardProps) {
     <div className="card hover:shadow-lg transition-shadow duration-200">
       <div className="flex items-start">
         {companyLogo && !imgError ? (
-          <div className="flex-shrink-0 mr-4">
+          <div className="flex-shrink-0 mr-3">
             <Image 
               src={companyLogo} 
               alt={`${companyName} logo`}
-              width={60}
-              height={60}
+              width={48}
+              height={48}
               className="rounded-md"
               onError={() => setImgError(true)}
             />
           </div>
         ) : (
-          <div className="flex-shrink-0 mr-4 w-[60px] h-[60px] bg-gray-200 rounded-md flex items-center justify-center">
-            <span className="text-gray-500 font-bold text-xl">
+          <div className="flex-shrink-0 mr-3 w-12 h-12 bg-gray-200 rounded-md flex items-center justify-center">
+            <span className="text-gray-500 font-bold text-lg">
               {companyName.charAt(0)}
             </span>
           </div>
