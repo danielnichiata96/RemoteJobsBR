@@ -54,6 +54,29 @@ export default function JobCard({ job }: JobCardProps) {
     return formatDistanceToNow(dateObj, { locale: ptBR, addSuffix: false });
   };
 
+  // Função para formatar o tipo de trabalho
+  const formatJobType = (jobType: string): string => {
+    const mapping: Record<string, string> = {
+      'FULL_TIME': 'Tempo Integral',
+      'PART_TIME': 'Meio Período',
+      'CONTRACT': 'Contrato',
+      'INTERNSHIP': 'Estágio',
+      'FREELANCE': 'Freelance'
+    };
+    return mapping[jobType] || jobType;
+  };
+
+  // Função para formatar o nível de experiência
+  const formatExperienceLevel = (level: string): string => {
+    const mapping: Record<string, string> = {
+      'ENTRY': 'Júnior',
+      'MID': 'Pleno',
+      'SENIOR': 'Sênior',
+      'LEAD': 'Líder'
+    };
+    return mapping[level] || level;
+  };
+
   return (
     <div className="card hover:shadow-lg transition-shadow duration-200">
       <div className="flex items-start">
@@ -103,13 +126,11 @@ export default function JobCard({ job }: JobCardProps) {
             </span>
             
             <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded">
-              {job.jobType === 'full-time' ? 'Tempo Integral' : 
-                job.jobType === 'part-time' ? 'Meio Período' :
-                job.jobType === 'contract' ? 'Contrato' : 'Freelance'}
+              {formatJobType(job.jobType)}
             </span>
             
             <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded">
-              {job.experienceLevel}
+              {formatExperienceLevel(job.experienceLevel)}
             </span>
           </div>
           

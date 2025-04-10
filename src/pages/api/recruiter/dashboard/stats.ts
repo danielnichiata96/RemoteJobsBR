@@ -38,19 +38,27 @@ export default async function handler(
       },
     });
 
-    // Contar candidaturas recebidas (exemplo simples, pode precisar refinar)
-    // Isso conta todas as candidaturas para as vagas deste recrutador
-    const applicationsCount = await prisma.application.count({
+    // Contar total de vagas (todas as vagas, não apenas as ativas)
+    const totalJobsCount = await prisma.job.count({
       where: {
-        job: {
-          companyId: user.id,
-        },
+        companyId: user.id,
+      },
+    });
+
+    // Contar visualizações das vagas
+    const viewsCount = await prisma.job.aggregate({
+      where: {
+        companyId: user.id,
+      },
+      _sum: {
+        viewCount: true,
       },
     });
 
     return res.status(200).json({
       publishedJobsCount,
-      applicationsCount,
+      totalJobsCount,
+      viewsCount: viewsCount._sum.viewCount || 0,
     });
 
   } catch (error) {

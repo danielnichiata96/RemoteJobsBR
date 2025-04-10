@@ -26,9 +26,35 @@ const jobUpdateSchema = z.object({
   status: z.nativeEnum(JobStatus).optional(),
   visas: z.array(z.string()).optional(),
   languages: z.array(z.string()).optional(),
-  applicationUrl: z.string().min(3, 'URL inválida').optional().nullable(),
-  applicationEmail: z.string().email().optional().nullable(),
+  applicationUrl: z.string().url('URL de aplicação inválida').optional().nullable(),
+  applicationEmail: z.string().email('Email de aplicação inválido').optional().nullable(),
   publishedAt: z.union([z.date(), z.string()]).optional().nullable(),
+}).refine(async (data) => {
+  // Se o status está sendo alterado para ACTIVE, verificar se há applicationUrl ou applicationEmail
+  if (data.status === JobStatus.ACTIVE) {
+    // Se applicationUrl ou applicationEmail está definido nos dados, basta verificar
+    if (data.applicationUrl || data.applicationEmail) return true;
+    
+    // Se não estiver nos dados da requisição, precisamos verificar se já existe no banco
+    // Como isso é uma função async, será resolvido antes da validação final
+    if (typeof data.id === 'string') {
+      const existingJob = await prisma.job.findUnique({
+        where: { id: data.id },
+        select: { applicationUrl: true, applicationEmail: true }
+      });
+      
+      return existingJob && (!!existingJob.applicationUrl || !!existingJob.applicationEmail);
+    }
+    
+    // Se não temos dados para verificar, falhar validação
+    return false;
+  }
+  
+  // Se não está alterando para ACTIVE, nenhuma validação adicional
+  return true;
+}, {
+  message: "Uma vaga ativa precisa ter pelo menos uma URL de aplicação ou um email de aplicação definido",
+  path: ["applicationUrl"]
 });
 
 export default async function handler(

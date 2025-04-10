@@ -7,6 +7,14 @@ import SimpleFilter from '../components/jobs/SimpleFilter';
 import { Job } from '../types/job';
 import Link from 'next/link';
 
+// Define a type for filter counts for better type safety
+interface FilterCounts {
+  jobTypes: Record<string, number>;
+  experienceLevels: Record<string, number>;
+  industries: Record<string, number>;
+  locations: Record<string, number>;
+}
+
 export default function Home(props) {
   const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -24,6 +32,7 @@ export default function Home(props) {
     pages: 0
   });
   const [forceRefresh, setForceRefresh] = useState(0);
+  const [filterCounts, setFilterCounts] = useState<FilterCounts | null>(null); // Add state for counts
 
   // Reiniciar a página quando o usuário retornar da página de detalhes
   useEffect(() => {
@@ -52,6 +61,7 @@ export default function Home(props) {
     const fetchJobs = async () => {
       setLoading(true);
       setError(null);
+      setFilterCounts(null); // Reset counts on new fetch
       
       try {
         // Build query parameters
@@ -81,17 +91,21 @@ export default function Home(props) {
         const response = await fetch(`/api/jobs?${params.toString()}`);
         
         if (!response.ok) {
-          throw new Error('Failed to fetch jobs');
+          const errorData = await response.json().catch(() => ({})); // Try to parse error
+          throw new Error(errorData.error || 'Failed to fetch jobs');
         }
         
         const data = await response.json();
-        setJobs(data.jobs);
-        setPagination(data.pagination);
+        setJobs(data.jobs || []);
+        setPagination(data.pagination || { total: 0, page: 1, limit: 20, pages: 0 });
+        setFilterCounts(data.filterCounts || null); // Set the filter counts
         
       } catch (err: any) {
         console.error('Error fetching jobs:', err);
-        setError('Failed to load jobs. Please try again later.');
+        setError(err.message || 'Failed to load jobs. Please try again later.');
         setJobs([]);
+        setPagination({ total: 0, page: 1, limit: 20, pages: 0 });
+        setFilterCounts(null);
       } finally {
         setLoading(false);
       }
@@ -104,9 +118,10 @@ export default function Home(props) {
     selectedExperienceLevels, 
     selectedIndustries, 
     selectedLocations,
-    pagination.page,
-    router.pathname,
-    forceRefresh
+    pagination.page, // Keep dependency on page for pagination
+    router.pathname, // Keep dependency on pathname
+    forceRefresh // Keep dependency on forceRefresh
+    // Removed pagination.limit as a dependency if it doesn't change often
   ]);
 
   // Handle search
@@ -230,6 +245,7 @@ export default function Home(props) {
                 selectedExperienceLevels={selectedExperienceLevels}
                 selectedIndustries={selectedIndustries}
                 selectedLocations={selectedLocations}
+                filterCounts={filterCounts} // Pass counts down
                 onJobTypeChange={handleJobTypeChange}
                 onExperienceLevelChange={handleExperienceLevelChange}
                 onIndustryChange={handleIndustryChange}
@@ -248,96 +264,74 @@ export default function Home(props) {
               <div className="flex justify-between items-center mt-6 mb-4">
                 <div className="text-gray-600">
                   {loading ? (
-                    'Carregando vagas...'
+                    <span>Carregando vagas...</span>
+                  ) : error ? (
+                    <span>{error}</span>
                   ) : (
-                    <>
-                      {pagination.total} vagas encontradas
-                      {hasActiveFilters && (
-                        <button 
-                          onClick={handleClearFilters}
-                          className="ml-3 text-blue-600 hover:text-blue-800 text-sm"
-                        >
-                          Limpar filtros
-                        </button>
-                      )}
-                    </>
+                    <span>
+                      Mostrando {jobs.length > 0 ? ((pagination.page - 1) * pagination.limit) + 1 : 0} -
+                      {Math.min(pagination.page * pagination.limit, pagination.total)} de {pagination.total} vagas
+                    </span>
                   )}
                 </div>
+                {hasActiveFilters && (
+                  <button 
+                    onClick={handleClearFilters}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    Limpar todos os filtros
+                  </button>
+                )}
               </div>
-              
-              {/* Error Message */}
-              {error && (
-                <div className="bg-red-100 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-                  {error}
-                </div>
-              )}
-              
-              {/* Loading State */}
+
               {loading ? (
-                <div className="space-y-4">
-                  {[...Array(3)].map((_, i) => (
-                    <div key={i} className="border border-gray-200 rounded-lg p-6 animate-pulse">
-                      <div className="h-5 bg-gray-200 rounded w-1/3 mb-4"></div>
-                      <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
-                      <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
-                      <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="border border-gray-200 rounded-lg p-4 animate-pulse">
+                      <div className="h-4 bg-gray-300 rounded w-3/4 mb-2"></div>
+                      <div className="h-4 bg-gray-300 rounded w-1/2 mb-4"></div>
+                      <div className="h-3 bg-gray-300 rounded w-full mb-2"></div>
+                      <div className="h-3 bg-gray-300 rounded w-5/6"></div>
                     </div>
                   ))}
                 </div>
+              ) : error ? (
+                <div className="text-center text-red-600 bg-red-50 p-4 rounded-md">
+                  {error}
+                </div>
+              ) : jobs.length === 0 ? (
+                <div className="text-center text-gray-600 bg-gray-50 p-6 rounded-md">
+                  Nenhuma vaga encontrada com os filtros selecionados.
+                </div>
               ) : (
-                <>
-                  {/* Job Listings */}
-                  {jobs.length > 0 ? (
-                    <div className="space-y-4">
-                      {jobs.map((job) => (
-                        <JobCard key={job.id} job={job} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12 border border-gray-200 rounded-lg">
-                      <p className="text-gray-500">Nenhuma vaga encontrada com os filtros selecionados.</p>
-                      <button 
-                        onClick={handleClearFilters}
-                        className="mt-2 text-blue-600 hover:text-blue-800"
-                      >
-                        Limpar filtros
-                      </button>
-                    </div>
-                  )}
-                  
-                  {/* Pagination */}
-                  {pagination.pages > 1 && (
-                    <div className="flex justify-center mt-8">
-                      <nav className="inline-flex">
-                        <button
-                          onClick={handlePrevPage}
-                          disabled={pagination.page === 1}
-                          className={`px-4 py-2 border border-gray-300 rounded-l-md ${
-                            pagination.page === 1 
-                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                              : 'bg-white text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          Anterior
-                        </button>
-                        <div className="px-4 py-2 border-t border-b border-gray-300 bg-white text-gray-700">
-                          Página {pagination.page} de {pagination.pages}
-                        </div>
-                        <button
-                          onClick={handleNextPage}
-                          disabled={pagination.page === pagination.pages}
-                          className={`px-4 py-2 border border-gray-300 rounded-r-md ${
-                            pagination.page === pagination.pages 
-                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                              : 'bg-white text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          Próxima
-                        </button>
-                      </nav>
-                    </div>
-                  )}
-                </>
+                <div className="space-y-6">
+                  {jobs.map((job) => (
+                    <JobCard key={job.id} job={job} />
+                  ))}
+                </div>
+              )}
+
+              {/* Pagination */}
+              {pagination.pages > 1 && (
+                <div className="mt-8 flex justify-center items-center space-x-4">
+                  <button
+                    onClick={handlePrevPage}
+                    disabled={pagination.page <= 1 || loading}
+                    className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Anterior
+                  </button>
+                  <span className="text-sm text-gray-700">
+                    Página {pagination.page} de {pagination.pages}
+                  </span>
+                  <button
+                    onClick={handleNextPage}
+                    disabled={pagination.page >= pagination.pages || loading}
+                    className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Próxima
+                  </button>
+                </div>
               )}
             </div>
           </div>

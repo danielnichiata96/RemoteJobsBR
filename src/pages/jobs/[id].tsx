@@ -325,7 +325,7 @@ export default function JobDetail(props) {
                 </div>
                 
                 <div className="flex flex-wrap gap-3">
-                  {job.applicationUrl && (
+                  {job.applicationUrl ? (
                     <a
                       href={job.applicationUrl}
                       target="_blank"
@@ -334,7 +334,14 @@ export default function JobDetail(props) {
                     >
                       Candidatar-se
                     </a>
-                  )}
+                  ) : job.applicationEmail ? (
+                    <a
+                      href={`mailto:${job.applicationEmail}?subject=Candidatura para ${job.title}`}
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    >
+                      Candidatar-se por Email
+                    </a>
+                  ) : null}
                   
                   <SaveJobButton jobId={job.id} variant="outline" />
                 </div>
@@ -408,14 +415,23 @@ export default function JobDetail(props) {
                   </div>
                   
                   <div className="mt-4">
-                    <a 
-                      href={job.applicationUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium transition duration-200 block text-center"
-                    >
-                      Candidatar-se
-                    </a>
+                    {job.applicationUrl ? (
+                      <a 
+                        href={job.applicationUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium transition duration-200 block text-center"
+                      >
+                        Candidatar-se
+                      </a>
+                    ) : job.applicationEmail ? (
+                      <a 
+                        href={`mailto:${job.applicationEmail}?subject=Candidatura para ${job.title}`}
+                        className="w-full bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium transition duration-200 block text-center"
+                      >
+                        Candidatar-se por Email
+                      </a>
+                    ) : null}
                   </div>
                 </div>
               </div>

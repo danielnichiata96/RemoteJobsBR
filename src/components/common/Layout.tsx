@@ -154,23 +154,25 @@ export default function Layout({
                         </Link>
                       )}
                       
-                      <Link href="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Visualizar seu perfil">
-                        Meu Perfil
-                      </Link>
-                      
                       {(session.user.role === 'COMPANY' || session.user.role === 'company') ? (
-                        // Opções de menu para recrutadores
+                        // Opções de menu para empresas (em inglês)
                         <>
-                          <Link href="/recruiter/dashboard/jobs" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Gerenciar suas vagas publicadas">
-                            Gerenciar Vagas
+                          <Link href="/company/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="View your company profile">
+                            Company Profile
                           </Link>
-                          <Link href="/recruiter/dashboard/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Ver candidaturas recebidas">
-                            Candidaturas Recebidas
+                          <Link href="/recruiter/dashboard/jobs" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Manage your job postings">
+                            Manage Jobs
+                          </Link>
+                          <Link href="/recruiter/dashboard/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="View received applications">
+                            Applications
                           </Link>
                         </>
                       ) : (
                         // Opções de menu para candidatos
                         <>
+                          <Link href="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Visualizar seu perfil">
+                            Meu Perfil
+                          </Link>
                           <Link href="/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Ver suas candidaturas">
                             Minhas Candidaturas
                           </Link>
@@ -185,7 +187,7 @@ export default function Layout({
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
                         aria-label="Sair da sua conta"
                       >
-                        Sair
+                        {(session.user.role === 'COMPANY' || session.user.role === 'company') ? 'Sign Out' : 'Sair'}
                       </button>
                     </div>
                   )}
@@ -280,14 +282,33 @@ export default function Layout({
               {session ? (
                 <>
                   {(session.user.role === 'COMPANY' || session.user.role === 'company') && (
-                    <Link
-                      href="/recruiter/dashboard"
-                      className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`}
-                      onClick={() => setMobileMenuOpen(false)}
-                      aria-label="Acessar o painel de recrutador"
-                    >
-                      Dashboard
-                    </Link>
+                    // Opções de menu para empresas (em inglês)
+                    <>
+                      <Link
+                        href="/company/profile"
+                        className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`}
+                        onClick={() => setMobileMenuOpen(false)}
+                        aria-label="View your company profile"
+                      >
+                        Company Profile
+                      </Link>
+                      <Link
+                        href="/recruiter/dashboard/jobs"
+                        className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`}
+                        onClick={() => setMobileMenuOpen(false)}
+                        aria-label="Manage your job postings"
+                      >
+                        Manage Jobs
+                      </Link>
+                      <Link
+                        href="/recruiter/dashboard/applications"
+                        className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`}
+                        onClick={() => setMobileMenuOpen(false)}
+                        aria-label="View received applications"
+                      >
+                        Applications
+                      </Link>
+                    </>
                   )}
                   <Link
                     href="/profile"
@@ -299,23 +320,31 @@ export default function Layout({
                   </Link>
                   
                   {(session.user.role === 'COMPANY' || session.user.role === 'company') ? (
-                    // Opções de menu para recrutadores
+                    // Opções de menu para empresas (em inglês)
                     <>
+                      <Link
+                        href="/company/profile"
+                        className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`}
+                        onClick={() => setMobileMenuOpen(false)}
+                        aria-label="View your company profile"
+                      >
+                        Company Profile
+                      </Link>
                       <Link
                         href="/recruiter/dashboard/jobs"
                         className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`}
                         onClick={() => setMobileMenuOpen(false)}
-                        aria-label="Gerenciar suas vagas publicadas"
+                        aria-label="Manage your job postings"
                       >
-                        Gerenciar Vagas
+                        Manage Jobs
                       </Link>
                       <Link
                         href="/recruiter/dashboard/applications"
                         className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`}
                         onClick={() => setMobileMenuOpen(false)}
-                        aria-label="Ver candidaturas recebidas"
+                        aria-label="View received applications"
                       >
-                        Candidaturas Recebidas
+                        Applications
                       </Link>
                     </>
                   ) : (

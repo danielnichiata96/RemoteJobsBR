@@ -54,21 +54,32 @@ export function detectJobType(content: string): JobType {
 
 export function detectExperienceLevel(content: string): ExperienceLevel {
   const contentLower = content.toLowerCase();
+
+  // --- Prioritize LEAD level --- 
+  // Use word boundaries (\b) to avoid partial matches (e.g., "directorship")
+  const leadKeywords = ['\bvp\b', '\bdirector\b', '\bmanager\b', '\blead\b', '\bhead of\b'];
+  if (leadKeywords.some(keyword => new RegExp(keyword).test(contentLower))) {
+    return ExperienceLevel.LEAD;
+  }
+
+  // --- Check for SENIOR level (excluding lead terms if already checked) ---
+  const seniorKeywords = ['\bsenior\b', '\bsr\.\b', '\bprincipal\b', '\bspecialist\b'];
+  if (seniorKeywords.some(keyword => new RegExp(keyword).test(contentLower))) {
+    return ExperienceLevel.SENIOR;
+  }
+
+  // --- Check for ENTRY level --- 
+  const entryKeywords = ['\bjunior\b', '\bjr\.\b', '\bentry\b', '\bassociate\b', '\bgraduate\b', '\bintern\b', '\binternship\b'];
+  if (entryKeywords.some(keyword => new RegExp(keyword).test(contentLower))) {
+    // Special case: Avoid classifying "Senior Associate" as ENTRY
+    if (contentLower.includes('associate') && contentLower.includes('senior')) {
+       return ExperienceLevel.SENIOR; 
+    }
+    return ExperienceLevel.ENTRY;
+  }
   
-  if (contentLower.includes('senior') || contentLower.includes('sr.') || 
-      contentLower.includes('lead') || contentLower.includes('principal')) {
-    return 'SENIOR';
-  }
-  if (contentLower.includes('junior') || contentLower.includes('jr.') || 
-      contentLower.includes('entry') || contentLower.includes('graduate')) {
-    return 'ENTRY';
-  }
-  if (contentLower.includes('manager') || contentLower.includes('director') || 
-      contentLower.includes('head of')) {
-    return 'LEAD';
-  }
-  
-  return 'MID';
+  // --- Default to MID level --- 
+  return ExperienceLevel.MID;
 }
 
 export function parseSections(content: string): {
@@ -120,13 +131,15 @@ export function isRemoteJob(location: string, description: string): boolean {
     'us only', 'usa only', 'united states only',
     'must be located in', 'must reside in',
     'timezone requirement', 'time zone requirement'
+    // Add more specific non-remote patterns if found
   ];
   
   // Positive patterns (global/remote indicators)
   const remoteIndicators = [
     'fully remote', 'remote work', 'work from anywhere',
     'remote position', 'remote opportunity', 'remote job',
-    'work from home', 'trabalho remoto', 'remoto'
+    'work from home', 'trabalho remoto', 'remoto',
+    'worldwide', 'global', 'latam', 'latin america' // Include regions often used for remote
   ];
   
   // Check for restrictions first
@@ -134,6 +147,17 @@ export function isRemoteJob(location: string, description: string): boolean {
     return false;
   }
   
-  // Then check for remote indicators
-  return remoteIndicators.some(pattern => textToCheck.includes(pattern));
+  // Then check for remote indicators or common remote locations
+  if (remoteIndicators.some(pattern => textToCheck.includes(pattern))) {
+      return true;
+  }
+
+  // If location explicitly states a remote-friendly region/term
+  const locationLower = location.toLowerCase();
+  if (['remote', 'worldwide', 'global', 'latam', 'latin america', 'brasil', 'brazil'].some(term => locationLower.includes(term))) {
+      return true;
+  }
+  
+  // Default to false if no strong indicators
+  return false;
 }

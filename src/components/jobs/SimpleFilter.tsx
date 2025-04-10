@@ -1,10 +1,19 @@
 import { useState } from 'react';
 
+// Reuse the FilterCounts type (assuming it might be moved to a shared types file later)
+interface FilterCounts {
+  jobTypes: Record<string, number>;
+  experienceLevels: Record<string, number>;
+  industries: Record<string, number>;
+  locations: Record<string, number>;
+}
+
 interface SimpleFilterProps {
   selectedJobTypes: string[];
   selectedExperienceLevels: string[];
   selectedIndustries: string[];
   selectedLocations: string[];
+  filterCounts: FilterCounts | null; // Add filterCounts prop
   onJobTypeChange: (types: string[]) => void;
   onExperienceLevelChange: (levels: string[]) => void;
   onIndustryChange: (industries: string[]) => void;
@@ -17,6 +26,7 @@ export default function SimpleFilter({
   selectedExperienceLevels,
   selectedIndustries,
   selectedLocations,
+  filterCounts, // Receive filterCounts
   onJobTypeChange,
   onExperienceLevelChange,
   onIndustryChange,
@@ -48,6 +58,7 @@ export default function SimpleFilter({
     { id: 'education', label: 'Educação' },
     { id: 'ecommerce', label: 'E-commerce' },
     { id: 'marketing', label: 'Marketing' }
+    // Add more industries as needed
   ];
 
   // Opções de localização
@@ -90,6 +101,11 @@ export default function SimpleFilter({
     }
   };
 
+  // Helper to get count, defaulting to 0
+  const getCount = (counts: Record<string, number> | undefined, key: string): number => {
+      return counts?.[key] || 0;
+  };
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       <div className="flex justify-between items-center mb-4">
@@ -111,17 +127,25 @@ export default function SimpleFilter({
       <div className="mb-6">
         <h3 className="font-medium mb-3">Tipo de Contrato</h3>
         <div className="space-y-2">
-          {jobTypeOptions.map((option) => (
-            <label key={option.id} className="flex items-center">
-              <input
-                type="checkbox"
-                className="form-checkbox h-4 w-4 text-blue-600"
-                checked={selectedJobTypes.includes(option.id)}
-                onChange={() => handleJobTypeChange(option.id)}
-              />
-              <span className="ml-2 text-gray-700">{option.label}</span>
-            </label>
-          ))}
+          {jobTypeOptions.map((option) => {
+            const count = getCount(filterCounts?.jobTypes, option.id);
+            return (
+              <label key={option.id} className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="form-checkbox h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                  checked={selectedJobTypes.includes(option.id)}
+                  onChange={() => handleJobTypeChange(option.id)}
+                  // Disable if count is 0 and not selected (optional)
+                  // disabled={count === 0 && !selectedJobTypes.includes(option.id)}
+                />
+                <span className={`ml-2 ${count === 0 && !selectedJobTypes.includes(option.id) ? 'text-gray-400' : 'text-gray-700'}`}>
+                  {option.label} 
+                  {filterCounts && <span className="text-xs text-gray-500">({count})</span>}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
 
@@ -129,17 +153,24 @@ export default function SimpleFilter({
       <div className="mb-6">
         <h3 className="font-medium mb-3">Nível de Experiência</h3>
         <div className="space-y-2">
-          {experienceLevelOptions.map((option) => (
-            <label key={option.id} className="flex items-center">
-              <input
-                type="checkbox"
-                className="form-checkbox h-4 w-4 text-blue-600"
-                checked={selectedExperienceLevels.includes(option.id)}
-                onChange={() => handleExperienceLevelChange(option.id)}
-              />
-              <span className="ml-2 text-gray-700">{option.label}</span>
-            </label>
-          ))}
+          {experienceLevelOptions.map((option) => {
+            const count = getCount(filterCounts?.experienceLevels, option.id);
+            return (
+              <label key={option.id} className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="form-checkbox h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                  checked={selectedExperienceLevels.includes(option.id)}
+                  onChange={() => handleExperienceLevelChange(option.id)}
+                  // disabled={count === 0 && !selectedExperienceLevels.includes(option.id)}
+                />
+                <span className={`ml-2 ${count === 0 && !selectedExperienceLevels.includes(option.id) ? 'text-gray-400' : 'text-gray-700'}`}>
+                  {option.label} 
+                  {filterCounts && <span className="text-xs text-gray-500">({count})</span>}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
 
@@ -147,17 +178,24 @@ export default function SimpleFilter({
       <div className="mb-6">
         <h3 className="font-medium mb-3">Indústria / Área</h3>
         <div className="space-y-2">
-          {industryOptions.map((option) => (
-            <label key={option.id} className="flex items-center">
-              <input
-                type="checkbox"
-                className="form-checkbox h-4 w-4 text-blue-600"
-                checked={selectedIndustries.includes(option.id)}
-                onChange={() => handleIndustryChange(option.id)}
-              />
-              <span className="ml-2 text-gray-700">{option.label}</span>
-            </label>
-          ))}
+          {industryOptions.map((option) => {
+            const count = getCount(filterCounts?.industries, option.id);
+            return (
+              <label key={option.id} className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="form-checkbox h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                  checked={selectedIndustries.includes(option.id)}
+                  onChange={() => handleIndustryChange(option.id)}
+                  // disabled={count === 0 && !selectedIndustries.includes(option.id)}
+                />
+                <span className={`ml-2 ${count === 0 && !selectedIndustries.includes(option.id) ? 'text-gray-400' : 'text-gray-700'}`}>
+                  {option.label} 
+                  {filterCounts && <span className="text-xs text-gray-500">({count})</span>}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
 
@@ -165,17 +203,24 @@ export default function SimpleFilter({
       <div className="mb-6">
         <h3 className="font-medium mb-3">Localização</h3>
         <div className="space-y-2">
-          {locationOptions.map((option) => (
-            <label key={option.id} className="flex items-center">
-              <input
-                type="checkbox"
-                className="form-checkbox h-4 w-4 text-blue-600"
-                checked={selectedLocations.includes(option.id)}
-                onChange={() => handleLocationChange(option.id)}
-              />
-              <span className="ml-2 text-gray-700">{option.label}</span>
-            </label>
-          ))}
+          {locationOptions.map((option) => {
+            const count = getCount(filterCounts?.locations, option.id);
+            return (
+              <label key={option.id} className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="form-checkbox h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                  checked={selectedLocations.includes(option.id)}
+                  onChange={() => handleLocationChange(option.id)}
+                  // disabled={count === 0 && !selectedLocations.includes(option.id)}
+                />
+                <span className={`ml-2 ${count === 0 && !selectedLocations.includes(option.id) ? 'text-gray-400' : 'text-gray-700'}`}>
+                  {option.label} 
+                  {filterCounts && <span className="text-xs text-gray-500">({count})</span>}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
     </div>

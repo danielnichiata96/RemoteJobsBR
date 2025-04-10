@@ -27,8 +27,17 @@ const jobSchema = z.object({
   status: z.nativeEnum(JobStatus).optional().default(JobStatus.DRAFT),
   visas: z.array(z.string()).optional().default([]),
   languages: z.array(z.string()).optional().default([]),
-  applicationUrl: z.string().min(3, 'URL inválida').optional().nullable(),
-  applicationEmail: z.string().email().optional().nullable(),
+  applicationUrl: z.string().url('URL de aplicação inválida').optional().nullable(),
+  applicationEmail: z.string().email('Email de aplicação inválido').optional().nullable(),
+}).refine(data => {
+  // Se o status é ACTIVE, então é necessário ter pelo menos applicationUrl ou applicationEmail
+  if (data.status === JobStatus.ACTIVE) {
+    return !!data.applicationUrl || !!data.applicationEmail;
+  }
+  return true;
+}, {
+  message: "Uma vaga ativa precisa ter pelo menos uma URL de aplicação ou um email de aplicação definido",
+  path: ["applicationUrl"]
 });
 
 export default async function handler(
