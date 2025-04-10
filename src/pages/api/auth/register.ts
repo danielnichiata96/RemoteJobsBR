@@ -2,13 +2,14 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { UserRole } from '@prisma/client';
 
 // Schema de validação para o registro
 const registerSchema = z.object({
   name: z.string().min(2, 'O nome deve ter pelo menos 2 caracteres'),
   email: z.string().email('Email inválido'),
   password: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres'),
-  role: z.enum(['USER', 'COMPANY']).default('USER'),
+  role: z.nativeEnum(UserRole).default(UserRole.CANDIDATE),
 });
 
 export default async function handler(

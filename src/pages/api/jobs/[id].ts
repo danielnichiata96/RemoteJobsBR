@@ -34,15 +34,18 @@ export default async function handler(
           id: jobId,
           status: JobStatus.ACTIVE // Apenas vagas ativas
         },
-        include: {
-          company: {
-            select: {
-              name: true,
-              image: true,
-              linkedinUrl: true,
-              website: true,
+        select: {
+            id: true, title: true, description: true, requirements: true,
+            responsibilities: true, benefits: true, jobType: true, experienceLevel: true,
+            skills: true, location: true, country: true, workplaceType: true,
+            minSalary: true, maxSalary: true, currency: true, salaryCycle: true,
+            showSalary: true, createdAt: true, publishedAt: true, applicationUrl: true,
+            status: true,
+            company: {
+                select: {
+                    name: true, image: true, linkedinUrl: true, website: true,
+                }
             }
-          }
         }
       });
       console.log('Job encontrado no banco:', job ? 'Sim' : 'Não');
@@ -97,9 +100,8 @@ export default async function handler(
       description: job.description,
       jobType: job.jobType,
       experienceLevel: job.experienceLevel,
-      tags: job.tags || [],
       skills: job.skills || [],
-      salary: job.showSalary 
+      salary: job.showSalary && job.minSalary && job.maxSalary
         ? formatSalary(job.minSalary, job.maxSalary, job.currency, job.salaryCycle) 
         : null,
       createdAt: job.createdAt,

@@ -18,17 +18,19 @@ export default async function handler(
       return res.status(400).json({ error: 'ID de vaga não fornecido ou inválido' });
     }
 
-    const formattedId = id.startsWith('greenhouse_') ? id : `greenhouse_${id}`;
+    // Remover a formatação que adiciona "greenhouse_" - Usar o ID como veio
+    // const formattedId = id.startsWith('greenhouse_') ? id : `greenhouse_${id}`; 
+    const jobIdToSearch = id; // Usar o id diretamente
     
     // Buscar a vaga original para obter tags e skills
     const originalJob = await prisma.job.findUnique({
       where: { 
-        id: formattedId,
+        id: jobIdToSearch, // Usar o ID recebido
         status: JobStatus.ACTIVE
       },
       select: {
         id: true,
-        tags: true,
+        // tags: true, // Remover seleção de tags, focar em skills
         skills: true,
         jobType: true,
         experienceLevel: true
@@ -36,19 +38,21 @@ export default async function handler(
     });
 
     if (!originalJob) {
-      return res.status(404).json({ error: 'Vaga original não encontrada' });
+      // Agora isso significa que o ID fornecido realmente não existe ou não está ativo
+      return res.status(404).json({ error: 'Vaga original não encontrada ou inativa' });
     }
 
-    // Buscar vagas similares com base nas tags, skills e outros critérios
+    // Buscar vagas similares com base nas skills e outros critérios
     const similarJobs = await prisma.job.findMany({
       where: {
         id: { not: originalJob.id }, // Excluir a vaga original
         status: JobStatus.ACTIVE,
         OR: [
-          // Vagas com tags similares
+          /* Remover busca por tags
           originalJob.tags && originalJob.tags.length > 0
             ? { tags: { hasSome: originalJob.tags } }
             : {},
+          */
           // Vagas com skills similares
           originalJob.skills && originalJob.skills.length > 0
             ? { skills: { hasSome: originalJob.skills } }
@@ -59,15 +63,19 @@ export default async function handler(
           { experienceLevel: originalJob.experienceLevel }
         ]
       },
-      include: {
-        company: {
-          select: {
-            name: true,
-            logo: true,
-            website: true
-          }
-        }
-      },
+       // Usar select em vez de include para consistência e remover tags
+       select: {
+           id: true, title: true, location: true, jobType: true,
+           experienceLevel: true, createdAt: true, publishedAt: true,
+           // Selecionar campos da empresa
+           company: {
+               select: {
+                   name: true, logo: true, website: true
+               }
+           }
+           // Adicionar shortDescription se existir no modelo e for útil
+           // shortDescription: true 
+       },
       take: 6 // Limitar a 6 vagas similares
     });
 
@@ -92,7 +100,7 @@ export default async function handler(
         company: job.company.name,
         companyLogo: companyLogo,
         location: job.location,
-        description: job.shortDescription || "",
+        // description: job.shortDescription || "", // Ajustar se shortDescription for usado
         jobType: job.jobType,
         experienceLevel: job.experienceLevel,
         createdAt: job.createdAt,

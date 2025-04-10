@@ -32,7 +32,7 @@ export default function Login(props) {
     setError('');
     
     try {
-      const callbackUrl = (router.query.returnTo as string) || (userType === 'recruiter' ? '/recruiter/dashboard' : '/');
+      const callbackUrl = (router.query.returnTo as string) || '/';
       
       const result = await signIn('credentials', {
         email: formData.email,

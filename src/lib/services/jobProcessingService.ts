@@ -120,7 +120,6 @@ export class JobProcessingService {
         jobType: job.jobType || JobType.FULL_TIME, // Default required
         experienceLevel: job.experienceLevel || ExperienceLevel.MID, // Default required
         skills: job.skills || [],
-        tags: job.tags || [],
         location: job.location,
         country: job.country || 'Worldwide', // Default required
         workplaceType: job.workplaceType || 'REMOTE', // Default required

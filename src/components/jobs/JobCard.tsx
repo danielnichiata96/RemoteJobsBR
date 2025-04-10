@@ -109,25 +109,23 @@ export default function JobCard({ job }: JobCardProps) {
             </span>
             
             <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded">
-              {job.experienceLevel === 'entry-level' ? 'Júnior' :
-                job.experienceLevel === 'mid-level' ? 'Pleno' :
-                job.experienceLevel === 'senior-level' ? 'Sênior' : 'Líder'}
+              {job.experienceLevel}
             </span>
           </div>
           
-          {job.tags && job.tags.length > 0 && (
+          {job.skills && job.skills.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-3">
-              {job.tags.slice(0, 5).map((tag, index) => (
+              {job.skills.slice(0, 5).map((skill, index) => (
                 <span 
                   key={index}
-                  className="bg-primary-100 text-primary-800 text-xs font-medium px-2.5 py-0.5 rounded"
+                  className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded"
                 >
-                  {tag}
+                  {skill}
                 </span>
               ))}
-              {job.tags.length > 5 && (
+              {job.skills.length > 5 && (
                 <span className="text-xs text-gray-500">
-                  +{job.tags.length - 5}
+                  +{job.skills.length - 5}
                 </span>
               )}
             </div>
@@ -144,13 +142,25 @@ export default function JobCard({ job }: JobCardProps) {
               Publicada há {getFormattedDate(job.publishedAt || job.createdAt)}
             </span>
             
-            <Link 
-              href={job.source === 'direct' ? `/jobs/${job.id}` : (job.sourceUrl || `/jobs/${job.id}`)}
-              className="text-primary-600 hover:text-primary-800 text-sm font-medium"
-              target={job.source === 'direct' ? undefined : '_blank'}
-            >
-              Ver detalhes {job.source === 'direct' ? '→' : '↗'}
-            </Link>
+            {// Definir o destino e o target com base na existência de sourceUrl e source
+              (() => {
+                const isExternal = job.source !== 'direct';
+                const targetUrl = isExternal && job.sourceUrl ? job.sourceUrl : `/jobs/${job.id.replace(/^(greenhouse|other)_/, '')}`;
+                const openInNewTab = isExternal && job.sourceUrl; // Só abre nova aba se for link externo real
+
+                return (
+                  <Link 
+                    href={targetUrl}
+                    className="text-primary-600 hover:text-primary-800 text-sm font-medium"
+                    target={openInNewTab ? '_blank' : undefined}
+                    // Adicionar rel="noopener noreferrer" por segurança para links _blank
+                    rel={openInNewTab ? 'noopener noreferrer' : undefined} 
+                  >
+                    Ver detalhes {openInNewTab ? '↗' : '→'}
+                  </Link>
+                );
+              })()
+            }
           </div>
         </div>
       </div>

@@ -143,7 +143,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           jobType: true,
           experienceLevel: true,
           skills: true,
-          tags: true,
           location: true,
           country: true,
           workplaceType: true,
@@ -222,7 +221,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           applicationUrl: job.applicationUrl,
           industry: job.company.industry || 'tech',
           regionType: determineRegionType(cleanedLocation, job.country),
-          source: job.source
+          source: job.source,
+          workplaceType: job.workplaceType
         };
       });
       
