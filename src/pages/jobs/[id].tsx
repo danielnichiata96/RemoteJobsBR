@@ -155,7 +155,7 @@ export default function JobDetailPage({ job, error }: InferGetServerSidePropsTyp
     <Layout>
       <Head>
         <title>{job.title} | RemoteJobsBR</title>
-        <meta name="description" content={`${job.title} - ${job.company?.name || 'Vaga disponível'} - ${job.location}`} />
+        <meta name="description" content={`${job.title} - ${job.company?.name || 'Vaga disponível'} - ${job.location || 'Localização não informada'}`} />
       </Head>
 
       {/* Main container with two columns on larger screens */}
@@ -191,15 +191,20 @@ export default function JobDetailPage({ job, error }: InferGetServerSidePropsTyp
                 </h1>
                 {/* Metadata row */}
                 <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-500">
-                {/* Company name is implicitly shown via logo/context, but can be added back if needed */} 
-                {/* <span className="inline-flex items-center">...{job.company.name}...</span> */}
+                {/* Explicitly add company name with fallback */}
+                {job.company && (
+                  <span className="inline-flex items-center">
+                    <svg className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zM6 8a2 2 0 11-4 0 2 2 0 014 0zM1.49 15.326a.78.78 0 01-.358-.44 3 3 0 014.308-3.516 3 3 0 01-.58 3.956A.78.78 0 015 15.78a2.013 2.013 0 00-3.512-.454zM18.51 15.326a.78.78 0 00.358-.44 3 3 0 00-4.308-3.516 3 3 0 00.58 3.956.78.78 0 001.028.087 2.013 2.013 0 013.512-.454zM10 12a5 5 0 110-10 5 5 0 010 10zM10 13c-4.97 0-9 2.686-9 6v1h18v-1c0-3.314-4.03-6-9-6z" /></svg>
+                    {job.company.name || 'Empresa não informada'}
+                  </span>
+                )}
                 <span className="inline-flex items-center">
                     <svg className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clipRule="evenodd" /><path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z" /></svg>
                     {formatJobType(job.jobType)}
                 </span>
                 <span className="inline-flex items-center">
                     <svg className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
-                    {job.location}
+                    {job.location || 'Localização não informada'}
                 </span>
                 <span className="inline-flex items-center">
                     <svg className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" /></svg>
@@ -207,7 +212,19 @@ export default function JobDetailPage({ job, error }: InferGetServerSidePropsTyp
                 </span>
                 <span className="inline-flex items-center">
                     <svg className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" /></svg>
-                    Publicada {formatDistanceToNow(new Date(job.publishedAt || job.createdAt), { locale: ptBR, addSuffix: true })}
+                    Publicada {
+                      (() => {
+                        try {
+                          const dateToFormat = job.publishedAt || job.createdAt;
+                          if (!dateToFormat || isNaN(new Date(dateToFormat).getTime())) {
+                            return 'há tempo indeterminado';
+                          }
+                          return formatDistanceToNow(new Date(dateToFormat), { locale: ptBR, addSuffix: true });
+                        } catch (e) {
+                          return 'há tempo indeterminado';
+                        }
+                      })()
+                    }
                 </span>
                 </div>
             </div>
@@ -322,7 +339,7 @@ export default function JobDetailPage({ job, error }: InferGetServerSidePropsTyp
                  <>
                    <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                      <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-                     <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                     <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5z" />
                    </svg>
                    Candidatar-se agora
                    <svg className="ml-2 h-4 w-4 text-white opacity-80 group-hover:opacity-100 transition-opacity" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">

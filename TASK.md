@@ -9,13 +9,30 @@ LLM should update this file based on conversational progress.
 ## Current Focus / Active Tasks (What I'm working on NOW)
 
 *   [x] **Phase 1 Complete!** Todas as tarefas da Phase 1: Core UX & Stability foram concluídas.
-*   [ ] Preparando para Phase 2 - Selecionar próximas prioridades.
+*   [x] Preparando para Phase 2 - Selecionar próximas prioridades.
+*   [x] **Phase 2: Job Integration Focus** - Melhorar sistema de integração de vagas.
+*   [x] **Integrations:** Refatorar `fetchGreenhouseJobs.ts` - Mover config. hardcoded para arquivo de configuração.
+*   [x] **Integrations:** Melhorar tratamento de erros nos scripts de fetch de vagas.
+*   [x] **Integrations:** Desenvolver framework de scraping para novas fontes de vagas. (Foundation Complete)
+*   [ ] **Integrations:** Implementar integração com nova plataforma de vagas. (On Hold - Pending Framework Refinement & Approval)
+*   [x] **Testing:** Fix `Pagination` test. (JobFilters still On Hold - Blocked by Jest/Env issues)
+*   [ ] **Testing:** Adicionar testes unitários para lógica de filtragem do fetcher. (Filter logic tested, On Hold for `processSource` tests)
+*   [x] **Optimization:** Implementar camada de cache para listagens de vagas frequentemente acessadas (API Cache Implemented and Tested)
 
-## Phase 2: Growth & Enhanced Features (Upcoming)
+## Phase 2: Growth & Enhanced Features (Current)
 
-*   [ ] Selecionar primeiras tarefas para Phase 2 (priorizar do backlog).
-*   [ ] Planejar próximos passos de desenvolvimento.
-*   [ ] Revisar arquitetura para suportar recursos da Phase 2.
+*   [x] Selecionar primeiras tarefas para Phase 2 (priorizar do backlog).
+*   [ ] Planejar próximos passos de desenvolvimento após integrações.
+*   [ ] Revisar arquitetura para suportar recursos adicionais da Phase 2.
+
+### Phase 2.1: Job Integrations & Fetch Enhancement
+*   [x] **Core:** Refatorar `fetchGreenhouseJobs.ts` para usar configuração externa (DB/arquivo).
+*   [x] **Core:** Implementar sistema robusto de tratamento de erros nos scripts de fetch.
+*   [x] **Core:** Criar framework modular para adicionar novas fontes de vagas. (Foundation Complete)
+*   [ ] **Core:** Implementar primeira integração adicional (LinkedIn, Indeed, ou similar). (On Hold - Pending Framework Refinement & Approval)
+*   [x] **Testing:** Fix `Pagination` test. (JobFilters still On Hold - Blocked by Jest/Env issues)
+*   [ ] **Testing:** Criar testes unitários para lógica de filtragem do fetch de vagas. (Filter logic tested, On Hold for `processSource` tests)
+*   [x] **Performance:** Adicionar cache para resultados de busca de vagas frequentes. (API Cache Implemented and Tested)
 
 ## Future Ideas / Full Backlog (Phase 2 & Beyond)
 
@@ -35,7 +52,7 @@ LLM should update this file based on conversational progress.
 *   [ ] Feature: Enhance job filtering (Skills/Technology).
 *   [ ] Feature: Implement Saved Searches for Candidates.
 *   [x] ~~Feature: Job Detail Page - Add interactive elements (e.g., save job).~~
-*   [ ] Feature: Job Detail Page - Melhorar UX para redirecionamento ao site de origem da vaga.
+*   [x] Feature: Job Detail Page - Melhorar UX para redirecionamento ao site de origem da vaga. (Verified Already Implemented)
 *   [ ] Feature: Company Profile Pages.
 *   [ ] Feature: Curated Job Recommendations system.
 *   [ ] UX: Enhance mobile responsiveness thoroughly.
@@ -66,7 +83,7 @@ LLM should update this file based on conversational progress.
 *   [ ] **Integrations:** Improve reliability/error handling of job fetching scripts.
 *   [ ] **Integrations:** Improve content section extraction logic in `fetchGreenhouseJobs.ts`.
 *   [ ] **Testing Gap:** Create E2E test setup for critical user flows (job search, job click tracking)
-*   [ ] **Testing Gap:** Add Unit Tests for `fetchGreenhouseJobs.ts` filtering logic
+*   [ ] **Testing Gap:** Add Unit Tests for ~~`fetchGreenhouseJobs.ts`~~ `GreenhouseFetcher.ts` filtering logic
 *   [ ] **Testing Gap:** Add Integration Tests for job fetching scripts (mocking APIs and DB)
 *   [ ] **Tech Debt:** Implement proper error handling for API routes
 *   [ ] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components 
@@ -76,7 +93,7 @@ LLM should update this file based on conversational progress.
 *   [ ] **Security:** Implement rate limiting for job search API endpoints
 *   [ ] **Documentation:** Create API documentation for endpoints
 *   [ ] **i18n:** Prepare codebase for proper internationalization (currently has i18n config but might need structure)
-*   [ ] **Bug Fix:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields and invalid dates.
+*   [x] **Bug Fix:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields and invalid dates. (Completed)
 
 ## Milestones
 
@@ -88,6 +105,10 @@ LLM should update this file based on conversational progress.
 
 ## Recently Completed
 
+*   **2025-04-14:** Verified Job Detail Page external link UX improvements were already implemented.
+*   **2025-04-14:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields/invalid dates and add tests.
+*   **2025-04-14:** Fix `Pagination` test - recreated missing component file and updated test file.
+*   **2025-04-14:** Implementar camada de cache para listagens de vagas frequentemente acessadas usando `node-cache`.
 *   **2025-04-12:** Implementar Error Monitoring com Sentry (configuração completa, utilitários, error boundary e integração com NextAuth).
 *   **2025-04-11:** Adicionar testes para componente de Paginação.
 *   **2025-04-11:** Implementar testes unitários para lógica de autenticação (NextAuth).

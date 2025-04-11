@@ -96,4 +96,13 @@
 *   **Adhere to Guidelines:** Follow all rules defined in section 4.
 *   **Ask When Unsure:** Do not assume context or make guesses about file paths, library usage, or requirements.
 *   **Verify:** Confirm file/module existence before referencing.
-*   **No Overwriting:** Do not delete or overwrite code unless instructed or as part of an agreed-upon task. 
+*   **No Overwriting:** Do not delete or overwrite code unless instructed or as part of an agreed-upon task.
+
+### Performance Optimizations
+
+- Pagination: Server-side pagination is implemented on `/api/jobs/search` endpoint, allowing for efficient browsing of large result sets.
+- Client-side caching: Implemented with SWR for client-side data fetching with automatic revalidation.
+- Server-side caching: Implemented with `node-cache` for `/api/jobs/search` endpoint, reducing database load for frequently accessed searches.
+  - Cache keys are generated based on query parameters (sorting them for consistency).
+  - TTL (Time-To-Live) of 1 hour for cache entries.
+  - Cache-Control headers are set for browser/CDN caching. 

@@ -1,6 +1,26 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '@/lib/prisma';
 import { JobStatus, JobType, ExperienceLevel, Prisma } from '@prisma/client';
+import NodeCache from 'node-cache';
+
+// --- Cache Setup ---
+// stdTTL: default time-to-live in seconds for cache items (1 hour)
+// checkperiod: interval in seconds to check for expired items (10 minutes)
+const CACHE_TTL = 3600; // 1 hour in seconds
+const searchCache = new NodeCache({ 
+  stdTTL: CACHE_TTL, 
+  checkperiod: 600 // 10 minutes
+});
+
+// Helper function to generate a stable cache key from query parameters
+const generateCacheKey = (query: NodeJS.Dict<string | string[]>): string => {
+    // Sort keys to ensure consistent order
+    const sortedKeys = Object.keys(query).sort();
+    // Build a stable string representation
+    const keyParts = sortedKeys.map(key => `${key}=${JSON.stringify(query[key])}`);
+    // Prefix for easy identification/clearing
+    return `search:${keyParts.join('&')}`;
+};
 
 // Define a interface para os parâmetros de pesquisa
 interface SearchParams {
@@ -32,12 +52,25 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Apenas método GET é permitido
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
+  const cacheKey = generateCacheKey(req.query);
+  console.log(`[Cache] Generated Key: ${cacheKey}`); // Log for debugging
+
   try {
+    // --- Check Cache --- 
+    const cachedData = searchCache.get(cacheKey);
+    if (cachedData) {
+      console.log(`[Cache] HIT for key: ${cacheKey}`);
+      // Important: Set cache header for client/CDN caching control
+      res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=240'); // Example: Cache for 1 min, revalidate in background for next 4 mins
+      return res.status(200).json(cachedData);
+    }
+    console.log(`[Cache] MISS for key: ${cacheKey}`);
+    // -------------------
+
     // Extrair e transformar parâmetros de pesquisa
     const searchParams: SearchParams = {
       query: req.query.q as string,
@@ -257,40 +290,40 @@ export default async function handler(
        }, {} as FilterAggregations['technologies'])
     };
 
-    // Calcular metadados da paginação
-    const totalPages = Math.ceil(totalCount / limit);
-    const hasNextPage = page < totalPages;
-    const hasPrevPage = page > 1;
-
-    return res.status(200).json({
+    // Construir resposta paginada
+    const responseData = {
       jobs,
       pagination: {
         totalCount,
-        totalPages,
+        totalPages: Math.ceil(totalCount / limit),
         currentPage: page,
         pageSize: limit,
-        hasNextPage,
-        hasPrevPage
-      },
-      filters: {
-        ...filters,
-        query
+        hasNextPage: skip + limit < totalCount,
+        hasPrevPage: page > 1,
       },
       aggregations
-    });
-  } catch (error) {
+    };
+
+    // --- Store in Cache --- 
+    // Cache successful responses with a TTL of 1 hour (3600 seconds)
+    searchCache.set(cacheKey, responseData, CACHE_TTL);
+    // ----------------------
+
+    // Set cache headers for client/CDN
+    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=240');
+    
+    return res.status(200).json(responseData);
+  } catch (error: any) {
     // Ensure error is logged appropriately
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      // Handle known Prisma errors (e.g., unique constraint violation, record not found)
+    if (error && typeof error.code === 'string' && error.code.startsWith('P')) {
+      // Handle known Prisma errors (e.g., P2021 Table does not exist, P2002 Unique constraint)
       console.error('Prisma Error Code:', error.code, error.message);
-      // Potentially return a more specific error status/message
-    } else if (error instanceof Error) {
-       // Handle generic errors
-       console.error('Generic Error in job search:', error.message, error.stack);
+      // Consider returning a more specific error status/message depending on the code
+      res.status(500).json({ error: 'Erro de banco de dados ao buscar vagas.', details: error.code });
     } else {
-       // Handle unexpected error types
-       console.error('Unexpected Error in job search:', error);
+      // Handle unexpected errors
+      console.error('Erro inesperado na busca de vagas:', error);
+      res.status(500).json({ error: 'Erro ao buscar vagas' });
     }
-    return res.status(500).json({ error: 'Erro ao processar a solicitação de pesquisa de vagas' });
   }
 } 

@@ -3,6 +3,8 @@ import '@testing-library/jest-dom';
 import { useRouter } from 'next/router';
 import useSWR from 'swr';
 import Home from '@/pages/index';
+import React from 'react';
+import Pagination from '@/components/common/Pagination';
 
 // Mock the Next.js router
 jest.mock('next/router', () => ({
@@ -46,6 +48,13 @@ jest.mock('@/components/common/CustomSelect', () => {
     __esModule: true,
     default: jest.fn(() => <div data-testid="custom-select">Sort Select</div>),
   };
+});
+
+// Mock window.scrollTo as it's called on page change
+const scrollToSpy = jest.fn();
+Object.defineProperty(window, 'scrollTo', {
+    value: scrollToSpy,
+    writable: true,
 });
 
 describe('Pagination functionality', () => {
@@ -292,5 +301,55 @@ describe('Pagination functionality', () => {
     // Previous button should be enabled
     const prevButton = screen.getByText('Anterior');
     expect(prevButton).not.toBeDisabled();
+  });
+
+  it('calls onPageChange when a page number is clicked', () => {
+    const onPageChangeMock = jest.fn();
+    render(<Pagination currentPage={3} totalPages={10} onPageChange={onPageChangeMock} />);
+    
+    // Find the "Página 4" button
+    const page4Button = screen.getByText('Página 4');
+    
+    // Click the button
+    fireEvent.click(page4Button);
+
+    // Verify the mock was called with the correct page number
+    expect(onPageChangeMock).toHaveBeenCalledTimes(1);
+    expect(onPageChangeMock).toHaveBeenCalledWith(4);
+    expect(scrollToSpy).toHaveBeenCalled();
+  });
+
+  it('calls onPageChange when the next button is clicked', () => {
+    const onPageChangeMock = jest.fn();
+    render(<Pagination currentPage={5} totalPages={10} onPageChange={onPageChangeMock} />);
+    
+    // Find the next button - there are multiple buttons with "Próxima" text
+    // Choose the one in the desktop view (in the nav element)
+    const nextButton = screen.getAllByText('Próxima')[1]; // Get the second one (in desktop view)
+    
+    // Click the button
+    fireEvent.click(nextButton);
+
+    // Verify the mock was called with the correct page number
+    expect(onPageChangeMock).toHaveBeenCalledTimes(1);
+    expect(onPageChangeMock).toHaveBeenCalledWith(6);
+    expect(scrollToSpy).toHaveBeenCalled();
+  });
+
+  it('calls onPageChange when the previous button is clicked', () => {
+    const onPageChangeMock = jest.fn();
+    render(<Pagination currentPage={5} totalPages={10} onPageChange={onPageChangeMock} />);
+    
+    // Find the previous button - there are multiple buttons with "Anterior" text
+    // Choose the one in the desktop view (in the nav element)
+    const prevButton = screen.getAllByText('Anterior')[1]; // Get the second one (in desktop view)
+    
+    // Click the button
+    fireEvent.click(prevButton);
+
+    // Verify the mock was called with the correct page number
+    expect(onPageChangeMock).toHaveBeenCalledTimes(1);
+    expect(onPageChangeMock).toHaveBeenCalledWith(4);
+    expect(scrollToSpy).toHaveBeenCalled();
   });
 }); 
