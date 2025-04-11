@@ -15,8 +15,8 @@ LLM should update this file based on conversational progress.
 *   [~] **Testing:** Setup basic Unit Testing Framework (e.g., Jest/Vitest) (**Installed, configured, basic tests exist**)
 *   [x] **Testing:** Create first component tests for jobs listing page. (**tests/components/jobs/WideJobCard.test.tsx created**)
 *   [x] **Testing:** Write basic API route tests for job fetching. (**tests/api/jobs/search.test.ts created**)
-*   [ ] **Testing:** Expand test coverage to include unit tests for utility functions.
-*   [ ] **Testing:** Add mock configuration for NextAuth sessions and protected routes.
+*   [x] **Testing:** Expand test coverage to include unit tests for utility functions. (Added tests for email, jobUtils, jobProcessingService, JobProcessingAdapter, greenhouseProcessor)
+*   [x] **Testing:** Add mock configuration for NextAuth sessions and protected routes.
 
 ## Next Up (Prioritized Backlog - Phase 1: Core UX & Stability)
 
@@ -103,14 +103,15 @@ LLM should update this file based on conversational progress.
 *   [ ] **Testing Gap:** Add API endpoint tests for authentication routes
 *   [ ] **Testing Gap:** Add Unit Tests for `fetchGreenhouseJobs.ts` filtering logic
 *   [ ] **Testing Gap:** Add Integration Tests for job fetching scripts (mocking APIs and DB)
-*   [ ] **Testing:** Add unit tests for `useTrackJobClick` hook.
-*   [ ] **Testing:** Add API tests for `/api/jobs/[jobId]/track-click` endpoint.
+*   [x] **Testing:** Add unit tests for `useTrackJobClick` hook.
+*   [x] **Testing:** Add API tests for `/api/jobs/[jobId]/track-click` endpoint.
 *   [ ] **Tech Debt:** Implement proper error handling for API routes
 *   [ ] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components
 *   [ ] **Optimization:** Add caching layer for frequently accessed job listings
 *   [ ] **Optimization:** Implement server-side pagination for job listings
 *   [ ] **Security:** Add rate limiting for authentication endpoints
 *   [ ] **Security:** Implement CSRF protection for sensitive operations
+*   [ ] **Security:** Implement rate limiting for job search API endpoints
 *   [ ] **Documentation:** Create API documentation for endpoints
 *   [ ] **i18n:** Prepare codebase for proper internationalization (currently has i18n config but might need structure)
 *   [ ] **Analytics:** Implementar sistema de rastreamento de cliques em vagas externas
@@ -133,4 +134,6 @@ LLM should update this file based on conversational progress.
 *   **{Current Date}:** Ajuste arquitetural - redefinir o sistema como agregador de links (estilo Remotive/Remote OK) em vez de aplicações diretas.
 *   **{Current Date}:** Atualizar schema Prisma e migrar banco de dados para remover modelos `Application` e `InterviewEvent` e adicionar campo `clickCount`.
 *   **{Current Date}:** Refatorar código inicial (tipos, UI) para remover referências a `Application` e campos relacionados.
-*   **{Current Date}:** Instalar e configurar Jest para testes unitários. 
+*   **{Current Date}:** Instalar e configurar Jest para testes unitários.
+*   **{Current Date}:** Adicionar mock para `next-auth/react` em `jest.setup.js`.
+*   **{Current Date}:** Expandir testes unitários para `src/lib` (email, services, utils, adapters, jobProcessors). 

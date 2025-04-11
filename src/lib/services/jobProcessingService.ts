@@ -46,15 +46,15 @@ export class JobProcessingService {
     }
 
     try {
-      await this.saveJob(result.job, source);
-      return true;
+      const saveSuccess = await this.saveJob(result.job, source);
+      return saveSuccess;
     } catch (error) {
-      logger.error({ source, error }, 'Failed to save job');
+      logger.error({ source, error, jobId: result.job.sourceId }, 'Unexpected error during saveJob call');
       return false;
     }
   }
 
-  private async saveJob(job: StandardizedJob, source: string) {
+  private async saveJob(job: StandardizedJob, source: string): Promise<boolean> {
     this.logger.debug({ source: job.source, sourceId: job.sourceId, title: job.title }, 'Processing job...');
 
     try {

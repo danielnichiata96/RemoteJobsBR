@@ -8,9 +8,17 @@ const COMMON_SKILLS = [
   'git', 'ci/cd', 'agile', 'scrum'
 ];
 
+// Helper function to escape regex special characters
+function escapeRegex(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+}
+
 export function extractSkills(content: string): string[] {
   const contentLower = content.toLowerCase();
-  return COMMON_SKILLS.filter(skill => contentLower.includes(skill.toLowerCase()));
+  // Escape regex characters in skills and use word boundaries
+  return COMMON_SKILLS.filter(skill => 
+    new RegExp(`\\b${escapeRegex(skill.toLowerCase())}\\b`).test(contentLower)
+  );
 }
 
 export function cleanHtml(html: string): string {
@@ -25,10 +33,20 @@ export function cleanHtml(html: string): string {
              .replace(/&quot;/g, '"')
              .replace(/&#39;/g, "'");
   
-  // Fix multiple spaces and line breaks
-  text = text.replace(/\s+/g, ' ')
-             .replace(/\n\s*\n/g, '\n\n')
-             .trim();
+  // Normalize line endings
+  text = text.replace(/\r\n|\r/g, '\n');
+  
+  // Temporarily replace double newlines to preserve them
+  const placeholder = '__DOUBLE_NEWLINE__';
+  text = text.replace(/\n\n/g, placeholder);
+  
+  // Collapse all other whitespace (including single newlines) to single spaces
+  text = text.replace(/\s+/g, ' ');
+  
+  // Restore double newlines
+  text = text.replace(new RegExp(placeholder, 'g'), '\n\n');
+  
+  text = text.trim();
   
   return text;
 }
@@ -55,24 +73,34 @@ export function detectJobType(content: string): JobType {
 export function detectExperienceLevel(content: string): ExperienceLevel {
   const contentLower = content.toLowerCase();
 
+  // Helper to test keywords with word boundaries (adjusted for sr./jr.)
+  const testKeyword = (keyword: string): boolean => {
+      const escapedKeyword = escapeRegex(keyword);
+      // For sr. and jr., don't require word boundary *after* the dot
+      const pattern = (keyword === 'sr.' || keyword === 'jr.')
+          ? `\\b${escapedKeyword}` 
+          : `\\b${escapedKeyword}\\b`;
+      return new RegExp(pattern).test(contentLower);
+  };
+
   // --- Prioritize LEAD level --- 
-  // Use word boundaries (\b) to avoid partial matches (e.g., "directorship")
-  const leadKeywords = ['\bvp\b', '\bdirector\b', '\bmanager\b', '\blead\b', '\bhead of\b'];
-  if (leadKeywords.some(keyword => new RegExp(keyword).test(contentLower))) {
+  const leadKeywords = ['vp', 'director', 'manager', 'lead', 'head of'];
+  if (leadKeywords.some(testKeyword)) {
     return ExperienceLevel.LEAD;
   }
 
-  // --- Check for SENIOR level (excluding lead terms if already checked) ---
-  const seniorKeywords = ['\bsenior\b', '\bsr\.\b', '\bprincipal\b', '\bspecialist\b'];
-  if (seniorKeywords.some(keyword => new RegExp(keyword).test(contentLower))) {
+  // --- Check for SENIOR level ---
+  const seniorKeywords = ['senior', 'sr.', 'principal', 'specialist'];
+  if (seniorKeywords.some(testKeyword)) {
     return ExperienceLevel.SENIOR;
   }
 
   // --- Check for ENTRY level --- 
-  const entryKeywords = ['\bjunior\b', '\bjr\.\b', '\bentry\b', '\bassociate\b', '\bgraduate\b', '\bintern\b', '\binternship\b'];
-  if (entryKeywords.some(keyword => new RegExp(keyword).test(contentLower))) {
-    // Special case: Avoid classifying "Senior Associate" as ENTRY
-    if (contentLower.includes('associate') && contentLower.includes('senior')) {
+  const entryKeywords = ['junior', 'jr.', 'entry', 'associate', 'graduate', 'intern', 'internship'];
+  if (entryKeywords.some(testKeyword)) {
+    // Special case: Avoid classifying "Senior Associate" or "Principal Associate" as ENTRY
+    if (contentLower.includes('associate') && 
+        (seniorKeywords.some(sk => contentLower.includes(sk)))) { // Use includes for simpler check here
        return ExperienceLevel.SENIOR; 
     }
     return ExperienceLevel.ENTRY;
