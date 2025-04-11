@@ -48,6 +48,8 @@ export default async function handler(
       tags: job.tags ?? [],
       location: job.location ?? 'Remote',
       workplaceType: job.workplaceType ?? 'REMOTE',
+      applicationUrl: job.applicationUrl,
+      applicationEmail: job.applicationEmail,
       company: job.company // Use the fetched company data
         ? {
             id: job.company.id,

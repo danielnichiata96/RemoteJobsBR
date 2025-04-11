@@ -31,25 +31,16 @@ LLM should update this file based on conversational progress.
 *   [ ] **Jobs:** Refine Job Listing Page UI (implement loading skeletons, error state display).
 *   [ ] **Jobs:** Implement server-side pagination for job listings API (`/api/jobs`).
 *   [ ] **Jobs:** Improve Job Detail Page with external redirection UX indicators.
-*   [ ] ~~**Candidate Dashboard:** Implement API route to fetch applications for a user.~~
-*   [ ] ~~**Candidate Dashboard:** Implement basic Candidate Dashboard UI to list applications.~~
 *   [ ] **User Features:** Implementar sistema de vagas salvas (favoritos) para usuários.
-*   [ ] **User Features:** Criar sistema para rastrear cliques em vagas externas.
-*   [ ] **User Features:** Implement click tracking system for external job links.
+*   [x] **User Features:** Implement click tracking system for external job links (**API & Hook created, used in JobDetail, Tests added**)
 *   [x] **Recruiter Dashboard:** Implement API route to fetch jobs posted by a recruiter.
-*   [ ] ~~**Recruiter Dashboard:** Implement API route to fetch applications for a specific job.~~
-*   [ ] ~~**Recruiter Dashboard:** Implement basic Recruiter Dashboard UI to manage postings & view applicants.~~
-*   [ ] **Recruiter Dashboard:** Reconstruir para focar em métricas de cliques e visualizações de vagas.
+*   [~] **Recruiter Dashboard:** Reconstruir para focar em métricas de cliques e visualizações de vagas (**API Updated, Frontend requires manual change**).
 *   [ ] **Testing:** Write initial unit tests for Auth logic.
 *   [ ] **Testing:** Write more component tests for major UI elements (filters, pagination).
+*   [x] **Testing:** Add unit tests for `useTrackJobClick` hook.
+*   [x] **Testing:** Add API tests for `/api/jobs/[jobId]/track-click` endpoint.
 *   [ ] **Monitoring:** Setup basic Error Monitoring (e.g., Sentry integration or Vercel monitoring).
 *   [x] **Notifications:** Setup email service (e.g., Resend) integration.
-*   [ ] ~~**Notifications:** Implement email notification for successful application submission (Candidate).~~
-*   [ ] ~~**Notifications:** Implement email notification for new application received (Recruiter).~~
-*   [ ] **Notifications:** Implementar notificações de novas vagas por email baseado em preferências do usuário.
-*   [ ] **Analytics:** Setup basic analytics (e.g., Vercel Analytics).
-*   [ ] **Analytics:** Setup basic analytics for job view/click metrics.
-*   [x] **Deployment:** Setup initial Vercel deployment.
 
 ## Future Ideas / Full Backlog (Phase 2 & Beyond)
 
@@ -87,11 +78,11 @@ LLM should update this file based on conversational progress.
 *   [ ] **Testing Gap:** Add API endpoint tests for authentication routes
 *   [ ] **Testing Gap:** Add Unit Tests for `fetchGreenhouseJobs.ts` filtering logic
 *   [ ] **Testing Gap:** Add Integration Tests for job fetching scripts (mocking APIs and DB)
-*   [ ] **Testing Gap:** Add tests for click tracking functionality
+*   [x] **Testing:** Add unit tests for `useTrackJobClick` hook.
+*   [x] **Testing:** Add API tests for `/api/jobs/[jobId]/track-click` endpoint.
 *   [ ] **Tech Debt:** Implement proper error handling for API routes
 *   [ ] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components
 *   [ ] **Optimization:** Add caching layer for frequently accessed job listings
-*   [ ] **Performance:** Add caching for frequently accessed job listings
 *   [ ] **Optimization:** Implement server-side pagination for job listings
 *   [ ] **Security:** Add rate limiting for authentication endpoints
 *   [ ] **Security:** Implement CSRF protection for sensitive operations
@@ -112,6 +103,8 @@ LLM should update this file based on conversational progress.
 *   [ ] **Testing Gap:** Add API endpoint tests for authentication routes
 *   [ ] **Testing Gap:** Add Unit Tests for `fetchGreenhouseJobs.ts` filtering logic
 *   [ ] **Testing Gap:** Add Integration Tests for job fetching scripts (mocking APIs and DB)
+*   [ ] **Testing:** Add unit tests for `useTrackJobClick` hook.
+*   [ ] **Testing:** Add API tests for `/api/jobs/[jobId]/track-click` endpoint.
 *   [ ] **Tech Debt:** Implement proper error handling for API routes
 *   [ ] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components
 *   [ ] **Optimization:** Add caching layer for frequently accessed job listings

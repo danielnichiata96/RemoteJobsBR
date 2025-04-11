@@ -34,15 +34,11 @@ export default function Layout({
   const mobileButtonRef = useRef<HTMLButtonElement>(null);
   const firstMobileItemRef = useRef<HTMLAnchorElement>(null);
   
+  // State to track client-side mounting
+  const [isMounted, setIsMounted] = useState(false);
+
   const showDropdown = () => setDropdownVisible(true);
   const hideDropdown = () => setDropdownVisible(false);
-  
-  // Para depuração: imprimir o papel do usuário no console
-  useEffect(() => {
-    if (session && session.user) {
-      console.log('User role:', session.user.role);
-    }
-  }, [session]);
   
   // Função para impedir que o menu desapareça ao mover o mouse
   const handleMouseLeave = () => {
@@ -78,6 +74,11 @@ export default function Layout({
     window.addEventListener('keydown', handleEscKey);
     return () => window.removeEventListener('keydown', handleEscKey);
   }, [dropdownVisible, mobileMenuOpen]);
+
+  // Set mounted state only on the client
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 font-['Outfit']">
@@ -127,75 +128,68 @@ export default function Layout({
                 Post a Job
               </Link>
               
-              {/* Login ou Perfil do Usuário */}
-              {session ? (
-                <div className="relative" 
-                  onMouseEnter={showDropdown}
-                  onMouseLeave={handleMouseLeave}
-                  onBlur={() => setTimeout(hideDropdown, 100)}
-                  ref={dropdownRef}
-                >
-                  <button
-                    className={`flex items-center ${colors.secondary} ${colors.secondaryHover} font-medium`}
-                    aria-haspopup="true"
-                    aria-expanded={dropdownVisible}
-                    aria-label="Menu do usuário"
+              {/* Login ou Perfil do Usuário - Defer rendering until mounted */}
+              {isMounted ? (
+                session ? (
+                  <div className="relative" 
+                    onMouseEnter={showDropdown}
+                    onMouseLeave={handleMouseLeave}
+                    onBlur={() => setTimeout(hideDropdown, 100)}
+                    ref={dropdownRef}
                   >
-                    <span className="mr-1">{session.user.name || 'Minha Conta'}</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                  {dropdownVisible && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10 transition-opacity duration-200 ease-in-out">
-                      {(session.user.role === 'COMPANY' || session.user.role === 'company') && (
-                        <Link href="/recruiter/dashboard" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Acessar o painel de recrutador">
-                          Dashboard
-                        </Link>
-                      )}
-                      
-                      {(session.user.role === 'COMPANY' || session.user.role === 'company') ? (
-                        // Opções de menu para empresas (em inglês)
-                        <>
-                          <Link href="/company/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="View your company profile">
-                            Company Profile
+                    <button
+                      className={`flex items-center ${colors.secondary} ${colors.secondaryHover} font-medium`}
+                      aria-haspopup="true"
+                      aria-expanded={dropdownVisible}
+                      aria-label="Menu do usuário"
+                    >
+                      <span className="mr-1">{session.user.name || 'Minha Conta'}</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                    {dropdownVisible && (
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10 transition-opacity duration-200 ease-in-out">
+                       {/* Conditional links based on role */} 
+                       {(session.user.role === 'COMPANY' || session.user.role === 'company') && (
+                          <Link href="/recruiter/dashboard" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Acessar o painel de recrutador">
+                            Dashboard
                           </Link>
-                          <Link href="/recruiter/dashboard/jobs" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Manage your job postings">
-                            Manage Jobs
-                          </Link>
-                          {/* <Link href="/recruiter/dashboard/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="View received applications"> */}
-                        </>
-                      ) : (
-                        // Opções de menu para candidatos
-                        <>
-                          <Link href="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Visualizar seu perfil">
-                            Meu Perfil
-                          </Link>
-                          {/* <Link href="/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Ver suas candidaturas"> */}
-                          <Link href="/saved-jobs" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Ver vagas salvas">
-                            Vagas Salvas
-                          </Link>
-                        </>
-                      )}
-                      
-                      <button
-                        onClick={() => signOut()}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
-                        aria-label="Sair da sua conta"
-                      >
-                        {(session.user.role === 'COMPANY' || session.user.role === 'company') ? 'Sign Out' : 'Sair'}
-                      </button>
-                    </div>
-                  )}
-                </div>
+                       )}
+                       {(session.user.role === 'COMPANY' || session.user.role === 'company') ? (
+                          <>
+                            <Link href="/company/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="View your company profile">Company Profile</Link>
+                            <Link href="/recruiter/dashboard/jobs" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Manage your job postings">Manage Jobs</Link>
+                          </>
+                       ) : (
+                          <>
+                            <Link href="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Visualizar seu perfil">Meu Perfil</Link>
+                            <Link href="/saved-jobs" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Ver vagas salvas">Vagas Salvas</Link>
+                          </>
+                       )}
+                        <button
+                          onClick={() => signOut()}
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
+                          aria-label="Sair da sua conta"
+                        >
+                          {(session.user.role === 'COMPANY' || session.user.role === 'company') ? 'Sign Out' : 'Sair'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <Link 
+                    href="/login" 
+                    className={`${colors.secondary} ${colors.outline} ${colors.outlineHover} px-4 py-2 rounded-md font-medium transition-colors`}
+                    aria-label="Fazer login na sua conta"
+                  >
+                    Login
+                  </Link>
+                )
               ) : (
-                <Link 
-                  href="/login" 
-                  className={`${colors.secondary} ${colors.outline} ${colors.outlineHover} px-4 py-2 rounded-md font-medium transition-colors`}
-                  aria-label="Fazer login na sua conta"
-                >
-                  Login
-                </Link>
+                // Render a placeholder or null during SSR and initial client render before mount
+                // Using a simple placeholder div with same height ensures layout doesn't jump
+                <div className="h-10 w-20"></div> // Adjust size as needed
               )}
             </div>
 
@@ -377,7 +371,7 @@ export default function Layout({
         </div>
       </header>
 
-      <main className="flex-grow">
+      <main className="flex-grow container mx-auto px-4 py-8">
         {children}
       </main>
 

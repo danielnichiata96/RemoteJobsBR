@@ -15,6 +15,7 @@ interface Job {
   applicantCount?: number;
   viewCount?: number;
   description?: string;
+  clickCount?: number;
 }
 
 interface Props {
@@ -389,6 +390,17 @@ export default function RecruiterJobs(props) {
                                 {job.viewCount} views
                               </span>
                             )}
+
+                            {job.clickCount !== undefined && (
+                              <span className="inline-flex items-center text-xs text-gray-500">
+                                <svg className="mr-1 h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.875 14.25l1.214 1.942a2.25 2.25 0 003.822 0l1.214-1.942M2.41 9h4.639M16.951 9h4.639" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.573 9.375a6.723 6.723 0 0012.854 0 6.723 6.723 0 00-12.854 0zM11.996 1.125a6.72 6.72 0 014.488 2.013 6.72 6.72 0 011.718 4.416 6.72 6.72 0 01-1.718 4.416 6.72 6.72 0 01-4.488 2.013 6.72 6.72 0 01-4.488-2.013 6.72 6.72 0 011.718-4.416A6.72 6.72 0 0111.996 1.125z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.996 1.125v2.25m0 17.25v2.25" />
+                                </svg>
+                                {job.clickCount} clicks
+                              </span>
+                            )}
                             
                             {job.applicantCount !== undefined && (
                               <span className="inline-flex items-center text-xs text-gray-500">
@@ -437,35 +449,25 @@ export default function RecruiterJobs(props) {
                           <div className="flex items-center space-x-2 ml-2">
                             <Link
                               href={`/recruiter/dashboard/jobs/${job.id}`}
-                              className="inline-flex items-center p-1.5 border border-transparent rounded-full shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                              title="View Details"
+                              className="text-blue-600 hover:text-blue-700"
                             >
-                              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                                <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                              </svg>
+                              View
                             </Link>
                             <Link
                               href={`/recruiter/dashboard/jobs/${job.id}/edit`}
-                              className="inline-flex items-center p-1.5 border border-transparent rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                              title="Edit Job"
+                              className="text-blue-600 hover:text-blue-700"
                             >
-                              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                              </svg>
+                              Edit
                             </Link>
                             <button
                               onClick={() => {
-                                if (confirm('Are you sure you want to delete this job? This action cannot be undone.')) {
+                                if (confirm('Are you sure you want to delete this job?')) {
                                   deleteJob(job.id);
                                 }
                               }}
-                              className="inline-flex items-center p-1.5 border border-transparent rounded-full shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                              title="Delete Job"
+                              className="text-red-600 hover:text-red-700"
                             >
-                              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                              </svg>
+                              Delete
                             </button>
                           </div>
                         </div>
@@ -480,4 +482,4 @@ export default function RecruiterJobs(props) {
       </div>
     </>
   );
-} 
+}

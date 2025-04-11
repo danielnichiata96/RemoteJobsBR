@@ -109,6 +109,7 @@ export default async function handler(
           currency: true,
           viewCount: true,
           applicantCount: true,
+          clickCount: true,
           _count: {
             select: {
               applications: true,
