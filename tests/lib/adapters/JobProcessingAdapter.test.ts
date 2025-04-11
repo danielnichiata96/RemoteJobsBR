@@ -57,7 +57,7 @@ jest.mock('@prisma/client', () => ({
 
 // Mock JobProcessingService
 const mockJobProcessingServiceInstance = {
-  processAndSaveJob: jest.fn(),
+  saveOrUpdateJob: jest.fn(),
   // Add other methods if the adapter uses them
 };
 jest.mock('../../../src/lib/services/jobProcessingService', () => {
@@ -78,7 +78,7 @@ describe('JobProcessingAdapter', () => {
     loggerMock = pino(); // Get reference to the mocked logger instance
   });
 
-  describe('processAndSaveJob', () => {
+  describe('processAndSaveJob_DEPRECATED', () => {
     // Define test data inside the describe block
     const mockStandardizedJob: StandardizedJob = {
       source: 'testSource',
@@ -108,55 +108,36 @@ describe('JobProcessingAdapter', () => {
       // benefits is optional in StandardizedJob definition used here, add if needed
     };
 
-    it('should successfully adapt and call JobProcessingService.processAndSaveJob', async () => {
+    it('should successfully call JobProcessingService.saveOrUpdateJob', async () => {
       // Arrange
-      mockJobProcessingServiceInstance.processAndSaveJob.mockResolvedValue(true);
+      mockJobProcessingServiceInstance.saveOrUpdateJob.mockResolvedValue(true);
 
       // Act
-      const result = await adapter.processAndSaveJob(mockStandardizedJob);
+      const result = await adapter.processAndSaveJob_DEPRECATED(mockStandardizedJob);
 
       // Assert
       expect(result).toBe(true);
-      expect(mockJobProcessingServiceInstance.processAndSaveJob).toHaveBeenCalledTimes(1);
-      
-      // Check the arguments passed to the service
-      const [sourceArg, rawJobArg] = mockJobProcessingServiceInstance.processAndSaveJob.mock.calls[0];
-      expect(sourceArg).toBe(mockStandardizedJob.source);
-      
-      // Verify key transformations in rawJobArg
-      expect(rawJobArg.id).toBe(NaN); // parseInt('job-123') is NaN, as expected
-      expect(rawJobArg.title).toBe(mockStandardizedJob.title);
-      expect(rawJobArg.location.name).toBe(mockStandardizedJob.location);
-      expect(rawJobArg.content).toBe(mockStandardizedJob.description);
-      expect(rawJobArg.absolute_url).toBe(mockStandardizedJob.applicationUrl);
-      expect(rawJobArg.company.name).toBe(mockStandardizedJob.companyName);
-      expect(rawJobArg.requirements).toBe(mockStandardizedJob.requirements);
-      expect(rawJobArg.responsibilities).toBe(mockStandardizedJob.responsibilities);
-      expect(rawJobArg.jobType).toBe(mockStandardizedJob.jobType);
-      expect(rawJobArg.experienceLevel).toBe(mockStandardizedJob.experienceLevel);
-      expect(rawJobArg.skills).toEqual(mockStandardizedJob.skills);
-      expect(rawJobArg.metadata).toEqual(mockStandardizedJob.metadataRaw);
+      expect(mockJobProcessingServiceInstance.saveOrUpdateJob).toHaveBeenCalledTimes(1);
 
-      expect(loggerMock.debug).toHaveBeenCalledWith(
-        expect.objectContaining({ sourceId: mockStandardizedJob.sourceId }),
-        'Processing standardized job'
-      );
-       expect(loggerMock.debug).toHaveBeenCalledWith(
-        'Calling JobProcessingService with adapted job data'
-      );
+      // Check the arguments passed to the service
+      const [standardizedJobArg] = mockJobProcessingServiceInstance.saveOrUpdateJob.mock.calls[0];
+      expect(standardizedJobArg).toEqual(mockStandardizedJob);
+
+      expect(loggerMock.warn).toHaveBeenCalledWith("processAndSaveJob_DEPRECATED called - this indicates an old workflow is still in use.");
     });
-    
-     it('should handle numeric sourceId correctly', async () => {
+
+    it('should handle numeric sourceId correctly (no ID parsing in deprecated path)', async () => {
       // Arrange
       const numericSourceIdJob = { ...mockStandardizedJob, sourceId: '456' };
-      mockJobProcessingServiceInstance.processAndSaveJob.mockResolvedValue(true);
+      mockJobProcessingServiceInstance.saveOrUpdateJob.mockResolvedValue(true);
 
       // Act
-      await adapter.processAndSaveJob(numericSourceIdJob);
+      await adapter.processAndSaveJob_DEPRECATED(numericSourceIdJob);
 
       // Assert
-       const [, rawJobArg] = mockJobProcessingServiceInstance.processAndSaveJob.mock.calls[0];
-       expect(rawJobArg.id).toBe(456);
+       const [standardizedJobArg] = mockJobProcessingServiceInstance.saveOrUpdateJob.mock.calls[0];
+       expect(standardizedJobArg.sourceId).toBe('456');
+       expect(mockJobProcessingServiceInstance.saveOrUpdateJob).toHaveBeenCalledWith(numericSourceIdJob);
     });
 
     it('should return false and log error if source is missing', async () => {
@@ -164,11 +145,11 @@ describe('JobProcessingAdapter', () => {
       const jobWithoutSource = { ...mockStandardizedJob, source: undefined as any };
 
       // Act
-      const result = await adapter.processAndSaveJob(jobWithoutSource);
+      const result = await adapter.processAndSaveJob_DEPRECATED(jobWithoutSource);
 
       // Assert
       expect(result).toBe(false);
-      expect(mockJobProcessingServiceInstance.processAndSaveJob).not.toHaveBeenCalled();
+      expect(mockJobProcessingServiceInstance.saveOrUpdateJob).not.toHaveBeenCalled();
       expect(loggerMock.error).toHaveBeenCalledWith('Job missing required source or sourceId');
     });
 
@@ -177,29 +158,29 @@ describe('JobProcessingAdapter', () => {
       const jobWithoutSourceId = { ...mockStandardizedJob, sourceId: undefined as any };
 
       // Act
-      const result = await adapter.processAndSaveJob(jobWithoutSourceId);
+      const result = await adapter.processAndSaveJob_DEPRECATED(jobWithoutSourceId);
 
       // Assert
       expect(result).toBe(false);
-      expect(mockJobProcessingServiceInstance.processAndSaveJob).not.toHaveBeenCalled();
+      expect(mockJobProcessingServiceInstance.saveOrUpdateJob).not.toHaveBeenCalled();
       expect(loggerMock.error).toHaveBeenCalledWith('Job missing required source or sourceId');
     });
 
     it('should return false and log error if JobProcessingService throws an error', async () => {
       // Arrange
       const serviceError = new Error('Service failed to save');
-      mockJobProcessingServiceInstance.processAndSaveJob.mockRejectedValue(serviceError);
+      mockJobProcessingServiceInstance.saveOrUpdateJob.mockRejectedValue(serviceError);
 
       // Act
-      const result = await adapter.processAndSaveJob(mockStandardizedJob);
+      const result = await adapter.processAndSaveJob_DEPRECATED(mockStandardizedJob);
 
       // Assert
       expect(result).toBe(false);
-      expect(mockJobProcessingServiceInstance.processAndSaveJob).toHaveBeenCalledTimes(1);
+      expect(mockJobProcessingServiceInstance.saveOrUpdateJob).toHaveBeenCalledTimes(1);
       // The adapter catches the error and logs it
       expect(loggerMock.error).toHaveBeenCalledWith(
            { error: serviceError },
-           'Error in JobProcessingAdapter'
+           'Error in JobProcessingAdapter (Deprecated Method)'
        );
     });
   });

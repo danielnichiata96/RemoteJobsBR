@@ -69,8 +69,8 @@ LLM should update this file based on conversational progress.
 *   [ ] Revenue: Implement featured job listings.
 *   [ ] Revenue: Develop partnership features (schools/bootcamps).
 *   [ ] Mobile: Consider mobile app development.
-*   [ ] **Filters:** Add Salary Range filter.
-*   [ ] **Filters:** Add Company filter.
+*   [x] **Filters:** Add Salary Range filter.
+*   [x] **Filters:** Add Company filter. (Completed)
 *   [ ] **Filters:** Add Geographic restrictions filter (e.g., states in Brazil).
 *   [ ] **Filters:** Add Language requirements filter.
 *   [ ] **Filters:** Implement text search for job listings with result highlighting.
@@ -86,7 +86,7 @@ LLM should update this file based on conversational progress.
 *   [ ] **Testing Gap:** Add Unit Tests for ~~`fetchGreenhouseJobs.ts`~~ `GreenhouseFetcher.ts` filtering logic
 *   [ ] **Testing Gap:** Add Integration Tests for job fetching scripts (mocking APIs and DB)
 *   [ ] **Tech Debt:** Implement proper error handling for API routes
-*   [ ] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components 
+*   [x] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components (Completed)
 *   [ ] **Optimization:** Add caching layer for frequently accessed job listings
 *   [ ] **Security:** Add rate limiting for authentication endpoints
 *   [ ] **Security:** Implement CSRF protection for sensitive operations
@@ -105,6 +105,9 @@ LLM should update this file based on conversational progress.
 
 ## Recently Completed
 
+*   **2025-04-15:** Refactor profile.tsx using ProfileForm/ProfileView components, fixed related bugs.
+*   **2025-04-14:** Refactor `profile.tsx` into `ProfileForm` and `ProfileView` components, including tests.
+*   **2025-04-14:** Implement Company filter (UI, state, API, tests).
 *   **2025-04-14:** Verified Job Detail Page external link UX improvements were already implemented.
 *   **2025-04-14:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields/invalid dates and add tests.
 *   **2025-04-14:** Fix `Pagination` test - recreated missing component file and updated test file.

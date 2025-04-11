@@ -1,8 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { JobProcessingService } from '../services/jobProcessingService';
 import { StandardizedJob } from '../../types/StandardizedJob';
-import { JobProcessor, ProcessedJobResult, EnhancedGreenhouseJob } from '../jobProcessors/types';
+import { JobProcessor, ProcessedJobResult, GreenhouseJob, LeverBasicJobData } from '../jobProcessors/types';
 import { GreenhouseProcessor } from '../jobProcessors/greenhouseProcessor';
+import { LeverProcessor } from '../jobProcessors/leverProcessor';
 import pino from 'pino';
 
 const logger = pino({
@@ -17,83 +18,90 @@ const logger = pino({
 });
 
 /**
- * Adapter class for JobProcessingService to handle different interfaces
- * and provide additional functionality
+ * Adapter to select the correct Job Processor based on the source
+ * and orchestrate the processing and saving of job data.
  */
 export class JobProcessingAdapter {
   private jobProcessingService: JobProcessingService;
-  
+  private processors: Map<string, JobProcessor>;
+
   constructor() {
     this.jobProcessingService = new JobProcessingService();
+    // Initialize processors
+    this.processors = new Map<string, JobProcessor>();
+    this.processors.set('greenhouse', new GreenhouseProcessor());
+    this.processors.set('lever', new LeverProcessor());
+    // Add other processors here as needed
   }
-  
+
   /**
-   * Process and save a standardized job
-   * Adapts the new standardized job format to what JobProcessingService expects
+   * Selects the appropriate processor based on the source,
+   * processes the raw job data to get a StandardizedJob,
+   * and then saves it using the JobProcessingService.
+   *
+   * @param source The source identifier (e.g., 'greenhouse', 'lever')
+   * @param rawJobData The raw data object fetched from the source (structure varies by source)
+   * @returns Promise<boolean> True if the job was successfully processed and saved/updated, false otherwise.
    */
-  async processAndSaveJob(standardizedJob: StandardizedJob): Promise<boolean> {
+  async processRawJob(source: string, rawJobData: any): Promise<boolean> { // Use 'any' for rawJobData initially
+    const processor = this.processors.get(source.toLowerCase());
+
+    if (!processor) {
+      logger.error({ source }, `No processor found for source`);
+      return false;
+    }
+
+    const processLogger = logger.child({ source, processor: processor.source });
+    processLogger.debug({ rawJobData }, `Starting processing with ${processor.source} processor`);
+
     try {
-      if (!standardizedJob.source || !standardizedJob.sourceId) {
-        logger.error('Job missing required source or sourceId');
-        return false;
+      // Type assertion might be needed depending on processor implementation
+      // Let's assume processors handle the raw type internally for now
+      const result: ProcessedJobResult = await processor.processJob(rawJobData, processLogger);
+
+      if (!result.success || !result.job) {
+        processLogger.warn({ error: result.error, rawJobData }, `Processor failed or determined job irrelevant`);
+        return false; // Processor failed or job wasn't relevant
       }
 
-      // Log input data
-      logger.debug({
-        sourceId: standardizedJob.sourceId,
-        title: standardizedJob.title,
-        hasRequiredFields: Boolean(
-          standardizedJob.requirements && 
-          standardizedJob.responsibilities &&
-          standardizedJob.jobType &&
-          standardizedJob.experienceLevel
-        )
-      }, 'Processing standardized job');
+      processLogger.info({ jobId: result.job.sourceId, title: result.job.title }, `Processor returned standardized job. Attempting save...`);
+      
+      // Call the service to handle saving the standardized job
+      const saved = await this.jobProcessingService.saveOrUpdateJob(result.job);
+      
+      if (!saved) {
+         processLogger.warn({ standardizedJob: result.job }, `JobProcessingService failed to save/update the job.`);
+      }
+      
+      return saved;
 
-      // Create a company object in the format expected by JobProcessingService
-      const company = {
-        name: standardizedJob.companyName,
-        // Create a deterministic email from the company name and source
-        email: `${standardizedJob.companyName.toLowerCase().replace(/[^a-z0-9]/g, '')}_${standardizedJob.source}@example.com`,
-        logo: standardizedJob.companyLogo,
-        website: standardizedJob.companyWebsite,
-        industry: 'Technology' // Default
-      };
-      
-      // Build the raw job object in the expected format for the original JobProcessor
-      const rawJob: EnhancedGreenhouseJob = {
-        id: parseInt(standardizedJob.sourceId, 10), // Convert sourceId back to number if possible
-        title: standardizedJob.title,
-        updated_at: standardizedJob.updatedAt?.toISOString() || new Date().toISOString(),
-        location: { name: standardizedJob.location },
-        content: standardizedJob.description,
-        absolute_url: standardizedJob.applicationUrl || '', // Use applicationUrl as fallback
-        metadata: standardizedJob.metadataRaw || [],
-        departments: [], // Departments not usually in standardized data
-        company: {
-          name: standardizedJob.companyName,
-          boardToken: '', // Placeholder, not critical for processing
-          logo: standardizedJob.companyLogo,
-          website: standardizedJob.companyWebsite
-        },
-        // Add the extra fields we expect in EnhancedGreenhouseJob
-        requirements: standardizedJob.requirements,
-        responsibilities: standardizedJob.responsibilities,
-        benefits: standardizedJob.benefits,
-        jobType: standardizedJob.jobType,
-        experienceLevel: standardizedJob.experienceLevel,
-        skills: standardizedJob.skills,
-        tags: standardizedJob.tags,
-        country: standardizedJob.country,
-        workplaceType: standardizedJob.workplaceType,
-      };
-      
-      // Call the original service
-      logger.debug('Calling JobProcessingService with adapted job data');
-      return await this.jobProcessingService.processAndSaveJob(standardizedJob.source, rawJob);
     } catch (error) {
-      logger.error({ error }, 'Error in JobProcessingAdapter');
+      processLogger.error({ error, rawJobData }, `Unhandled error during processing or saving`);
       return false;
     }
   }
+  
+  // --- Deprecated Method --- 
+  // This method is kept temporarily for backward compatibility if needed,
+  // but the flow should ideally be Fetcher -> processRawJob -> Service.saveOrUpdateJob
+  /**
+   * @deprecated Use processRawJob instead. This method assumes input is already standardized 
+   *             and adapts it to a Greenhouse format, which is incorrect for other sources.
+   */
+  async processAndSaveJob_DEPRECATED(standardizedJob: StandardizedJob): Promise<boolean> {
+     logger.warn("processAndSaveJob_DEPRECATED called - this indicates an old workflow is still in use.");
+     try {
+       if (!standardizedJob.source || !standardizedJob.sourceId) {
+         logger.error('Job missing required source or sourceId');
+         return false;
+       }
+ 
+       // Call the service directly to save/update
+       return await this.jobProcessingService.saveOrUpdateJob(standardizedJob);
+
+     } catch (error) {
+       logger.error({ error }, 'Error in JobProcessingAdapter (Deprecated Method)');
+       return false;
+     }
+   }
 } 

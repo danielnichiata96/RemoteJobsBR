@@ -26,6 +26,7 @@ interface JobsApiResponse {
 
 interface UseJobsSearchProps {
   search?: string;
+  company?: string;
   page?: number;
   limit?: number;
   jobTypes?: string[];
@@ -55,6 +56,7 @@ const fetcher = async (url: string) => {
 
 export function useJobsSearch({ 
   search = '',
+  company = '',
   page = 1,
   limit = 10,
   jobTypes = [],
@@ -67,6 +69,7 @@ export function useJobsSearch({
   params.append('page', page.toString());
   params.append('limit', limit.toString());
   if (search) params.append('q', search);
+  if (company) params.append('company', company);
   if (jobTypes.length) params.append('jobType', jobTypes.join(','));
   if (experienceLevels.length) params.append('experienceLevel', experienceLevels.join(','));
   if (technologies.length) params.append('technologies', technologies.join(','));

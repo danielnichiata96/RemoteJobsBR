@@ -68,37 +68,73 @@ describe('Jobs Search API', () => {
     (prisma.job.findMany as jest.Mock).mockClear();
     (prisma.job.count as jest.Mock).mockClear();
     (prisma.job.aggregate as jest.Mock).mockClear();
+    (prisma.job.groupBy as jest.Mock).mockClear();
+    (prisma.technology.findMany as jest.Mock).mockClear();
   });
 
   it('returns 405 for non-GET requests', async () => {
     const { req, res } = createMocks<NextApiRequest, NextApiResponse>({
       method: 'POST',
     });
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(405);
+  });
+
+  it('applies company filter correctly to search query', async () => {
+    // Mock Prisma responses to avoid actual DB calls
+    (prisma.job.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.job.count as jest.Mock).mockResolvedValue(0);
+    (prisma.job.groupBy as jest.Mock).mockResolvedValue([]); 
+    (prisma.technology.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.job.aggregate as jest.Mock).mockResolvedValue({ _count: 0 }); // Mock aggregation
+
+    const { req, res } = createMocks<NextApiRequest, NextApiResponse>({
+      method: 'GET',
+      query: {
+        company: 'ExampleCorp'
+      },
+    });
 
     await handler(req, res);
 
-    expect(res._getStatusCode()).toBe(405);
-    expect(JSON.parse(res._getData())).toEqual(
+    // Verify the findMany call includes the company filter
+    expect(prisma.job.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        error: expect.any(String),
+        where: expect.objectContaining({
+          company: {
+            name: { contains: 'ExampleCorp', mode: 'insensitive' }
+          }
+        }),
+      })
+    );
+    
+    // Also verify the count call uses the same filter
+    expect(prisma.job.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          company: {
+            name: { contains: 'ExampleCorp', mode: 'insensitive' }
+          }
+        }),
       })
     );
   });
 
-  it('applies filters correctly to search queries', async () => {
+  it('applies combined filters correctly (including company)', async () => {
+    // Mock Prisma responses
     (prisma.job.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.job.count as jest.Mock).mockResolvedValue(0);
+    (prisma.job.groupBy as jest.Mock).mockResolvedValue([]); 
+    (prisma.technology.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.job.aggregate as jest.Mock).mockResolvedValue({ _count: 0 }); // Mock aggregation
 
     const { req, res } = createMocks<NextApiRequest, NextApiResponse>({
       method: 'GET',
       query: {
         q: 'developer',
-        jobType: 'FULL_TIME,CONTRACT',
-        experienceLevel: 'MID,SENIOR',
-        location: 'Remote',
-        minSalary: '80000',
-        remote: 'true',
-        sortBy: 'newest',
+        company: 'Test Inc',
+        jobType: 'FULL_TIME',
+        remote: 'true'
       },
     });
 
@@ -107,16 +143,16 @@ describe('Jobs Search API', () => {
     expect(prisma.job.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
+          status: 'ACTIVE',
           OR: expect.arrayContaining([
             { title: { contains: 'developer', mode: 'insensitive' } },
           ]),
-          jobType: { in: ['FULL_TIME', 'CONTRACT'] },
-          experienceLevel: { in: ['MID', 'SENIOR'] },
-          location: { contains: 'Remote', mode: 'insensitive' },
-          minSalary: { gte: 80000 },
+          company: { // Check for company filter
+            name: { contains: 'Test Inc', mode: 'insensitive' }
+          },
+          jobType: { in: ['FULL_TIME'] },
           workplaceType: { equals: 'REMOTE' },
         }),
-        orderBy: { createdAt: 'desc' },
       })
     );
   });

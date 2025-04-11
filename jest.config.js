@@ -31,6 +31,8 @@ const customJestConfig = {
     // Force resolution of preact to its CJS build to avoid ESM issues
     '^preact$': '<rootDir>/node_modules/preact/dist/preact.js',
     '^preact/hooks$': '<rootDir>/node_modules/preact/hooks/dist/hooks.js', // Also map hooks if used
+    // Map cheerio to its default CJS entry point via standard resolution
+    '^cheerio$': 'cheerio', 
   },
   
   // Test spec file matching patterns

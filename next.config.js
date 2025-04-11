@@ -43,16 +43,6 @@ const nextConfig = {
     locales: ['pt-BR', 'en-US'],
     defaultLocale: 'pt-BR',
   },
-  
-  // Optional: Configure source maps upload to Sentry when building for production
-  sentry: {
-    // Use 'hidden-source-map' in production to hide source maps from browser devtools
-    // but still upload to Sentry
-    hideSourceMaps: process.env.NODE_ENV === 'production',
-    
-    // Silences source map uploading logs during build
-    silent: true,
-  },
 }
 
 // Define Sentry configuration options

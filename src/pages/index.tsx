@@ -14,6 +14,7 @@ import JobFilters from '@/components/jobs/JobFilters';
 // Define type for the filter state object used for communication
 export type FilterState = {
   searchTerm: string;
+  companyName: string;
   jobTypes: string[];
   experienceLevels: string[];
   technologies: string[];
@@ -37,6 +38,7 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const [currentFilters, setCurrentFilters] = useState<FilterState>({
     searchTerm: '',
+    companyName: '',
     jobTypes: [],
     experienceLevels: [],
     technologies: [],
@@ -49,6 +51,7 @@ export default function Home() {
     const { query } = router;
     const initialFilters: Partial<FilterState> = {}; // Use Partial for incremental build
     if (query.q) initialFilters.searchTerm = query.q as string;
+    if (query.company) initialFilters.companyName = query.company as string;
     if (query.jobType) initialFilters.jobTypes = (query.jobType as string).split(',').filter(Boolean);
     if (query.experienceLevel) initialFilters.experienceLevels = (query.experienceLevel as string).split(',').filter(Boolean);
     if (query.technologies) initialFilters.technologies = (query.technologies as string).split(',').filter(Boolean);
@@ -71,6 +74,7 @@ export default function Home() {
   // Fetch data using the hook
   const { jobs, pagination, isLoading, isError, error, aggregations } = useJobsSearch({
     search: currentFilters.searchTerm,
+    company: currentFilters.companyName,
     page: currentPage,
     limit: 10,
     jobTypes: currentFilters.jobTypes,
@@ -112,6 +116,7 @@ export default function Home() {
   const updateRouterQuery = useCallback((filters: FilterState, page: number, sort: SortByType) => {
     const queryParams: Record<string, string> = {};
     if (filters.searchTerm) queryParams.q = filters.searchTerm;
+    if (filters.companyName) queryParams.company = filters.companyName;
     if (filters.jobTypes.length) queryParams.jobType = filters.jobTypes.join(',');
     if (filters.experienceLevels.length) queryParams.experienceLevel = filters.experienceLevels.join(',');
     if (filters.technologies.length) queryParams.technologies = filters.technologies.join(',');
@@ -127,11 +132,12 @@ export default function Home() {
   }, [router]);
 
   // --- Handler for updates coming FROM JobFilters component ---
-  const handleFilterUpdate = useCallback((newFilters: FilterState) => {
-    setCurrentFilters(newFilters); // Update the page's filter state
+  const handleFilterUpdate = useCallback((newFilters: Partial<FilterState>) => {
+    const updatedFilters = { ...currentFilters, ...newFilters };
+    setCurrentFilters(updatedFilters);
     setCurrentPage(1); // Reset page number on filter change
-    updateRouterQuery(newFilters, 1, sortBy); // Update URL
-  }, [sortBy, updateRouterQuery]);
+    updateRouterQuery(updatedFilters, 1, sortBy); // Update URL
+  }, [currentFilters, sortBy, updateRouterQuery]);
 
   // --- Handlers for actions managed directly by the Page (Pagination, Sorting) ---
   const handleSortChange = useCallback((value: string | number) => {
@@ -213,6 +219,7 @@ export default function Home() {
         {/* Render the JobFilters component */}
         <JobFilters
           searchTerm={currentFilters.searchTerm}
+          companyName={currentFilters.companyName}
           selectedJobTypes={currentFilters.jobTypes}
           selectedExperienceLevels={currentFilters.experienceLevels}
           selectedTechnologies={currentFilters.technologies}
@@ -220,43 +227,43 @@ export default function Home() {
           aggregations={aggregations}
           
           // Pass callback handlers down
-          onSearchTermChange={(value) => handleFilterUpdate({ ...currentFilters, searchTerm: value })}
+          onSearchTermChange={(value) => handleFilterUpdate({ searchTerm: value })}
+          onCompanyNameChange={(value) => handleFilterUpdate({ companyName: value })}
           onJobTypeChange={(value) => {
             const newSelection = currentFilters.jobTypes.includes(value)
               ? currentFilters.jobTypes.filter(type => type !== value)
               : [...currentFilters.jobTypes, value];
-            handleFilterUpdate({ ...currentFilters, jobTypes: newSelection });
+            handleFilterUpdate({ jobTypes: newSelection });
           }}
           onExperienceLevelChange={(value) => {
              const newSelection = currentFilters.experienceLevels.includes(value)
               ? currentFilters.experienceLevels.filter(level => level !== value)
               : [...currentFilters.experienceLevels, value];
-             handleFilterUpdate({ ...currentFilters, experienceLevels: newSelection });
+             handleFilterUpdate({ experienceLevels: newSelection });
           }}
           onTechnologyChange={(value) => {
             const newSelection = currentFilters.technologies.includes(value)
               ? currentFilters.technologies.filter(tech => tech !== value)
               : [...currentFilters.technologies, value];
-            handleFilterUpdate({ ...currentFilters, technologies: newSelection });
+            handleFilterUpdate({ technologies: newSelection });
           }}
            onRemoteChange={() => {
-             handleFilterUpdate({ ...currentFilters, isRemoteOnly: !currentFilters.isRemoteOnly });
+             handleFilterUpdate({ isRemoteOnly: !currentFilters.isRemoteOnly });
            }}
           onClearFilters={() => {
              const clearedFilters: FilterState = {
                searchTerm: '',
+               companyName: '',
                jobTypes: [],
                experienceLevels: [],
                technologies: [],
                isRemoteOnly: false,
              };
-            handleFilterUpdate(clearedFilters);
-             // Optionally reset sort as well? 
-             // setSortBy('newest'); updateRouterQuery(clearedFilters, 1, 'newest');
+             handleFilterUpdate(clearedFilters);
           }}
-          onSearchSubmit={(e) => {
+          onSearchSubmit={(e) => { 
             e?.preventDefault();
-            handleFilterUpdate(currentFilters); // Re-apply current filters (resets page to 1)
+            updateRouterQuery(currentFilters, 1, sortBy);
           }}
         />
 
@@ -264,10 +271,10 @@ export default function Home() {
         {(() => {
           const activeChips = [];
           if (currentFilters.searchTerm) {
-            activeChips.push({ type: 'search', label: `Busca: "${currentFilters.searchTerm}"`, onRemove: () => handleFilterUpdate({ ...currentFilters, searchTerm: '' }) });
+            activeChips.push({ type: 'search', label: `Busca: "${currentFilters.searchTerm}"`, onRemove: () => handleFilterUpdate({ searchTerm: '' }) });
           }
           if (currentFilters.isRemoteOnly) {
-            activeChips.push({ type: 'remote', label: 'Apenas Remoto', onRemove: () => handleFilterUpdate({ ...currentFilters, isRemoteOnly: false }) });
+            activeChips.push({ type: 'remote', label: 'Apenas Remoto', onRemove: () => handleFilterUpdate({ isRemoteOnly: false }) });
           }
           
           // Chip generation for JobType
@@ -276,7 +283,7 @@ export default function Home() {
               const option = jobTypeOptions.find(o => o.value === jt);
               activeChips.push({ type: 'jobType', value: jt, label: `Tipo: ${option?.label || jt}`, onRemove: () => {
                   const newSelection = currentFilters.jobTypes.filter(type => type !== jt);
-                  handleFilterUpdate({ ...currentFilters, jobTypes: newSelection });
+                  handleFilterUpdate({ jobTypes: newSelection });
               } });
           });
 
@@ -285,7 +292,7 @@ export default function Home() {
              const option = experienceLevelOptions.find(o => o.value === el);
              activeChips.push({ type: 'experience', value: el, label: `Nível: ${option?.label || el}`, onRemove: () => {
                  const newSelection = currentFilters.experienceLevels.filter(level => level !== el);
-                 handleFilterUpdate({ ...currentFilters, experienceLevels: newSelection });
+                 handleFilterUpdate({ experienceLevels: newSelection });
              } });
           });
 
@@ -294,7 +301,7 @@ export default function Home() {
               // Tech labels are just the value itself for now
              activeChips.push({ type: 'technology', value: tech, label: `Tec: ${tech}`, onRemove: () => {
                  const newSelection = currentFilters.technologies.filter(t => t !== tech);
-                 handleFilterUpdate({ ...currentFilters, technologies: newSelection });
+                 handleFilterUpdate({ technologies: newSelection });
              } });
           });
            

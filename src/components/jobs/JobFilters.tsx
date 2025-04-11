@@ -6,11 +6,13 @@ type FilterAggregations = {
     jobTypes?: { [key: string]: number };
     experienceLevels?: { [key: string]: number };
     technologies?: { [key: string]: number };
+    // Add company aggregations if needed later
 };
 
 type JobFiltersProps = {
     // Filter Values
     searchTerm: string;
+    companyName: string; // Added company name filter
     selectedJobTypes: string[];
     selectedExperienceLevels: string[];
     selectedTechnologies: string[];
@@ -18,12 +20,13 @@ type JobFiltersProps = {
 
     // Handlers / Callbacks
     onSearchTermChange: (value: string) => void;
+    onCompanyNameChange: (value: string) => void; // Added handler for company name
     onJobTypeChange: (value: string) => void;
     onExperienceLevelChange: (value: string) => void;
     onTechnologyChange: (value: string) => void;
     onRemoteChange: () => void;
     onClearFilters: () => void;
-    onSearchSubmit: (e?: React.FormEvent) => void; // Renamed from onApplyFilters / handleSearch
+    onSearchSubmit: (e?: React.FormEvent) => void;
 
     // Data for display
     aggregations?: FilterAggregations;
@@ -59,11 +62,13 @@ const technologyOptions = [
 
 export default function JobFilters({
     searchTerm: initialSearchTerm,
+    companyName: initialCompanyName, // Added
     selectedJobTypes,
     selectedExperienceLevels,
     selectedTechnologies,
     isRemoteOnly,
     onSearchTermChange,
+    onCompanyNameChange, // Added
     onJobTypeChange,
     onExperienceLevelChange,
     onTechnologyChange,
@@ -74,24 +79,40 @@ export default function JobFilters({
 }: JobFiltersProps) {
     const [showFilters, setShowFilters] = useState(false);
     const [localSearchTerm, setLocalSearchTerm] = useState(initialSearchTerm);
+    const [localCompanyName, setLocalCompanyName] = useState(initialCompanyName); // Added state for company name
+    
     const debouncedSearchTerm = useDebounce(localSearchTerm, 500);
+    const debouncedCompanyName = useDebounce(localCompanyName, 500); // Added debounce for company name
 
+    // Effect for main search term
     useEffect(() => {
         if (debouncedSearchTerm !== initialSearchTerm) {
             onSearchTermChange(debouncedSearchTerm);
         }
     }, [debouncedSearchTerm, initialSearchTerm, onSearchTermChange]);
 
+    // Effect for company name search term
+    useEffect(() => {
+        if (debouncedCompanyName !== initialCompanyName) {
+            onCompanyNameChange(debouncedCompanyName);
+        }
+    }, [debouncedCompanyName, initialCompanyName, onCompanyNameChange]);
+
+    // Sync local states if props change from URL etc.
     useEffect(() => {
         setLocalSearchTerm(initialSearchTerm);
     }, [initialSearchTerm]);
+
+    useEffect(() => {
+        setLocalCompanyName(initialCompanyName);
+    }, [initialCompanyName]);
 
     const handleFilterToggle = () => {
         setShowFilters(!showFilters);
     };
 
     const handleApplyAndClose = () => {
-        onSearchSubmit();
+        onSearchSubmit(); // Submit is handled by parent based on debounced values
         setShowFilters(false);
     };
 
@@ -106,7 +127,7 @@ export default function JobFilters({
                         <div className="flex-grow">
                             <input
                                 type="text"
-                                placeholder="Busque por cargo, tecnologia ou empresa..."
+                                placeholder="Busque por cargo ou tecnologia..."
                                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-primary-500 focus:border-primary-500"
                                 value={localSearchTerm}
                                 onChange={(e) => setLocalSearchTerm(e.target.value)}
@@ -132,7 +153,17 @@ export default function JobFilters({
 
                     {showFilters && (
                         <div className="mt-4 bg-white p-6 rounded-lg shadow-md border border-gray-200">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6"> {/* Changed to 4 columns */}
+                                <div>
+                                    <h3 className="font-medium text-gray-900 mb-3">Nome da Empresa</h3>
+                                    <input
+                                        type="text"
+                                        placeholder="Digite o nome da empresa..."
+                                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                                        value={localCompanyName}
+                                        onChange={(e) => setLocalCompanyName(e.target.value)}
+                                    />
+                                </div>
                                 <div>
                                     <h3 className="font-medium text-gray-900 mb-3">Tipo de Contrato</h3>
                                     <div className="space-y-2">
@@ -204,7 +235,7 @@ export default function JobFilters({
                                         })}
                                     </div>
                                 </div>
-                                <div>
+                                <div className="md:col-span-1"> {/* Adjust span if needed */}
                                     <h3 className="font-medium text-gray-900 mb-3">Localização</h3>
                                     <div className="space-y-2">
                                        <label className="flex items-center cursor-pointer">

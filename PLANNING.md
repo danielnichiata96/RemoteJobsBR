@@ -11,7 +11,7 @@
 
 ## 1. Project Purpose & Vision
 
-*   **Core Goal:** Create a website aggregating international remote job opportunities specifically curated for Brazilian applicants.
+*   **Core Goal:** Create a website aggregating international remote job opportunities specifically curated for Brazilian applicants. Only 100% Remote jobs
 *   **Target Audience:** Brazilian professionals seeking 100% remote work with international companies.
 *   **Job Board Model:** Functioning as a job listing aggregator (similar to Remotive, Remote OK) that redirects users to external application pages rather than handling applications directly.
 
@@ -53,7 +53,7 @@
 *   **Package Manager:** npm (or yarn)
 *   **Linting:** ESLint (configured for Next.js)
 *   **Deployment:** Vercel
-*   **Other Libraries:** `axios`, `date-fns`, `react-hook-form`, `zod`, `swr`, `bcryptjs`, `@sendgrid/mail` / `nodemailer` (for email)
+*   **Other Libraries:** `axios`, `date-fns`, `react-hook-form`, `zod`, `swr`, `bcryptjs`, `@sendgrid/mail` / `nodemailer` (for email), `cheerio` (for HTML parsing)
 
 ## 4. Development Guidelines & Constraints
 

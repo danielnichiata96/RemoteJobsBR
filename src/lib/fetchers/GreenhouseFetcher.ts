@@ -110,51 +110,22 @@ export class GreenhouseFetcher implements JobFetcher {
                             `➡️ Relevant job found`
                         );
 
-                        const sections = this._extractSectionsFromContent(job.content);
-                        const companyName = job.company?.name || source.name;
-
-                        const standardizedJobData: StandardizedJob = {
-                            source: 'greenhouse',
-                            sourceId: `${job.id}`,
-                            title: job.title,
-                            description: job.content, // Store raw HTML initially?
-                            applicationUrl: job.absolute_url,
-                            companyName: companyName,
-                            location: relevanceResult.type === 'latam' ? 'Remote - Latin America' : 'Remote - Worldwide',
-                            requirements: sections.requirements,
-                            responsibilities: sections.responsibilities,
-                            benefits: sections.benefits,
-                            publishedAt: new Date(job.updated_at),
-                            updatedAt: new Date(job.updated_at),
-                            status: JobStatus.ACTIVE,
-                            company: { // Assuming we have a company relation to connect
-                                connectOrCreate: {
-                                    where: { name: companyName }, // Need a unique constraint on company name?
-                                    create: { name: companyName },
-                                }
-                            },
-                            // Fields needing detection/defaults
-                            jobType: detectJobType(job.title, job.content),
-                            experienceLevel: detectExperienceLevel(job.title, job.content),
-                            skills: extractSkills(job.content),
-                            tags: extractSkills(job.content),
-                            country: relevanceResult.type === 'latam' ? 'LATAM' : 'Worldwide',
-                            workplaceType: 'REMOTE'
-                        };
-
-                        const saved = await this.jobProcessor.processAndSaveJob(standardizedJobData);
+                        // Pass the raw Greenhouse job object to the adapter
+                        const saved = await this.jobProcessor.processRawJob('greenhouse', job);
+                        
                         if (saved) {
                             stats.processed++;
-                            sourceLogger.debug({ jobId: job.id }, 'Job processed/saved by service.');
+                            sourceLogger.debug({ jobId: job.id }, 'Job processed/saved via adapter.');
                         } else {
-                            sourceLogger.warn({ jobId: job.id, jobTitle: job.title }, 'Job relevant but not saved/updated by service (likely duplicate or internal issue).');
+                            // Logging handled within adapter/processor
+                             sourceLogger.warn({ jobId: job.id, jobTitle: job.title }, 'Adapter reported job not saved (processor failure, irrelevant, or save issue).');
                         }
                     } else {
                         sourceLogger.trace({ jobId: job.id, jobTitle: job.title, reason: relevanceResult.reason }, `Job skipped as irrelevant`);
                     }
-                } catch (jobError) {
+                } catch (jobError) { // Catch errors during relevance check or adapter call
                     stats.errors++;
-                    sourceLogger.error({ jobId: job.id, jobTitle: job?.title, error: jobError }, '❌ Error processing individual job');
+                    sourceLogger.error({ jobId: job.id, jobTitle: job?.title, error: jobError }, '❌ Error processing individual job or calling adapter');
                 }
             }, { concurrency: 5, stopOnError: false });
 

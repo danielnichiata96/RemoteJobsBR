@@ -5,11 +5,13 @@ import JobFilters, { FilterState } from '@/components/jobs/JobFilters'; // Adjus
 // Mock props generator
 const getMockProps = (overrides: Partial<React.ComponentProps<typeof JobFilters>> = {}): React.ComponentProps<typeof JobFilters> => ({
     searchTerm: '',
+    companyName: '',
     selectedJobTypes: [],
     selectedExperienceLevels: [],
     selectedTechnologies: [],
     isRemoteOnly: false,
     onSearchTermChange: jest.fn(),
+    onCompanyNameChange: jest.fn(),
     onJobTypeChange: jest.fn(),
     onExperienceLevelChange: jest.fn(),
     onTechnologyChange: jest.fn(),
@@ -22,14 +24,17 @@ const getMockProps = (overrides: Partial<React.ComponentProps<typeof JobFilters>
 
 describe('<JobFilters />', () => {
 
-    it('renders the search input and filter toggle button', () => {
+    it('renders the main search input and filter toggle button', () => {
         render(<JobFilters {...getMockProps()} />);
-
-        // Check for search input placeholder
-        expect(screen.getByPlaceholderText(/Busque por cargo, tecnologia ou empresa/i)).toBeInTheDocument();
-
-        // Check for filter toggle button
+        expect(screen.getByPlaceholderText(/Busque por cargo ou tecnologia/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /filtros/i })).toBeInTheDocument();
+    });
+
+    it('renders company name input when filters are open', () => {
+        render(<JobFilters {...getMockProps()} />);
+        const toggleButton = screen.getByRole('button', { name: /filtros/i });
+        fireEvent.click(toggleButton);
+        expect(screen.getByPlaceholderText(/Digite o nome da empresa/i)).toBeInTheDocument();
     });
 
     it('does not show filter options initially', () => {
@@ -56,17 +61,25 @@ describe('<JobFilters />', () => {
         expect(screen.queryByRole('heading', { name: /tipo de contrato/i })).not.toBeInTheDocument();
     });
 
-    it('updates search input value correctly', () => {
+    it('updates main search input value correctly', () => {
         const mockHandler = jest.fn();
         render(<JobFilters {...getMockProps({ onSearchTermChange: mockHandler })} />);
-        const searchInput = screen.getByPlaceholderText(/Busque por cargo, tecnologia ou empresa/i) as HTMLInputElement;
-
+        const searchInput = screen.getByPlaceholderText(/Busque por cargo ou tecnologia/i) as HTMLInputElement;
         fireEvent.change(searchInput, { target: { value: 'React Developer' } });
-
-        // Check the input value itself, not the debounced handler call
         expect(searchInput.value).toBe('React Developer'); 
-        // Handler should NOT be called immediately due to debounce
         expect(mockHandler).not.toHaveBeenCalled(); 
+    });
+
+    it('updates company name input value correctly', () => {
+        const mockHandler = jest.fn();
+        render(<JobFilters {...getMockProps({ onCompanyNameChange: mockHandler })} />);
+        const toggleButton = screen.getByRole('button', { name: /filtros/i });
+        fireEvent.click(toggleButton); // Open filters
+
+        const companyInput = screen.getByPlaceholderText(/Digite o nome da empresa/i) as HTMLInputElement;
+        fireEvent.change(companyInput, { target: { value: 'Tech Solutions' } });
+        expect(companyInput.value).toBe('Tech Solutions');
+        expect(mockHandler).not.toHaveBeenCalled(); // Handler should not be called immediately due to debounce
     });
 
     it('assigns onJobTypeChange handler to the job type checkbox onChange prop', async () => {
@@ -204,7 +217,7 @@ describe('<JobFilters />', () => {
         const delay = 500; // Ensure this matches the hook's delay
 
         render(<JobFilters {...getMockProps({ onSearchTermChange: mockHandler })} />);
-        const searchInput = screen.getByPlaceholderText(/Busque por cargo, tecnologia ou empresa/i);
+        const searchInput = screen.getByPlaceholderText(/Busque por cargo ou tecnologia/i);
 
         // Simulate typing quickly
         await act(async () => {
@@ -241,6 +254,35 @@ describe('<JobFilters />', () => {
         });
         expect(mockHandler).toHaveBeenCalledTimes(2);
         expect(mockHandler).toHaveBeenCalledWith('Developer');
+
+        jest.useRealTimers();
+    });
+
+    it('debounces company name input before calling onCompanyNameChange', async () => {
+        jest.useFakeTimers();
+        const mockHandler = jest.fn();
+        const delay = 500; // Match the hook's delay
+
+        render(<JobFilters {...getMockProps({ onCompanyNameChange: mockHandler })} />);
+        const toggleButton = screen.getByRole('button', { name: /filtros/i });
+        fireEvent.click(toggleButton); // Open filters
+
+        const companyInput = screen.getByPlaceholderText(/Digite o nome da empresa/i);
+
+        // Simulate typing
+        await act(async () => {
+             fireEvent.change(companyInput, { target: { value: 'Global' } });
+             fireEvent.change(companyInput, { target: { value: 'Global Corp' } });
+        });
+
+        expect(mockHandler).not.toHaveBeenCalled();
+
+        // Advance time past the delay
+        await act(async () => {
+            jest.advanceTimersByTime(delay);
+        });
+        expect(mockHandler).toHaveBeenCalledTimes(1);
+        expect(mockHandler).toHaveBeenCalledWith('Global Corp');
 
         jest.useRealTimers();
     });

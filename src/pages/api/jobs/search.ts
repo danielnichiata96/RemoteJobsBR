@@ -25,6 +25,7 @@ const generateCacheKey = (query: NodeJS.Dict<string | string[]>): string => {
 // Define a interface para os parâmetros de pesquisa
 interface SearchParams {
   query?: string;
+  company?: string;
   page?: number;
   limit?: number;
   jobType?: JobType[];
@@ -74,6 +75,7 @@ export default async function handler(
     // Extrair e transformar parâmetros de pesquisa
     const searchParams: SearchParams = {
       query: req.query.q as string,
+      company: req.query.company as string,
       page: req.query.page ? parseInt(req.query.page as string) : 1,
       limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
       jobType: req.query.jobType ? (req.query.jobType as string).split(',') as JobType[] : undefined,
@@ -91,7 +93,7 @@ export default async function handler(
     };
 
     // Preparar parâmetros para o Prisma
-    const { query, page, limit, ...filters } = searchParams;
+    const { query, company, page, limit, ...filters } = searchParams;
     const skip = (page - 1) * limit;
     
     // Construir o objeto de filtros
@@ -107,6 +109,13 @@ export default async function handler(
         { requirements: { contains: query, mode: 'insensitive' } },
         { tags: { hasSome: [query] } }
       ];
+    }
+    
+    // Company Name Filter
+    if (company) {
+      whereClause.company = {
+        name: { contains: company, mode: 'insensitive' }
+      };
     }
     
     // Aplicar filtros adicionais
