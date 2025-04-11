@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '@/lib/prisma';
-import { JobStatus, JobType, ExperienceLevel } from '@prisma/client';
+import { JobStatus, JobType, ExperienceLevel, Prisma } from '@prisma/client';
 
 // Define a interface para os parâmetros de pesquisa
 interface SearchParams {
@@ -16,8 +16,16 @@ interface SearchParams {
   tags?: string[];
   visas?: string[];
   languages?: string[];
+  technologies?: string[];
   remote?: boolean;
   sortBy?: 'newest' | 'salary' | 'relevance';
+}
+
+// Define type for aggregation results
+interface FilterAggregations {
+  jobTypes: { [key in JobType]?: number };
+  experienceLevels: { [key in ExperienceLevel]?: number };
+  technologies: { [key: string]: number }; // Keyed by technology name
 }
 
 export default async function handler(
@@ -44,6 +52,7 @@ export default async function handler(
       tags: req.query.tags ? (req.query.tags as string).split(',') : undefined,
       visas: req.query.visas ? (req.query.visas as string).split(',') : undefined,
       languages: req.query.languages ? (req.query.languages as string).split(',') : undefined,
+      technologies: req.query.technologies ? (req.query.technologies as string).split(',').filter(Boolean) : undefined,
       remote: req.query.remote === 'true',
       sortBy: (req.query.sortBy as 'newest' | 'salary' | 'relevance') || 'newest'
     };
@@ -96,6 +105,17 @@ export default async function handler(
       whereClause.tags = { hasSome: filters.tags };
     }
     
+    if (filters.technologies && filters.technologies.length > 0) {
+      whereClause.technologies = {
+        some: {
+          name: {
+            in: filters.technologies,
+            mode: 'insensitive'
+          }
+        }
+      };
+    }
+    
     if (filters.visas && filters.visas.length > 0) {
       whereClause.visas = { hasSome: filters.visas };
     }
@@ -126,47 +146,116 @@ export default async function handler(
         break;
     }
 
-    // Buscar vagas com contagem total
-    const [jobs, totalCount] = await Promise.all([
+    // Define includes needed for job list (separate from aggregations)
+    const jobSelectClause = {
+      id: true,
+      title: true,
+      companyId: true,
+      company: {
+        select: {
+          name: true,
+          logo: true
+        }
+      },
+      location: true,
+      country: true,
+      minSalary: true,
+      maxSalary: true,
+      currency: true,
+      salaryCycle: true,
+      jobType: true,
+      experienceLevel: true,
+      workplaceType: true,
+      tags: true,
+      visas: true,
+      languages: true,
+      technologies: {
+        select: {
+          id: true,
+          name: true
+        }
+      },
+      createdAt: true,
+      publishedAt: true,
+      viewCount: true,
+      _count: {
+        select: {
+          savedBy: true
+        }
+      }
+    };
+
+    // Perform all queries concurrently
+    const [jobs, totalCount, jobTypeCounts, experienceLevelCounts, technologyCountsResult] = await Promise.all([
+      // 1. Fetch jobs for the current page
       prisma.job.findMany({
         where: whereClause,
         orderBy,
         skip,
         take: limit,
-        select: {
-          id: true,
-          title: true,
-          companyId: true,
-          company: {
-            select: {
-              name: true,
-              logo: true
-            }
-          },
-          location: true,
-          country: true,
-          minSalary: true,
-          maxSalary: true,
-          currency: true,
-          salaryCycle: true,
+        select: jobSelectClause
+      }),
+      // 2. Get total count matching filters (for pagination)
+      prisma.job.count({ where: whereClause }),
+      // 3. Get counts for job types
+      prisma.job.groupBy({
+        by: ['jobType'],
+        where: whereClause,
+        _count: {
           jobType: true,
+        },
+        having: {
+          jobType: { not: null } // Exclude nulls if jobType is optional
+        }
+      }),
+      // 4. Get counts for experience levels
+      prisma.job.groupBy({
+        by: ['experienceLevel'],
+        where: whereClause,
+        _count: {
           experienceLevel: true,
-          workplaceType: true,
-          tags: true,
-          visas: true,
-          languages: true,
-          createdAt: true,
-          publishedAt: true,
-          viewCount: true,
+        },
+        having: {
+          experienceLevel: { not: null } // Exclude nulls
+        }
+      }),
+      // 5. Get counts for technologies (more complex due to many-to-many)
+      prisma.technology.findMany({
+        where: {
+          jobs: { some: whereClause } // Find technologies linked to jobs matching the main filters
+        },
+        select: {
+          name: true,
           _count: {
             select: {
-              savedBy: true
+              jobs: { where: whereClause } // Count jobs matching main filters for THIS technology
             }
           }
         }
-      }),
-      prisma.job.count({ where: whereClause })
+      })
     ]);
+
+    // Process aggregations into a structured object
+    const aggregations: FilterAggregations = {
+      jobTypes: jobTypeCounts.reduce((acc, item) => {
+        if (item.jobType) {
+           acc[item.jobType] = item._count.jobType;
+        }
+        return acc;
+      }, {} as FilterAggregations['jobTypes']),
+      experienceLevels: experienceLevelCounts.reduce((acc, item) => {
+        if (item.experienceLevel) {
+          acc[item.experienceLevel] = item._count.experienceLevel;
+        }
+        return acc;
+      }, {} as FilterAggregations['experienceLevels']),
+       technologies: technologyCountsResult.reduce((acc, item) => {
+         if (item.name && item._count.jobs > 0) { // Only include techs with matching jobs
+            acc[item.name] = item._count.jobs;
+         }
+         return acc;
+       }, {} as FilterAggregations['technologies'])
+    };
 
     // Calcular metadados da paginação
     const totalPages = Math.ceil(totalCount / limit);
@@ -186,10 +275,22 @@ export default async function handler(
       filters: {
         ...filters,
         query
-      }
+      },
+      aggregations
     });
   } catch (error) {
-    console.error('Erro na pesquisa de vagas:', error);
-    return res.status(500).json({ error: 'Erro ao processar a solicitação' });
+    // Ensure error is logged appropriately
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      // Handle known Prisma errors (e.g., unique constraint violation, record not found)
+      console.error('Prisma Error Code:', error.code, error.message);
+      // Potentially return a more specific error status/message
+    } else if (error instanceof Error) {
+       // Handle generic errors
+       console.error('Generic Error in job search:', error.message, error.stack);
+    } else {
+       // Handle unexpected error types
+       console.error('Unexpected Error in job search:', error);
+    }
+    return res.status(500).json({ error: 'Erro ao processar a solicitação de pesquisa de vagas' });
   }
 } 

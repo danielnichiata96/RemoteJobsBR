@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/common/Layout';
 import Link from 'next/link';
@@ -9,6 +9,16 @@ import JobListSkeleton from '@/components/jobs/JobListSkeleton';
 import { useJobsSearch } from '@/hooks/useJobsSearch';
 import { Job } from '@/types/models';
 import CustomSelect from '@/components/common/CustomSelect';
+import JobFilters from '@/components/jobs/JobFilters';
+
+// Define type for the filter state object used for communication
+export type FilterState = {
+  searchTerm: string;
+  jobTypes: string[];
+  experienceLevels: string[];
+  technologies: string[];
+  isRemoteOnly: boolean;
+};
 
 // Define valid sort options type (copied from jobs/index.tsx)
 type SortByType = 'newest' | 'salary' | 'relevance';
@@ -20,39 +30,53 @@ const sortOptions = [
   { value: 'relevance', label: 'Relevância' },
 ];
 
-export default function Home(props: {}) {
+export default function Home() {
   const router = useRouter();
 
   // State variables (copied from jobs/index.tsx)
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([]);
-  const [selectedExperienceLevels, setSelectedExperienceLevels] = useState<string[]>([]);
-  const [isRemoteOnly, setIsRemoteOnly] = useState<boolean>(false);
+  const [currentFilters, setCurrentFilters] = useState<FilterState>({
+    searchTerm: '',
+    jobTypes: [],
+    experienceLevels: [],
+    technologies: [],
+    isRemoteOnly: false,
+  });
   const [sortBy, setSortBy] = useState<SortByType>('newest');
 
   // Parse initial filters and sort from URL query (copied from jobs/index.tsx)
   useEffect(() => {
     const { query } = router;
+    const initialFilters: Partial<FilterState> = {}; // Use Partial for incremental build
+    if (query.q) initialFilters.searchTerm = query.q as string;
+    if (query.jobType) initialFilters.jobTypes = (query.jobType as string).split(',').filter(Boolean);
+    if (query.experienceLevel) initialFilters.experienceLevels = (query.experienceLevel as string).split(',').filter(Boolean);
+    if (query.technologies) initialFilters.technologies = (query.technologies as string).split(',').filter(Boolean);
+    if (query.remote === 'true') initialFilters.isRemoteOnly = true;
+    
+    // Update state only if there are changes from initial empty state or previous query
+    setCurrentFilters(prev => ({ ...prev, ...initialFilters }));
+
+    // Parse page and sort separately
     if (query.page) setCurrentPage(parseInt(query.page as string));
-    if (query.q) setSearchTerm(query.q as string);
-    if (query.jobType) setSelectedJobTypes((query.jobType as string).split(',').filter(Boolean));
-    if (query.experienceLevel) setSelectedExperienceLevels((query.experienceLevel as string).split(',').filter(Boolean));
-    if (query.remote === 'true') setIsRemoteOnly(true);
+    else setCurrentPage(1); // Reset page if not in query
+
     if (query.sortBy && ['newest', 'salary', 'relevance'].includes(query.sortBy as string)) {
       setSortBy(query.sortBy as SortByType);
+    } else {
+      setSortBy('newest'); // Reset sort if not in query
     }
-  }, [router.query]);
+  }, [router.query]); // Dependency array includes router.query
 
-  // Fetch data using the hook (copied from jobs/index.tsx)
-  const { jobs, pagination, isLoading, isError, error } = useJobsSearch({
-    search: searchTerm,
+  // Fetch data using the hook
+  const { jobs, pagination, isLoading, isError, error, aggregations } = useJobsSearch({
+    search: currentFilters.searchTerm,
     page: currentPage,
-    limit: 10, // Or your desired limit
-    jobTypes: selectedJobTypes,
-    experienceLevels: selectedExperienceLevels,
-    remote: isRemoteOnly,
+    limit: 10,
+    jobTypes: currentFilters.jobTypes,
+    experienceLevels: currentFilters.experienceLevels,
+    technologies: currentFilters.technologies,
+    remote: currentFilters.isRemoteOnly,
     sortBy: sortBy,
   });
 
@@ -72,94 +96,58 @@ export default function Home(props: {}) {
     { value: 'LEAD', label: 'Líder' },
   ];
   
-  // Handlers and updateRouterQuery (copied from jobs/index.tsx)
-  const updateRouterQuery = (newParams = {}) => {
-    const currentQuery = { ...router.query };
+  // Define technology options (example)
+  const technologyOptions = [
+    { value: 'React', label: 'React' },
+    { value: 'Node.js', label: 'Node.js' },
+    { value: 'TypeScript', label: 'TypeScript' },
+    { value: 'Python', label: 'Python' },
+    { value: 'Next.js', label: 'Next.js' },
+    { value: 'AWS', label: 'AWS' },
+    { value: 'Docker', label: 'Docker' },
+    { value: 'JavaScript', label: 'JavaScript' },
+  ];
+  
+  // Function to update URL query based on filters, page, sort
+  const updateRouterQuery = useCallback((filters: FilterState, page: number, sort: SortByType) => {
     const queryParams: Record<string, string> = {};
-    if (searchTerm) queryParams.q = searchTerm;
-    if (selectedJobTypes.length) queryParams.jobType = selectedJobTypes.join(',');
-    if (selectedExperienceLevels.length) queryParams.experienceLevel = selectedExperienceLevels.join(',');
-    if (isRemoteOnly) queryParams.remote = 'true';
-    if (currentPage > 1) queryParams.page = currentPage.toString();
-    if (sortBy !== 'newest') queryParams.sortBy = sortBy;
+    if (filters.searchTerm) queryParams.q = filters.searchTerm;
+    if (filters.jobTypes.length) queryParams.jobType = filters.jobTypes.join(',');
+    if (filters.experienceLevels.length) queryParams.experienceLevel = filters.experienceLevels.join(',');
+    if (filters.technologies.length) queryParams.technologies = filters.technologies.join(',');
+    if (filters.isRemoteOnly) queryParams.remote = 'true';
+    if (page > 1) queryParams.page = page.toString();
+    if (sort !== 'newest') queryParams.sortBy = sort;
 
-    const finalQuery: Record<string, string | undefined> = {
-      ...currentQuery,
-      ...queryParams,
-      ...newParams,
-    };
-
-    Object.keys(finalQuery).forEach(key => {
-      const value = finalQuery[key];
-      if (!value || (Array.isArray(value) && value.length === 0)) {
-        delete finalQuery[key];
-      } else if (key === 'page' && value === '1') {
-        delete finalQuery[key];
-      } else if (key === 'sortBy' && value === 'newest') {
-        delete finalQuery[key];
-      }
-    });
     router.push(
-      { pathname: router.pathname, query: finalQuery },
+      { pathname: router.pathname, query: queryParams },
       undefined,
       { shallow: true, scroll: false }
     );
-  };
+  }, [router]);
 
-  const handleSearch = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    setCurrentPage(1);
-    updateRouterQuery({ page: undefined });
-  };
+  // --- Handler for updates coming FROM JobFilters component ---
+  const handleFilterUpdate = useCallback((newFilters: FilterState) => {
+    setCurrentFilters(newFilters); // Update the page's filter state
+    setCurrentPage(1); // Reset page number on filter change
+    updateRouterQuery(newFilters, 1, sortBy); // Update URL
+  }, [sortBy, updateRouterQuery]);
 
-  const handleFilterToggle = () => {
-    setShowFilters(!showFilters);
-  };
-
-  const handleJobTypeChange = (value: string) => {
-    setSelectedJobTypes(prev =>
-      prev.includes(value)
-        ? prev.filter(type => type !== value)
-        : [...prev, value]
-    );
-  };
-
-  const handleExperienceLevelChange = (value: string) => {
-    setSelectedExperienceLevels(prev =>
-      prev.includes(value)
-        ? prev.filter(level => level !== value)
-        : [...prev, value]
-    );
-  };
-
-  const handleRemoteChange = () => {
-    setIsRemoteOnly(!isRemoteOnly);
-  };
-
-  const clearFilters = () => {
-    setSearchTerm('');
-    setSelectedJobTypes([]);
-    setSelectedExperienceLevels([]);
-    setIsRemoteOnly(false);
-    setSortBy('newest');
-    setCurrentPage(1);
-    updateRouterQuery({ q: undefined, jobType: undefined, experienceLevel: undefined, remote: undefined, sortBy: undefined, page: undefined });
-  };
-  
-  const handleSortChange = (value: string | number) => {
+  // --- Handlers for actions managed directly by the Page (Pagination, Sorting) ---
+  const handleSortChange = useCallback((value: string | number) => {
     const newSortBy = value as SortByType;
     setSortBy(newSortBy);
     setCurrentPage(1);
-    updateRouterQuery({ sortBy: newSortBy !== 'newest' ? newSortBy : undefined, page: undefined });
-  };
+    updateRouterQuery(currentFilters, 1, newSortBy);
+  }, [currentFilters, updateRouterQuery]);
 
-  const handlePageChange = (newPage: number) => {
+  const handlePageChange = useCallback((newPage: number) => {
     if (newPage >= 1 && newPage <= (pagination?.totalPages || 1)) {
       setCurrentPage(newPage);
-      updateRouterQuery({ page: newPage > 1 ? newPage.toString() : undefined });
+      updateRouterQuery(currentFilters, newPage, sortBy);
       window.scrollTo(0, 0);
     }
-  };
+  }, [currentFilters, pagination?.totalPages, sortBy, updateRouterQuery]);
 
   return (
     <Layout>
@@ -222,106 +210,130 @@ export default function Home(props: {}) {
           Vagas remotas para Brasileiros
         </h1>
         
-        {/* Filter Bar Section (copied from jobs/index.tsx, adjusted container/bg) */}
-        <div className="bg-gray-50 py-6 mb-8 rounded-lg shadow-sm border border-gray-200">
-          <div className="container mx-auto px-4">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4">
-              Encontre sua Vaga Remota
-            </h1>
-            {/* Search and Filter Form */}
-            <form onSubmit={handleSearch} className="mb-0"> {/* Removed mb-6 */}
-              <div className="flex flex-col md:flex-row gap-4">
-                {/* Search Input */}
-                <div className="flex-grow">
-                  <input
-                    type="text"
-                    placeholder="Busque por cargo, tecnologia ou empresa..."
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-primary-500 focus:border-primary-500"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-                {/* Search Button */}
-                <button
-                  type="submit"
-                  className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition duration-200"
-                >
-                  Buscar
-                </button>
-                {/* Filter Toggle Button */}
-                <button
-                  type="button"
-                  onClick={handleFilterToggle}
-                  className="bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium hover:bg-gray-50 transition duration-200 flex items-center"
-                >
-                  <span>Filtros</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ml-2 transition-transform ${showFilters ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              </div>
+        {/* Render the JobFilters component */}
+        <JobFilters
+          searchTerm={currentFilters.searchTerm}
+          selectedJobTypes={currentFilters.jobTypes}
+          selectedExperienceLevels={currentFilters.experienceLevels}
+          selectedTechnologies={currentFilters.technologies}
+          isRemoteOnly={currentFilters.isRemoteOnly}
+          aggregations={aggregations}
+          
+          // Pass callback handlers down
+          onSearchTermChange={(value) => handleFilterUpdate({ ...currentFilters, searchTerm: value })}
+          onJobTypeChange={(value) => {
+            const newSelection = currentFilters.jobTypes.includes(value)
+              ? currentFilters.jobTypes.filter(type => type !== value)
+              : [...currentFilters.jobTypes, value];
+            handleFilterUpdate({ ...currentFilters, jobTypes: newSelection });
+          }}
+          onExperienceLevelChange={(value) => {
+             const newSelection = currentFilters.experienceLevels.includes(value)
+              ? currentFilters.experienceLevels.filter(level => level !== value)
+              : [...currentFilters.experienceLevels, value];
+             handleFilterUpdate({ ...currentFilters, experienceLevels: newSelection });
+          }}
+          onTechnologyChange={(value) => {
+            const newSelection = currentFilters.technologies.includes(value)
+              ? currentFilters.technologies.filter(tech => tech !== value)
+              : [...currentFilters.technologies, value];
+            handleFilterUpdate({ ...currentFilters, technologies: newSelection });
+          }}
+           onRemoteChange={() => {
+             handleFilterUpdate({ ...currentFilters, isRemoteOnly: !currentFilters.isRemoteOnly });
+           }}
+          onClearFilters={() => {
+             const clearedFilters: FilterState = {
+               searchTerm: '',
+               jobTypes: [],
+               experienceLevels: [],
+               technologies: [],
+               isRemoteOnly: false,
+             };
+            handleFilterUpdate(clearedFilters);
+             // Optionally reset sort as well? 
+             // setSortBy('newest'); updateRouterQuery(clearedFilters, 1, 'newest');
+          }}
+          onSearchSubmit={(e) => {
+            e?.preventDefault();
+            handleFilterUpdate(currentFilters); // Re-apply current filters (resets page to 1)
+          }}
+        />
 
-              {/* Collapsible Filters */}
-              {showFilters && (
-                <div className="mt-4 bg-white p-6 rounded-lg shadow-md border border-gray-200">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Job Type Filter */}
-                    <div>
-                      <h3 className="font-medium text-gray-900 mb-3">Tipo de Contrato</h3>
-                      <div className="space-y-2">
-                        {jobTypeOptions.map(option => (
-                          <label key={option.value} className="flex items-center">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 text-primary-600 focus:ring-primary-500 rounded"
-                              checked={selectedJobTypes.includes(option.value)}
-                              onChange={() => handleJobTypeChange(option.value)}
-                            />
-                            <span className="ml-2 text-gray-700">{option.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    {/* Experience Level Filter */}
-                    <div>
-                      <h3 className="font-medium text-gray-900 mb-3">Nível de Experiência</h3>
-                      <div className="space-y-2">
-                        {experienceLevelOptions.map(option => (
-                          <label key={option.value} className="flex items-center">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 text-primary-600 focus:ring-primary-500 rounded"
-                              checked={selectedExperienceLevels.includes(option.value)}
-                              onChange={() => handleExperienceLevelChange(option.value)}
-                            />
-                            <span className="ml-2 text-gray-700">{option.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  {/* Filter Actions */}
-                  <div className="mt-6 flex justify-end space-x-4">
-                    <button
-                      type="button"
-                      onClick={clearFilters}
-                      className="text-gray-700 hover:text-gray-900 font-medium"
-                    >
-                      Limpar Filtros
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { handleSearch(); setShowFilters(false); }} // Apply and close filters
-                      className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md font-medium transition duration-200"
-                    >
-                      Aplicar Filtros
-                    </button>
-                  </div>
-                </div>
-              )}
-            </form>
-          </div>
-        </div>
+        {/* Active Filter Chips Section - Updated chip generation */}
+        {(() => {
+          const activeChips = [];
+          if (currentFilters.searchTerm) {
+            activeChips.push({ type: 'search', label: `Busca: "${currentFilters.searchTerm}"`, onRemove: () => handleFilterUpdate({ ...currentFilters, searchTerm: '' }) });
+          }
+          if (currentFilters.isRemoteOnly) {
+            activeChips.push({ type: 'remote', label: 'Apenas Remoto', onRemove: () => handleFilterUpdate({ ...currentFilters, isRemoteOnly: false }) });
+          }
+          
+          // Chip generation for JobType
+          currentFilters.jobTypes.forEach(jt => {
+             // Find label if needed (redefine options here or pass down)
+              const option = jobTypeOptions.find(o => o.value === jt);
+              activeChips.push({ type: 'jobType', value: jt, label: `Tipo: ${option?.label || jt}`, onRemove: () => {
+                  const newSelection = currentFilters.jobTypes.filter(type => type !== jt);
+                  handleFilterUpdate({ ...currentFilters, jobTypes: newSelection });
+              } });
+          });
+
+          // Chip generation for ExperienceLevel
+          currentFilters.experienceLevels.forEach(el => {
+             const option = experienceLevelOptions.find(o => o.value === el);
+             activeChips.push({ type: 'experience', value: el, label: `Nível: ${option?.label || el}`, onRemove: () => {
+                 const newSelection = currentFilters.experienceLevels.filter(level => level !== el);
+                 handleFilterUpdate({ ...currentFilters, experienceLevels: newSelection });
+             } });
+          });
+
+          // Chip generation for Technologies
+          currentFilters.technologies.forEach(tech => {
+              // Tech labels are just the value itself for now
+             activeChips.push({ type: 'technology', value: tech, label: `Tec: ${tech}`, onRemove: () => {
+                 const newSelection = currentFilters.technologies.filter(t => t !== tech);
+                 handleFilterUpdate({ ...currentFilters, technologies: newSelection });
+             } });
+          });
+           
+          if (activeChips.length === 0) return null;
+
+          return (
+            <div className="mb-6 flex flex-wrap gap-2 items-center">
+              <span className="text-sm font-medium text-gray-600 mr-2">Filtros Ativos:</span>
+              {activeChips.map(chip => (
+                 // Chip JSX - Use label in key
+                 <span key={`${chip.type}-${chip.label}`} 
+                   className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800"
+                 >
+                   {chip.label}
+                   <button
+                     type="button"
+                     className="flex-shrink-0 ml-1.5 -mr-0.5 h-4 w-4 rounded-full inline-flex items-center justify-center text-primary-500 hover:bg-primary-200 hover:text-primary-600 focus:outline-none focus:bg-primary-500 focus:text-white"
+                     onClick={chip.onRemove}
+                   >
+                     <span className="sr-only">Remover filtro {chip.label}</span>
+                     <svg className="h-2 w-2" stroke="currentColor" fill="none" viewBox="0 0 8 8">
+                       <path strokeLinecap="round" strokeWidth="1.5" d="M1 1l6 6m0-6L1 7" />
+                     </svg>
+                   </button>
+                 </span>
+              ))}
+              {/* Clear All Button */}
+              {activeChips.length > 0 && (
+                 <button
+                    type="button"
+                    onClick={() => handleFilterUpdate({searchTerm: '', jobTypes: [], experienceLevels: [], technologies: [], isRemoteOnly: false})}
+                    className="text-sm text-primary-600 hover:text-primary-800 hover:underline ml-2"
+                 >
+                   Limpar Todos
+                 </button>
+               )}
+            </div>
+          );
+        })()}
 
         {/* Job List Section (copied from jobs/index.tsx) */}
         <div className="container mx-auto px-4 py-0"> {/* Adjusted padding */}

@@ -41,10 +41,10 @@ const customJestConfig = {
   
   // *** Update transformIgnorePatterns for better ESM compatibility ***
   // This pattern prevents Jest from transforming node_modules, *except* for the listed ones.
+  // Adjusted pattern to better target modules and remove trailing slash in lookahead.
   transformIgnorePatterns: [
-    // Add preact and preact-render-to-string to the list of transformed modules
-    // Broaden the next-auth pattern to include its nested dependencies
-    '/node_modules/(?!(@panva/hkdf|jose|openid-client|next-auth|preact|preact-render-to-string)/)', 
+    '/node_modules/(?!(next-auth|@babel|@panva/hkdf|jose|openid-client|preact|preact-render-to-string)/)',
+    '^.+\\.module\\.(css|sass|scss)$', // Keep existing CSS module ignore if needed
   ],
   
   // Exclude node_modules and .next from test coverage

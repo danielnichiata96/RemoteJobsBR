@@ -97,20 +97,20 @@ model Job {
   sourceUrl        String?         // Original job URL
   companyId        String
   title            String
-  description      String
-  requirements     String?
+  description      String?         @db.Text
+  requirements     String?         @db.Text
   responsibilities String?
-  benefits         String?
+  benefits         String?         @db.Text
   jobType          JobType?
   experienceLevel  ExperienceLevel?
   skills           String[]        @default([])
   tags             String[]        @default([])
-  location         String
+  location         String?
   country          String?
   workplaceType    String          @default("REMOTE")
   minSalary        Float?
   maxSalary        Float?
-  currency         Currency?
+  currency         String?         @default("BRL")
   salaryCycle      String?
   showSalary       Boolean         @default(false)
   status           JobStatus       @default(ACTIVE)
@@ -126,8 +126,12 @@ model Job {
   clickCount       Int             @default(0)
   company          User            @relation("CompanyJobs", fields: [companyId], references: [id])
   savedBy          SavedJob[]
+  technologies     Technology[]
+  greenhouseId     String?         @unique
 
   @@unique([source, sourceId])
+  @@index([publishedAt])
+  @@index([companyId])
 }
 
 model SavedJob {
@@ -183,6 +187,16 @@ model JobSource {
   lastFetched   DateTime?
 
   @@unique([name, type])
+}
+
+model Technology {
+  id    String @id @default(cuid())
+  name  String @unique // Ensure technology names are unique
+
+  // Relation to Jobs (Many-to-Many)
+  jobs  Job[]
+
+  @@index([name]) // Index for faster lookups by name
 }
 
 enum UserRole {

@@ -1,5 +1,14 @@
 # Project Planning: RemoteJobsBR
 
+## Quick Reference: Core Tech
+- **Framework:** Next.js (React)
+- **Language:** TypeScript
+- **Backend:** Next.js API Routes
+- **Database:** PostgreSQL
+- **ORM:** Prisma
+- **Styling:** Tailwind CSS
+- **Authentication:** NextAuth.js
+
 ## 1. Project Purpose & Vision
 
 *   **Core Goal:** Create a website aggregating international remote job opportunities specifically curated for Brazilian applicants.
@@ -14,7 +23,7 @@
 *   **ORM:** Prisma
 *   **Styling:** Tailwind CSS
 *   **Authentication:** NextAuth.js
-*   **File Structure:**
+### 2.1 File Structure
     ```
     remotejobsbr/
     ├── src/
@@ -52,12 +61,13 @@
 *   **Code Style:** Follow standard TypeScript/React best practices, adhere to ESLint rules. Maintain consistency with existing code.
 *   **Modularity:** Keep files focused and under 500 lines. Refactor large components/modules into smaller, reusable pieces.
 *   **Imports:** Prefer relative imports within the `src` directory.
-*   **Testing:**
+### 4.1 Testing Guidelines
     *   Create unit tests for all new features (functions, components, API routes).
     *   Place tests in the `/tests` directory, mirroring the `src` structure.
     *   Include tests for expected use, edge cases, and failure scenarios.
     *   Update existing tests when related logic changes.
-*   **Documentation:** Update `README.md` for significant changes (setup, features, dependencies). Keep `PLANNING.md` and `TASK.md` up-to-date.
+### 4.2 Documentation Guidelines
+    *   Update `README.md` for significant changes (setup, features, dependencies). Keep `PLANNING.md` and `TASK.md` up-to-date.
 *   **Environment:** Requires a PostgreSQL database and properly configured `.env` file (based on `.env.example`).
 
 ## 5. Key Data Models
@@ -76,6 +86,8 @@
 *   **Job Alert:** Users receive email notifications for new jobs matching their criteria
 *   **Job Posting:** Recruiters/companies can post jobs with external application links
 *   **Analytics:** Recruiters can view metrics on job views and click-throughs
+
+---
 
 ## 7. AI Assistant Collaboration Rules
 

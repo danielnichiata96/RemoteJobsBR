@@ -9,6 +9,7 @@ Site de vagas remotas internacionais para aplicantes brasileiros.
 - **Banco de Dados**: PostgreSQL com Prisma ORM
 - **Estilização**: Tailwind CSS
 - **Autenticação**: NextAuth.js
+- **Monitoramento de Erros**: Sentry
 - **Hospedagem**: Vercel
 
 ## Requisitos
@@ -38,21 +39,31 @@ Site de vagas remotas internacionais para aplicantes brasileiros.
    ```
    Edite o arquivo `.env` com suas configurações.
 
-4. Configure o banco de dados:
+4. Configure o Sentry (opcional, mas recomendado para produção):
+   - Crie uma conta no [Sentry](https://sentry.io)
+   - Crie um projeto Next.js
+   - Adicione o DSN no arquivo `.env`:
+     ```
+     NEXT_PUBLIC_SENTRY_DSN=seu-dsn-do-sentry
+     SENTRY_ORG=seu-slug-da-organização
+     SENTRY_PROJECT=seu-slug-do-projeto
+     ```
+
+5. Configure o banco de dados:
    ```bash
    npx prisma migrate dev --name init
    # ou
    yarn prisma migrate dev --name init
    ```
 
-5. Inicie o servidor de desenvolvimento:
+6. Inicie o servidor de desenvolvimento:
    ```bash
    npm run dev
    # ou
    yarn dev
    ```
 
-6. Acesse o site em [http://localhost:3000](http://localhost:3000)
+7. Acesse o site em [http://localhost:3000](http://localhost:3000)
 
 ## Scripts Disponíveis
 
@@ -84,3 +95,38 @@ O projeto está configurado para deploy automático na Vercel a partir do reposi
 ## Licença
 
 MIT 
+
+## Monitoramento de Erros com Sentry
+
+O projeto utiliza Sentry para monitoramento de erros e performance. A integração inclui:
+
+- Captura automática de erros no frontend e backend
+- Rastreamento de performance
+- Captura de informações de contexto (usuário, sessão)
+- Rastreamento de migalhas de pão (breadcrumbs)
+
+Para utilizar o Sentry em desenvolvimento:
+
+1. Certifique-se de que as variáveis de ambiente do Sentry estão configuradas
+2. Os erros serão automaticamente capturados e enviados
+3. Use as funções de utilidade em `src/lib/sentry.ts` para relatar erros manualmente:
+
+```typescript
+import { captureException } from '@/lib/sentry';
+
+try {
+  // código que pode falhar
+} catch (error) {
+  captureException(error);
+}
+```
+
+Para API routes, use o wrapper de manipulador de erros:
+
+```typescript
+import { withErrorHandler } from '@/lib/apiErrorHandler';
+
+export default withErrorHandler(async (req, res) => {
+  // lógica da API aqui
+});
+``` 

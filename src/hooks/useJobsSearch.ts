@@ -10,10 +10,18 @@ interface PaginationInfo {
   hasPrevPage: boolean;
 }
 
+// Define type for aggregation results (mirroring API)
+interface FilterAggregations {
+  jobTypes?: { [key: string]: number }; // Using string index for flexibility
+  experienceLevels?: { [key: string]: number };
+  technologies?: { [key: string]: number };
+}
+
 interface JobsApiResponse {
   jobs: Job[];
   pagination: PaginationInfo;
-  filters: any; // Consider defining a stricter type
+  filters: any; 
+  aggregations?: FilterAggregations; // <-- Add aggregations field
 }
 
 interface UseJobsSearchProps {
@@ -24,6 +32,7 @@ interface UseJobsSearchProps {
   experienceLevels?: string[];
   remote?: boolean;
   sortBy?: 'newest' | 'salary' | 'relevance';
+  technologies?: string[];
 }
 
 // Generic fetcher function for SWR
@@ -52,6 +61,7 @@ export function useJobsSearch({
   experienceLevels = [],
   remote = false,
   sortBy = 'newest',
+  technologies = [],
 }: UseJobsSearchProps = {}) {
   const params = new URLSearchParams();
   params.append('page', page.toString());
@@ -59,6 +69,7 @@ export function useJobsSearch({
   if (search) params.append('q', search);
   if (jobTypes.length) params.append('jobType', jobTypes.join(','));
   if (experienceLevels.length) params.append('experienceLevel', experienceLevels.join(','));
+  if (technologies.length) params.append('technologies', technologies.join(','));
   if (remote) params.append('remote', 'true');
   if (sortBy && sortBy !== 'newest') params.append('sortBy', sortBy);
 
@@ -72,6 +83,7 @@ export function useJobsSearch({
   return {
     jobs: data?.jobs,
     pagination: data?.pagination,
+    aggregations: data?.aggregations, // <-- Return aggregations
     isLoading,
     isError: error,
     error,
