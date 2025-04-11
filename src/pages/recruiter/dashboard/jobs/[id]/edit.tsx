@@ -333,29 +333,21 @@ export default function EditJob({ job, error }: InferGetServerSidePropsType<type
                   </div>
 
                   <div className="col-span-6">
-                    <label htmlFor="applicationUrl" className="block text-sm font-medium text-gray-700">Application URL</label>
+                    <label htmlFor="sourceUrl" className="block text-sm font-medium text-gray-700">
+                      External Application URL (Source URL)
+                    </label>
                     <input
                       type="url"
-                      name="applicationUrl"
-                      id="applicationUrl"
-                      defaultValue={job.applicationUrl}
+                      name="sourceUrl"
+                      id="sourceUrl"
+                      defaultValue={job.sourceUrl}
                       className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                      placeholder="Ex: https://yourcompany.com/careers/apply"
+                      placeholder="Ex: https://boards.greenhouse.io/company/jobs/123 or https://company.com/careers/apply"
+                      required
                     />
-                    <p className="mt-1 text-xs text-gray-500">URL where candidates will be redirected to apply (company career page, ATS link, etc.)</p>
-                  </div>
-
-                  <div className="col-span-6">
-                    <label htmlFor="applicationEmail" className="block text-sm font-medium text-gray-700">Application Email</label>
-                    <input
-                      type="email"
-                      name="applicationEmail"
-                      id="applicationEmail"
-                      defaultValue={job.applicationEmail}
-                      className="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                      placeholder="Ex: jobs@yourcompany.com"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">Email address where candidates can send their applications</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      The original URL where candidates will be redirected to apply (e.g., Greenhouse link, company careers page).
+                    </p>
                   </div>
 
                   <div className="col-span-6">

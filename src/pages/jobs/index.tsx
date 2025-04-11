@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import { GetServerSideProps } from 'next';
+import { GetServerSideProps, InferGetServerSidePropsType } from 'next';
 import Head from 'next/head';
 import Layout from '@/components/common/Layout';
 import WideJobCard from '@/components/jobs/WideJobCard';
 import { Job, JobType, ExperienceLevel } from '@/types/models';
-
-// Importando dados de exemplo da página inicial
-import { MOCK_JOBS } from '@/pages/index';
+import ErrorMessage from '@/components/common/ErrorMessage';
 
 interface JobsPageProps {
   jobs: Job[];
@@ -20,15 +18,17 @@ interface JobsPageProps {
     locations?: string[];
     remote?: boolean;
   };
+  error?: string;
 }
 
 export default function JobsPage({ 
-  jobs, 
-  totalJobs, 
-  page, 
-  totalPages,
-  filters = {}
-}: JobsPageProps) {
+      jobs, 
+      totalJobs, 
+      page, 
+      totalPages,
+      filters = {},
+      error
+    }: InferGetServerSidePropsType<typeof getServerSideProps>) {
   const [searchTerm, setSearchTerm] = useState(filters.search || '');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>(filters.jobTypes || []);
@@ -90,6 +90,16 @@ export default function JobsPage({
     setSelectedExperienceLevels([]);
     setIsRemoteOnly(false);
   };
+
+  if (error) {
+    return (
+      <Layout title="Erro ao Carregar Vagas - RemoteJobsBR">
+        <div className="container mx-auto px-4 py-10">
+           <ErrorMessage message={error} />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title="Vagas Remotas - RemoteJobsBR">
@@ -245,7 +255,7 @@ export default function JobsPage({
               onClick={clearFilters}
               className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium transition duration-200"
             >
-              Limpar Filtros
+              Limpar Filtros e Buscar Novamente
             </button>
           </div>
         )}
@@ -289,72 +299,81 @@ export default function JobsPage({
 }
 
 export const getServerSideProps: GetServerSideProps = async ({ query }) => {
-  // Parâmetros da URL
-  const page = Number(query.page) || 1;
-  const search = query.search as string || '';
-  const jobTypes = query.jobTypes ? (query.jobTypes as string).split(',') : [];
-  const experienceLevels = query.experienceLevels ? (query.experienceLevels as string).split(',') : [];
-  const remote = query.remote === 'true';
+  const { 
+    page = '1', 
+    limit = '20',
+    search = '',
+    jobTypes = '',
+    experienceLevels = '',
+    locations = '',
+    remote
+  } = query;
 
-  // Em um cenário real, buscaríamos do banco de dados
-  // através do Prisma com filtros e paginação
-  
-  // Simulação de filtragem
-  let filteredJobs = [...MOCK_JOBS];
-  
-  if (search) {
-    const searchLower = search.toLowerCase();
-    filteredJobs = filteredJobs.filter(job => 
-      job.title.toLowerCase().includes(searchLower) || 
-      job.description.toLowerCase().includes(searchLower) ||
-      job.company?.name.toLowerCase().includes(searchLower) ||
-      job.skills.some(skill => skill.toLowerCase().includes(searchLower))
-    );
-  }
-  
-  if (jobTypes.length > 0) {
-    filteredJobs = filteredJobs.filter(job => 
-      jobTypes.includes(job.jobType)
-    );
-  }
-  
-  if (experienceLevels.length > 0) {
-    filteredJobs = filteredJobs.filter(job => 
-      experienceLevels.includes(job.experienceLevel)
-    );
-  }
-  
-  if (remote) {
-    filteredJobs = filteredJobs.filter(job => 
-      job.workplaceType === 'remote'
-    );
-  }
+  const params = new URLSearchParams();
+  params.append('page', page as string);
+  params.append('limit', limit as string);
+  if (search) params.append('search', search as string);
+  if (jobTypes) params.append('jobTypes', jobTypes as string);
+  if (experienceLevels) params.append('experienceLevels', experienceLevels as string);
+  if (locations) params.append('locations', locations as string);
+  if (remote) params.append('remote', 'true');
 
-  // Simulação de paginação
-  const totalJobs = filteredJobs.length;
-  const itemsPerPage = 10;
-  const totalPages = Math.ceil(totalJobs / itemsPerPage);
+  const apiUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000'}/api/jobs?${params.toString()}`;
   
-  // Garantir que a página está dentro dos limites
-  const validPage = Math.min(Math.max(1, page), Math.max(1, totalPages));
-  
-  // Slice para paginação
-  const startIndex = (validPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedJobs = filteredJobs.slice(startIndex, endIndex);
-  
-  return {
-    props: {
-      jobs: paginatedJobs,
-      totalJobs,
-      page: validPage,
-      totalPages,
-      filters: {
-        search,
-        jobTypes,
-        experienceLevels,
-        remote
-      }
-    },
-  };
+  console.log(`Fetching jobs from: ${apiUrl}`);
+
+  try {
+    const res = await fetch(apiUrl);
+
+    if (!res.ok) {
+      const errorBody = await res.text();
+      console.error(`API Error (${res.status}): ${res.statusText}. Body: ${errorBody}`);
+      throw new Error(`Failed to fetch jobs. Status: ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    if (!data || !data.jobs || !data.pagination) {
+        console.error('API response missing expected structure:', data);
+        throw new Error('Invalid API response structure.');
+    }
+
+    const filtersForProps = {
+        search: search || '',
+        jobTypes: (jobTypes as string).split(',').filter(Boolean),
+        experienceLevels: (experienceLevels as string).split(',').filter(Boolean),
+        locations: (locations as string).split(',').filter(Boolean),
+        remote: remote === 'true'
+    };
+
+    return {
+      props: {
+        jobs: data.jobs,
+        totalJobs: data.pagination.total,
+        page: data.pagination.page,
+        totalPages: data.pagination.pages,
+        filters: filtersForProps,
+        error: null,
+      },
+    };
+
+  } catch (error) {
+    console.error('Error in getServerSideProps fetching jobs:', error);
+    return {
+      props: {
+        jobs: [],
+        totalJobs: 0,
+        page: 1,
+        totalPages: 1,
+        filters: {
+            search: search || '',
+            jobTypes: (jobTypes as string).split(',').filter(Boolean),
+            experienceLevels: (experienceLevels as string).split(',').filter(Boolean),
+            locations: (locations as string).split(',').filter(Boolean),
+            remote: remote === 'true'
+        },
+        error: 'Não foi possível carregar as vagas no momento. Por favor, tente novamente mais tarde.',
+      },
+    };
+  }
 }; 

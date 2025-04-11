@@ -163,9 +163,7 @@ export default function Layout({
                           <Link href="/recruiter/dashboard/jobs" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Manage your job postings">
                             Manage Jobs
                           </Link>
-                          <Link href="/recruiter/dashboard/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="View received applications">
-                            Applications
-                          </Link>
+                          {/* <Link href="/recruiter/dashboard/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="View received applications"> */}
                         </>
                       ) : (
                         // Opções de menu para candidatos
@@ -173,9 +171,7 @@ export default function Layout({
                           <Link href="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Visualizar seu perfil">
                             Meu Perfil
                           </Link>
-                          <Link href="/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Ver suas candidaturas">
-                            Minhas Candidaturas
-                          </Link>
+                          {/* <Link href="/applications" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Ver suas candidaturas"> */}
                           <Link href="/saved-jobs" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none" aria-label="Ver vagas salvas">
                             Vagas Salvas
                           </Link>
@@ -300,14 +296,7 @@ export default function Layout({
                       >
                         Manage Jobs
                       </Link>
-                      <Link
-                        href="/recruiter/dashboard/applications"
-                        className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`}
-                        onClick={() => setMobileMenuOpen(false)}
-                        aria-label="View received applications"
-                      >
-                        Applications
-                      </Link>
+                      {/* <Link href="/recruiter/dashboard/applications" className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`} onClick={() => setMobileMenuOpen(false)} aria-label="View received applications"> */}
                     </>
                   )}
                   <Link
@@ -338,14 +327,7 @@ export default function Layout({
                       >
                         Manage Jobs
                       </Link>
-                      <Link
-                        href="/recruiter/dashboard/applications"
-                        className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`}
-                        onClick={() => setMobileMenuOpen(false)}
-                        aria-label="View received applications"
-                      >
-                        Applications
-                      </Link>
+                      {/* <Link href="/recruiter/dashboard/applications" className={`${colors.secondary} ${colors.secondaryHover} py-2 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 rounded px-2`} onClick={() => setMobileMenuOpen(false)} aria-label="View received applications"> */}
                     </>
                   ) : (
                     // Opções de menu para candidatos

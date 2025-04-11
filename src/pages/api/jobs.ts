@@ -148,7 +148,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           publishedAt: true,
           expiresAt: true,
           viewCount: true,
-          applicantCount: true,
           company: {
             select: {
               id: true,

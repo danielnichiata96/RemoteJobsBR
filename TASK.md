@@ -1,0 +1,143 @@
+# TASK LIST - RemoteJobsBR
+
+<!-- 
+Purpose: Tracks current tasks, backlog, and sub-tasks. 
+AI Prompt: "Update TASK.md to mark XYZ as done and add ABC as a new task."
+LLM should update this file based on conversational progress.
+-->
+
+## Current Focus / Active Tasks (What I'm working on NOW)
+
+*   [x] Setup initial Next.js project structure with TypeScript, Tailwind CSS.
+*   [x] Configure Prisma and connect to PostgreSQL database (local setup).
+*   [x] Define initial Prisma schema based on `PLANNING.md`.
+*   [x] **Architecture:** Reestruturar o modelo de dados para funcionar como agregador de links externos (**Schema atualizado, código inicial refatorado**).
+*   [~] **Testing:** Setup basic Unit Testing Framework (e.g., Jest/Vitest) (**Installed, configured, basic tests exist**)
+*   [x] **Testing:** Create first component tests for jobs listing page. (**tests/components/jobs/WideJobCard.test.tsx created**)
+*   [x] **Testing:** Write basic API route tests for job fetching. (**tests/api/jobs/search.test.ts created**)
+*   [ ] **Testing:** Expand test coverage to include unit tests for utility functions.
+*   [ ] **Testing:** Add mock configuration for NextAuth sessions and protected routes.
+
+## Next Up (Prioritized Backlog - Phase 1: Core UX & Stability)
+
+*   [x] **Auth:** Implement NextAuth.js setup (Email Magic Link, Google, LinkedIn Providers).
+*   [x] **Auth:** Create basic registration/login UI flow for Candidates & Recruiters.
+*   [x] **DB:** Create initial database migration based on schema (`prisma migrate dev`).
+*   [x] **Code Refactor:** Adaptar código (API Routes, UI, fetch scripts) para o novo schema sem Application/InterviewEvent.
+*   [x] **Jobs:** Implement basic job listing page (fetching placeholder/manual data).
+*   [x] **Jobs:** Implement Job Posting API endpoint (Recruiter role required).
+*   [x] **Jobs:** Implement basic Job Posting Form UI (for Recruiters).
+*   [x] **Integration:** Setup Greenhouse job fetching logic (basic script/API route).
+*   [ ] **Jobs:** Refine Job Listing Page UI (implement loading skeletons, error state display).
+*   [ ] **Jobs:** Implement server-side pagination for job listings API (`/api/jobs`).
+*   [ ] **Jobs:** Improve Job Detail Page with external redirection UX indicators.
+*   [ ] ~~**Candidate Dashboard:** Implement API route to fetch applications for a user.~~
+*   [ ] ~~**Candidate Dashboard:** Implement basic Candidate Dashboard UI to list applications.~~
+*   [ ] **User Features:** Implementar sistema de vagas salvas (favoritos) para usuários.
+*   [ ] **User Features:** Criar sistema para rastrear cliques em vagas externas.
+*   [ ] **User Features:** Implement click tracking system for external job links.
+*   [x] **Recruiter Dashboard:** Implement API route to fetch jobs posted by a recruiter.
+*   [ ] ~~**Recruiter Dashboard:** Implement API route to fetch applications for a specific job.~~
+*   [ ] ~~**Recruiter Dashboard:** Implement basic Recruiter Dashboard UI to manage postings & view applicants.~~
+*   [ ] **Recruiter Dashboard:** Reconstruir para focar em métricas de cliques e visualizações de vagas.
+*   [ ] **Testing:** Write initial unit tests for Auth logic.
+*   [ ] **Testing:** Write more component tests for major UI elements (filters, pagination).
+*   [ ] **Monitoring:** Setup basic Error Monitoring (e.g., Sentry integration or Vercel monitoring).
+*   [x] **Notifications:** Setup email service (e.g., Resend) integration.
+*   [ ] ~~**Notifications:** Implement email notification for successful application submission (Candidate).~~
+*   [ ] ~~**Notifications:** Implement email notification for new application received (Recruiter).~~
+*   [ ] **Notifications:** Implementar notificações de novas vagas por email baseado em preferências do usuário.
+*   [ ] **Analytics:** Setup basic analytics (e.g., Vercel Analytics).
+*   [ ] **Analytics:** Setup basic analytics for job view/click metrics.
+*   [x] **Deployment:** Setup initial Vercel deployment.
+
+## Future Ideas / Full Backlog (Phase 2 & Beyond)
+
+*   [ ] Feature: Enhance job filtering (Skills/Technology).
+*   [ ] Feature: Implement Saved Searches for Candidates.
+*   [x] ~~Feature: Job Detail Page - Add interactive elements (e.g., save job).~~
+*   [ ] Feature: Job Detail Page - Melhorar UX para redirecionamento ao site de origem da vaga.
+*   [ ] Feature: Company Profile Pages.
+*   [ ] Feature: Curated Job Recommendations system.
+*   [ ] UX: Enhance mobile responsiveness thoroughly.
+*   [ ] UX: Implementar estatísticas de cliques para usuários (histórico de vagas visitadas).
+*   [ ] Tech: Add Integration Tests.
+*   [ ] Tech: Add End-to-End Tests (Playwright/Cypress).
+*   [ ] Tech: Optimize database queries & add indexes.
+*   [ ] Tech: Implement data analytics tracking for user behavior.
+*   [ ] Content: Develop Blog section.
+*   [ ] Content: Add resources/guides for remote work from Brazil.
+*   [ ] Growth: Implement SEO optimizations.
+*   [ ] Growth: Create Referral System.
+*   [ ] Revenue: Implement paid job posting plans.
+*   [ ] Revenue: Implement featured job listings.
+*   [ ] Revenue: Develop partnership features (schools/bootcamps).
+*   [ ] Mobile: Consider mobile app development.
+*   [ ] **Integrations:** Add more job board integrations (LinkedIn API, Indeed API, etc.).
+*   [ ] **Integrations:** Implement job scraping framework for other aggregators (requires careful legal review).
+*   [ ] **Integrations:** Implement standard API for companies to post jobs directly.
+*   [ ] **Integrations:** Refactor `fetchGreenhouseJobs.ts` filtering logic (move hardcoded `DEFAULT_FILTER_CONFIG` to DB/config file).
+*   [ ] **Integrations:** Improve reliability/error handling of job fetching scripts.
+*   [ ] **Integrations:** Improve content section extraction logic in `fetchGreenhouseJobs.ts`.
+*   [x] **Schema:** Adicionar campos para URLs de vagas externas e tracking de cliques
+*   [ ] **UX:** Melhorar UI para claramente indicar redirecionamento a sites externos para aplicação
+*   [ ] **UX:** Improve external link indicators to clearly show users they'll be redirected
+*   [ ] **Testing Gap:** Need to setup Jest and React Testing Library configurations
+*   [ ] **Testing Gap:** Create E2E test setup for critical user flows (job search, job click tracking)
+*   [ ] **Testing Gap:** Add API endpoint tests for authentication routes
+*   [ ] **Testing Gap:** Add Unit Tests for `fetchGreenhouseJobs.ts` filtering logic
+*   [ ] **Testing Gap:** Add Integration Tests for job fetching scripts (mocking APIs and DB)
+*   [ ] **Testing Gap:** Add tests for click tracking functionality
+*   [ ] **Tech Debt:** Implement proper error handling for API routes
+*   [ ] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components
+*   [ ] **Optimization:** Add caching layer for frequently accessed job listings
+*   [ ] **Performance:** Add caching for frequently accessed job listings
+*   [ ] **Optimization:** Implement server-side pagination for job listings
+*   [ ] **Security:** Add rate limiting for authentication endpoints
+*   [ ] **Security:** Implement CSRF protection for sensitive operations
+*   [ ] **Security:** Implement rate limiting for job search API endpoints
+*   [ ] **Documentation:** Create API documentation for endpoints
+*   [ ] **i18n:** Prepare codebase for proper internationalization (currently has i18n config but might need structure)
+*   [ ] **Analytics:** Implementar sistema de rastreamento de cliques em vagas externas
+*   [ ] **DB:** Add specific indexes to `Job` table for faster filtering/sorting
+
+## Discovered During Work
+
+*   [x] **Architecture:** O modelo de dados atual assume aplicações diretas - precisa ser refatorado para agregador de links
+*   [x] **Schema:** Remover/adaptar modelos `Application` e `InterviewEvent` do schema do Prisma
+*   [x] **Schema:** Adicionar campos para URLs de vagas externas e tracking de cliques
+*   [ ] **UX:** Melhorar UI para claramente indicar redirecionamento a sites externos para aplicação
+*   [ ] **Testing Gap:** Need to setup Jest and React Testing Library configurations
+*   [ ] **Testing Gap:** Create E2E test setup for critical user flows (job search, job click tracking)
+*   [ ] **Testing Gap:** Add API endpoint tests for authentication routes
+*   [ ] **Testing Gap:** Add Unit Tests for `fetchGreenhouseJobs.ts` filtering logic
+*   [ ] **Testing Gap:** Add Integration Tests for job fetching scripts (mocking APIs and DB)
+*   [ ] **Tech Debt:** Implement proper error handling for API routes
+*   [ ] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components
+*   [ ] **Optimization:** Add caching layer for frequently accessed job listings
+*   [ ] **Optimization:** Implement server-side pagination for job listings
+*   [ ] **Security:** Add rate limiting for authentication endpoints
+*   [ ] **Security:** Implement CSRF protection for sensitive operations
+*   [ ] **Documentation:** Create API documentation for endpoints
+*   [ ] **i18n:** Prepare codebase for proper internationalization (currently has i18n config but might need structure)
+*   [ ] **Analytics:** Implementar sistema de rastreamento de cliques em vagas externas
+*   [ ] **Refactor:** Refactor jobs listing page (`src/pages/jobs/index.tsx`) to use client-side fetching (e.g., SWR/React Query) for filters and pagination to enable better loading states (skeletons).
+*   [ ] **Bug Fix:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields and invalid dates.
+
+## Milestones
+
+*   [x] **Milestone: MVP Setup Complete** (Initial Project, DB, Auth Setup)
+*   [ ] ~~**Milestone: Core Job Board Functional** (Posting, Listing, Applying, Greenhouse Sync)~~
+*   [ ] **Milestone: Core Job Board Functional** (Posting, Listing, External Links, Greenhouse Sync)
+*   [ ] ~~**Milestone: Basic Dashboards & Notifications Live** (Candidate/Recruiter Dashboards, Core Emails)~~
+*   [ ] **Milestone: Dashboards & Click Tracking** (User Favorites, Recruiter Analytics)
+*   [ ] **Milestone: Core MVP Launch Ready** (Phase 1 items complete, tested, deployed)
+*   [ ] **Milestone: Enhanced Search & Growth Foundation** (Phase 2 items like skills filter, SEO basics)
+
+## Recently Completed
+
+*   **{Current Date}:** Initialize `PLANNING.md` and `TASK.md`. _(Moved from previous structure)_
+*   **{Current Date}:** Ajuste arquitetural - redefinir o sistema como agregador de links (estilo Remotive/Remote OK) em vez de aplicações diretas.
+*   **{Current Date}:** Atualizar schema Prisma e migrar banco de dados para remover modelos `Application` e `InterviewEvent` e adicionar campo `clickCount`.
+*   **{Current Date}:** Refatorar código inicial (tipos, UI) para remover referências a `Application` e campos relacionados.
+*   **{Current Date}:** Instalar e configurar Jest para testes unitários. 

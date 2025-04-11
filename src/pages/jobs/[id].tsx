@@ -38,25 +38,45 @@ function getDefaultLogo(companyName: string | any): string {
 // Função para buscar detalhes da vaga pelo ID
 async function fetchJobById(id: string): Promise<Job | null> {
   try {
-    // Extrair o ID interno da vaga
+    // Extract the ID (handle prefixed IDs if needed)
     let internalId = id;
     if (id.includes('_')) {
-      // Se for um ID no formato 'provider_id', extrair o ID
       internalId = id.split('_')[1];
     }
     
+    console.log(`Fetching job with ID: ${internalId}`); // Debug log
+    
     const response = await fetch(`/api/jobs/${internalId}`);
     
+    // Enhanced error handling
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Falha ao buscar vaga' }));
-      throw new Error(errorData.error || 'Falha ao buscar vaga');
+      const status = response.status;
+      let errorMessage = 'Falha ao buscar vaga';
+      
+      try {
+        // Try to parse response error message
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } catch (parseError) {
+        console.error('Error parsing error response:', parseError);
+      }
+      
+      console.error(`API error fetching job (${status}): ${errorMessage}`);
+      throw new Error(errorMessage);
     }
     
     const data = await response.json();
     
-    // Se o ID original tiver um prefixo, garantir que o ID na resposta mantenha esse prefixo
+    // Log successful data reception for debugging
+    console.log('Job data received from API:', {
+      id: data.id,
+      title: data.title,
+      hasCompany: !!data.company
+    });
+    
+    // If the ID original had a prefix, ensure it's preserved
     if (id !== internalId && data) {
-      data.id = id; // Preservar o ID original com prefixo
+      data.id = id; // Preserve the original ID with prefix
     }
     
     return data;
@@ -137,9 +157,25 @@ export default function JobDetail(props) {
     loadJobDetails();
   }, [id, router.isReady]); // Adicionado router.isReady à lista de dependências
 
-  const getFormattedDate = (date: Date | string) => {
-    const dateObj = date instanceof Date ? date : new Date(date);
-    return formatDistanceToNow(dateObj, { locale: ptBR, addSuffix: true });
+  const getFormattedDate = (date: Date | string | null | undefined) => {
+    // Handle null/undefined/invalid dates
+    if (!date) {
+      return 'Data não disponível';
+    }
+    
+    try {
+      const dateObj = date instanceof Date ? date : new Date(date);
+      
+      // Check if date is valid before formatting
+      if (isNaN(dateObj.getTime())) {
+        return 'Data inválida';
+      }
+      
+      return formatDistanceToNow(dateObj, { locale: ptBR, addSuffix: true });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Data não disponível';
+    }
   };
 
   if (loading) {
@@ -207,21 +243,22 @@ export default function JobDetail(props) {
     return levelMap[level] || level;
   };
   
-  // Obter o nome da empresa corretamente
-  const companyName = typeof job.company === 'object' ? job.company.name : job.company;
+  // Safely get company data with fallbacks
+  const companyName = job.company?.name || 'Empresa';
   
-  // Obter o logo da empresa corretamente
-  const companyLogo = typeof job.company === 'object' 
-    ? job.company.logo || job.company.image || getDefaultLogo(companyName)
-    : job.companyLogo || getDefaultLogo(companyName);
+  // Safely get company logo with fallback
+  const companyLogo = job.company?.logo || 
+                     (typeof job.company === 'object' ? job.company.image : null) || 
+                     job.companyLogo || 
+                     getDefaultLogo(companyName);
   
-  // Obter as tags corretamente
+  // Get the tags safely
   const tags = job.tags || job.skills || [];
 
   return (
-    <Layout title={`${job.title} - ${companyName} | RemoteJobsBR`}>
+    <Layout title={`${job.title || 'Vaga'} - ${companyName} | RemoteJobsBR`}>
       <Head>
-        <meta name="description" content={`${job.title} - ${companyName}. ${job.description.substring(0, 160)}...`} />
+        <meta name="description" content={`${job.title || 'Vaga'} - ${companyName}. ${job.description ? job.description.substring(0, 160) : ''}...`} />
       </Head>
 
       <div className="bg-white">
@@ -327,10 +364,16 @@ export default function JobDetail(props) {
                 <div className="flex flex-wrap gap-3">
                   {job.applicationUrl ? (
                     <a
-                      href={job.applicationUrl}
+                      href={job.applicationUrl || '#'}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                      onClick={(e) => {
+                        if (!job.applicationUrl) {
+                          e.preventDefault();
+                          alert('URL de aplicação não disponível');
+                        }
+                      }}
                     >
                       Candidatar-se
                     </a>
@@ -417,10 +460,16 @@ export default function JobDetail(props) {
                   <div className="mt-4">
                     {job.applicationUrl ? (
                       <a 
-                        href={job.applicationUrl}
+                        href={job.applicationUrl || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium transition duration-200 block text-center"
+                        onClick={(e) => {
+                          if (!job.applicationUrl) {
+                            e.preventDefault();
+                            alert('URL de aplicação não disponível');
+                          }
+                        }}
                       >
                         Candidatar-se
                       </a>

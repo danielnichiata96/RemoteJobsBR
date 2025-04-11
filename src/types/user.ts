@@ -1,3 +1,5 @@
+import { Job, SavedJob } from './models';
+
 export interface User {
   id: string;
   name?: string;
@@ -15,27 +17,52 @@ export interface User {
 
 export type UserRole = 'user' | 'admin';
 
-export interface UserProfile extends Omit<User, 'password'> {
-  applications?: JobApplication[];
+/**
+ * Represents a user profile, which can be either a Candidate or a Company.
+ */
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
+  role: 'CANDIDATE' | 'COMPANY' | 'ADMIN';
+  // Candidate specific fields
+  title?: string | null;
+  bio?: string | null;
+  location?: string | null;
+  resumeUrl?: string | null;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
+  portfolioUrl?: string | null;
+  skills?: string[];
+  // Company specific fields
+  description?: string | null;
+  website?: string | null;
+  // Relations (optional based on context)
   savedJobs?: SavedJob[];
+  jobsPosted?: Job[]; // For COMPANY role
 }
 
-export interface JobApplication {
-  id: string;
-  jobId: string;
-  coverLetter?: string;
-  resumeUrl?: string;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-  job?: Job;
-}
+// This interface seems redundant now that Application is removed.
+// Keeping it commented out for now in case it was used elsewhere for a different purpose.
+// export interface JobApplication { // REMOVED
+//   id: string;
+//   job: Job;
+//   status: string; // Simplified status for display?
+//   appliedAt: Date;
+// }
 
-export interface SavedJob {
-  id: string;
-  jobId: string;
-  createdAt: Date;
-  job?: Job;
+/**
+ * Structure for user settings.
+ */
+export interface UserSettings {
+  newsletterEnabled: boolean;
+  emailNotifications: {
+    newApplications: boolean; // REMOVE?
+    jobMatches: boolean;
+    applicationStatusChanges: boolean; // REMOVE?
+  };
+  // Add other settings as needed
 }
 
 interface Job {
