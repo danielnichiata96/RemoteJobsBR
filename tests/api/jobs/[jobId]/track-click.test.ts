@@ -4,42 +4,44 @@
 // The handler was refactored to use the shared client and error check simplified, but the mock still fails.
 import { createMocks, MockResponse, MockRequest } from 'node-mocks-http';
 import { NextApiRequest, NextApiResponse } from 'next';
-import handler from '@/pages/api/jobs/[jobId]/track-click'; 
-// Still don't need Prisma import if relying on error code
-// import { Prisma } from '@prisma/client'; 
 
 // --- Mocks Definitions (Top Level) ---
 const mockJobUpdate = jest.fn();
 // No longer need to mock disconnect if it's not called
 // const mockDisconnect = jest.fn();
 
+// We will mock prisma inside beforeAll
+
+// Import the handler *after* the mock is defined in beforeAll
+// import handler from '@/pages/api/jobs/[jobId]/track-click'; 
+
 describe('API Route: /api/jobs/[jobId]/track-click', () => {
+  let handler: (req: NextApiRequest, res: NextApiResponse) => Promise<void>;
 
   // --- Mock Setup (Inside beforeAll) ---
-  beforeAll(() => {
-    // Reset modules before mocking
+  beforeAll(async () => {
+    // Reset modules BEFORE mocking
     jest.resetModules(); 
     
-    // Mock ONLY the shared prisma instance import used by the handler HERE
+    // Mock the shared prisma instance
     jest.mock('@/lib/prisma', () => ({
       prisma: {
         job: {
           update: mockJobUpdate,
         },
-        // Remove disconnect from the mock if it's not used
-        // $disconnect: mockDisconnect,
-        // Provide a dummy $disconnect if the type requires it
-        $disconnect: jest.fn(), // Dummy mock, won't be called
+        $disconnect: jest.fn(), // Keep dummy disconnect
       },
     }));
-    // Force require the mocked module within beforeAll AFTER resetting and mocking
-    require('@/lib/prisma'); 
+
+    // Dynamically import the handler *after* mocks are set up
+    const module = await import('@/pages/api/jobs/[jobId]/track-click');
+    handler = module.default;
   });
 
   // --- Test Setup (Inside beforeEach) ---
   beforeEach(() => {
     mockJobUpdate.mockClear();
-    // mockDisconnect.mockClear(); // No longer needed
+    // No need to clear $disconnect if not used/checked
   });
 
   // --- Tests (Remove disconnect assertions) ---

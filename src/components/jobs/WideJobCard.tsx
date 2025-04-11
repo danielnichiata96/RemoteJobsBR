@@ -4,7 +4,7 @@ import { AiOutlineClockCircle } from 'react-icons/ai';
 import { HiOutlineLocationMarker } from 'react-icons/hi';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Job } from '@/types/job';
+import { Job } from '@/types/models';
 import { useState } from 'react';
 import SaveJobButton from './SaveJobButton';
 
@@ -43,7 +43,7 @@ const WideJobCard = ({ job }: WideJobCardProps) => {
               {companyLogo && !imgError ? (
                 <Image
                   src={companyLogo}
-                  alt={`${job.company} logo`}
+                  alt={`${job.company?.name || 'Company'} logo`}
                   width={64}
                   height={64}
                   className="object-contain"
@@ -51,7 +51,7 @@ const WideJobCard = ({ job }: WideJobCardProps) => {
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-blue-600 text-white text-2xl font-bold">
-                  {typeof job.company === 'string' ? job.company.charAt(0).toUpperCase() : 'C'}
+                  {(job.company?.name || 'C').charAt(0).toUpperCase()}
                 </div>
               )}
             </div>

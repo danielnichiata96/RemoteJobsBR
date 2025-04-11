@@ -22,16 +22,29 @@ const customJestConfig = {
     '^@/hooks/(.*)$': '<rootDir>/src/hooks/$1',
     '^@/styles/(.*)$': '<rootDir>/src/styles/$1',
     '^@/types/(.*)$': '<rootDir>/src/types/$1',
-    // Add other aliases here if you have them in tsconfig.json
+    // Mock problematic ESM modules
+    '^jose$': '<rootDir>/mocks/jose.js',
+    '^@panva/hkdf$': '<rootDir>/mocks/hkdf.js', 
+    '^uuid$': '<rootDir>/mocks/uuid.js',
+    // Mock preact-render-to-string to avoid ESM issues in API tests
+    '^preact-render-to-string$': '<rootDir>/mocks/preact-render-to-string.js',
+    // Force resolution of preact to its CJS build to avoid ESM issues
+    '^preact$': '<rootDir>/node_modules/preact/dist/preact.js',
+    '^preact/hooks$': '<rootDir>/node_modules/preact/hooks/dist/hooks.js', // Also map hooks if used
   },
-  
-  // Use ts-jest for TypeScript files
-  preset: 'ts-jest',
   
   // Test spec file matching patterns
   testMatch: [
     '**/tests/**/*.test.(ts|tsx)',
     '**/__tests__/**/*.test.(ts|tsx)'
+  ],
+  
+  // *** Update transformIgnorePatterns for better ESM compatibility ***
+  // This pattern prevents Jest from transforming node_modules, *except* for the listed ones.
+  transformIgnorePatterns: [
+    // Add preact and preact-render-to-string to the list of transformed modules
+    // Broaden the next-auth pattern to include its nested dependencies
+    '/node_modules/(?!(@panva/hkdf|jose|openid-client|next-auth|preact|preact-render-to-string)/)', 
   ],
   
   // Exclude node_modules and .next from test coverage

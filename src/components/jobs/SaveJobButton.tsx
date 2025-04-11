@@ -65,6 +65,8 @@ export default function SaveJobButton({
         if (onSaveToggle) {
           onSaveToggle(newIsSaved);
         }
+      } else {
+        console.error('Failed to toggle saved status:', response.statusText);
       }
     } catch (error) {
       console.error('Error toggling saved status:', error);

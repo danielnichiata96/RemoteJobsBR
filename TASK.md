@@ -28,10 +28,10 @@ LLM should update this file based on conversational progress.
 *   [x] **Jobs:** Implement Job Posting API endpoint (Recruiter role required).
 *   [x] **Jobs:** Implement basic Job Posting Form UI (for Recruiters).
 *   [x] **Integration:** Setup Greenhouse job fetching logic (basic script/API route).
-*   [ ] **Jobs:** Refine Job Listing Page UI (implement loading skeletons, error state display).
-*   [ ] **Jobs:** Implement server-side pagination for job listings API (`/api/jobs`).
-*   [ ] **Jobs:** Improve Job Detail Page with external redirection UX indicators.
-*   [ ] **User Features:** Implementar sistema de vagas salvas (favoritos) para usuários.
+*   [x] **Jobs:** Refine Job Listing Page UI (implement loading skeletons, error state display).
+*   [x] **Jobs:** Implement server-side pagination for job listings API (`/api/jobs`).
+*   [x] **Jobs:** Improve Job Detail Page with external redirection UX indicators.
+*   [ ] **User Features:** Implementar sistema de vagas salvas (favoritos) para usuários. (**Button added, Page created, Tests added**)
 *   [x] **User Features:** Implement click tracking system for external job links (**API & Hook created, used in JobDetail, Tests added**)
 *   [x] **Recruiter Dashboard:** Implement API route to fetch jobs posted by a recruiter.
 *   [x] **Recruiter Dashboard:** Reconstruir para focar em métricas de cliques e visualizações de vagas (**API & Frontend Updated**).
@@ -82,8 +82,8 @@ LLM should update this file based on conversational progress.
 *   [ ] **Integrations:** Improve reliability/error handling of job fetching scripts.
 *   [ ] **Integrations:** Improve content section extraction logic in `fetchGreenhouseJobs.ts`.
 *   [x] **Schema:** Adicionar campos para URLs de vagas externas e tracking de cliques
-*   [ ] **UX:** Melhorar UI para claramente indicar redirecionamento a sites externos para aplicação
-*   [ ] **UX:** Improve external link indicators to clearly show users they'll be redirected
+*   [x] ~~**UX:** Melhorar UI para claramente indicar redirecionamento a sites externos para aplicação~~
+*   [x] ~~**UX:** Improve external link indicators to clearly show users they'll be redirected~~
 *   [ ] **Testing Gap:** Need to setup Jest and React Testing Library configurations
 *   [ ] **Testing Gap:** Create E2E test setup for critical user flows (job search, job click tracking)
 *   [ ] **Testing Gap:** Add API endpoint tests for authentication routes
@@ -129,4 +129,17 @@ LLM should update this file based on conversational progress.
 *   **{Current Date}:** Instalar e configurar Jest para testes unitários.
 *   **{Current Date}:** Adicionar mock para `next-auth/react` em `jest.setup.js`.
 *   **{Current Date}:** Expandir testes unitários para `src/lib` (email, services, utils, adapters, jobProcessors).
-*   **{Current Date}:** Implement sorting functionality for job listings page. 
+*   **{Current Date}:** Implement sorting functionality for job listings page.
+*   **{Current Date}:** Improve Job Detail Page with external redirection UX indicators.
+*   **{Current Date}:** Add Save Job button to Job Detail Page and create Saved Jobs page structure. 
+*   **{Current Date}:** Add tests for SaveJobButton, saved-jobs page, and saved jobs API endpoints. 
+*   **2025-04-10:** Added `/api/jobs/search` tests.
+*   **2025-04-11:** Add tests for SaveJobButton, saved-jobs page, and saved jobs API endpoints.
+    *   `SaveJobButton.test.tsx`: ✅ DONE
+    *   `saved-jobs.test.tsx`: ✅ DONE
+    *   `api/jobs/saved/[jobId].test.ts`: 🚧 BLOCKED (Jest/SWC ESM config issues)
+    *   `api/users/me/saved-jobs.test.ts`: 🚧 BLOCKED (Jest/SWC ESM config issues)
+    *   `useJobsSearch.test.tsx`: 🚧 BLOCKED (Jest/SWC JSX parsing issue)
+
+### 📈 Analytics & Tracking
+// ... rest of the file 

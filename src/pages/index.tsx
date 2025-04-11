@@ -20,7 +20,7 @@ const sortOptions = [
   { value: 'relevance', label: 'Relevância' },
 ];
 
-export default function Home(props) {
+export default function Home(props: {}) {
   const router = useRouter();
 
   // State variables (copied from jobs/index.tsx)
@@ -82,20 +82,27 @@ export default function Home(props) {
     if (isRemoteOnly) queryParams.remote = 'true';
     if (currentPage > 1) queryParams.page = currentPage.toString();
     if (sortBy !== 'newest') queryParams.sortBy = sortBy;
-    const finalQuery = { ...currentQuery, ...queryParams, ...newParams };
+
+    const finalQuery: Record<string, string | undefined> = {
+      ...currentQuery,
+      ...queryParams,
+      ...newParams,
+    };
+
     Object.keys(finalQuery).forEach(key => {
-      if (!finalQuery[key] || (Array.isArray(finalQuery[key]) && finalQuery[key].length === 0)) {
+      const value = finalQuery[key];
+      if (!value || (Array.isArray(value) && value.length === 0)) {
         delete finalQuery[key];
-      } else if (key === 'page' && finalQuery[key] === '1') {
-        delete finalQuery[key]; // Remove page=1 explicitly
-      } else if (key === 'sortBy' && finalQuery[key] === 'newest') {
+      } else if (key === 'page' && value === '1') {
+        delete finalQuery[key];
+      } else if (key === 'sortBy' && value === 'newest') {
         delete finalQuery[key];
       }
     });
     router.push(
       { pathname: router.pathname, query: finalQuery },
       undefined,
-      { shallow: true, scroll: false } // prevent scroll jump on query update
+      { shallow: true, scroll: false }
     );
   };
 
@@ -150,7 +157,7 @@ export default function Home(props) {
     if (newPage >= 1 && newPage <= (pagination?.totalPages || 1)) {
       setCurrentPage(newPage);
       updateRouterQuery({ page: newPage > 1 ? newPage.toString() : undefined });
-      window.scrollTo(0, 0); // Scroll to top on page change
+      window.scrollTo(0, 0);
     }
   };
 

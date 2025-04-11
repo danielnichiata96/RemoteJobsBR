@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/pages/api/auth/[...nextauth]'; // Adjust path if needed
-import prisma from '@/lib/prisma'; // Adjust path if needed
+import { prisma } from '@/lib/prisma'; // Adjust path if needed
 import { Job, UserRole } from '@/types/models'; // Ensure your types are correct
 
 export default async function handler(

@@ -28,7 +28,7 @@ interface JobListSkeletonProps {
 
 const JobListSkeleton: React.FC<JobListSkeletonProps> = ({ count = 6 }) => {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="job-list-skeleton">
       {[...Array(count)].map((_, index) => (
         <SkeletonCard key={index} />
       ))}

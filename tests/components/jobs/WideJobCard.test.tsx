@@ -36,23 +36,48 @@ jest.mock('@/components/jobs/SaveJobButton', () => ({
 }));
 
 describe('WideJobCard component', () => {
-  const baseMockJob = {
+  const baseMockJob: Job = {
     id: '123456',
     title: 'Senior React Developer',
-    company: 'Tech Company',
-    // companyLogo: null, // Base will have logo
-    companyLogo: 'https://img.logo.dev/techcompany.com', 
+    description: 'Develop amazing things with React.',
+    requirements: '5+ years of React experience',
+    responsibilities: 'Build and maintain frontend features',
+    jobType: 'FULL_TIME',
+    experienceLevel: 'SENIOR',
+    skills: ['React', 'TypeScript', 'Next.js'],
     location: 'Remote - Worldwide',
-    jobType: 'FULL_TIME' as JobType,
-    experienceLevel: 'SENIOR' as ExperienceLevel,
     workplaceType: 'REMOTE',
-    publishedAt: new Date('2023-01-01').toISOString(),
-    createdAt: new Date('2023-01-01').toISOString(),
-    description: 'Job description',
-    requirements: 'Job requirements',
-    responsibilities: 'Job responsibilities',
-    skills: ['React', 'TypeScript'],
-    tags: ['Frontend', 'Remote'],
+    createdAt: new Date('2022-01-15T10:00:00Z').toISOString(),
+    publishedAt: new Date('2022-01-15T10:00:00Z').toISOString(),
+    company: {
+      id: 'company-abc',
+      name: 'Tech Company',
+      logo: null,
+      websiteUrl: 'https://techcompany.com'
+    },
+    companyLogo: 'https://img.logo.dev/techcompany.com',
+    applicationUrl: 'https://apply.example.com/123',
+    isSaved: false,
+    source: 'direct',
+    sourceId: null,
+    sourceLogo: null,
+    sourceUrl: null,
+    companyId: 'company-abc',
+    tags: [],
+    country: 'Worldwide',
+    minSalary: null,
+    maxSalary: null,
+    currency: null,
+    salaryCycle: null,
+    showSalary: false,
+    status: 'ACTIVE',
+    visas: [],
+    languages: [],
+    applicationEmail: null,
+    updatedAt: new Date().toISOString(),
+    expiresAt: null,
+    viewCount: 0,
+    clickCount: 0,
   };
 
   // Specific mock for testing the logo fallback

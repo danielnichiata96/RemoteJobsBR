@@ -9,6 +9,7 @@ import { ptBR } from 'date-fns/locale';
 import Layout from '@/components/common/Layout';
 import { useTrackJobClick } from '@/hooks/useTrackJobClick';
 import { PrismaClient } from '@prisma/client';
+import SaveJobButton from '@/components/jobs/SaveJobButton';
 
 // --- Job Interface ---
 interface Job {
@@ -269,11 +270,45 @@ export default function JobDetailPage({ job, error }: InferGetServerSidePropsTyp
         <div className="lg:col-span-1 space-y-6">
            {/* Apply Button Card (Sticky) */}
            <div className="bg-white shadow sm:rounded-lg p-6 sticky top-24">
+             {/* External Link Notice - NEW */}
+             <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-md">
+               <div className="flex items-start">
+                 <div className="flex-shrink-0">
+                   <svg className="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                   </svg>
+                 </div>
+                 <div className="ml-3">
+                   <h3 className="text-sm font-medium text-blue-800">Redirecionamento externo</h3>
+                   <div className="mt-1 text-sm text-blue-700">
+                     <p>Ao clicar em "Candidatar-se", você será redirecionado para o site da empresa ou plataforma de recrutamento.</p>
+                     {job.applicationUrl && !job.applicationUrl.startsWith('mailto:') && (
+                       <p className="mt-1 font-medium">
+                         Destino: {(() => {
+                           try {
+                             return new URL(job.applicationUrl).hostname.replace('www.', '');
+                           } catch (e) {
+                             return 'Site externo';
+                           }
+                         })()}
+                       </p>
+                     )}
+                     {job.applicationEmail && !job.applicationUrl && (
+                       <p className="mt-1 font-medium">
+                         Destino: E-mail para {job.applicationEmail}
+                       </p>
+                     )}
+                   </div>
+                 </div>
+               </div>
+             </div>
+
              <button
                type="button"
                onClick={handleApplyClick}
                disabled={isLoading}
-               className="w-full inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+               className="w-full inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed group"
+               title="Você será redirecionado para um site externo"
              >
                {isLoading ? (
                  <>
@@ -290,9 +325,44 @@ export default function JobDetailPage({ job, error }: InferGetServerSidePropsTyp
                      <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
                    </svg>
                    Candidatar-se agora
+                   <svg className="ml-2 h-4 w-4 text-white opacity-80 group-hover:opacity-100 transition-opacity" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                     <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                     <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                   </svg>
                  </>
                )}
              </button>
+
+             {/* Save Job Button - Added Below Apply */}
+             <div className="mt-4">
+               <SaveJobButton 
+                 jobId={job.id}
+                 variant="outline" // Use outline style to complement primary Apply button
+                 showText={true} // Show text like "Salvar Vaga" / "Vaga Salva"
+                 className="w-full" // Make it full width
+               />
+             </div>
+
+             {/* Company Website Link - NEW */}
+             {job.company?.websiteUrl && (
+               <div className="mt-4">
+                 <a 
+                   href={job.company.websiteUrl} 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   className="text-sm flex items-center justify-center text-gray-600 hover:text-primary-600 transition-colors"
+                 >
+                   <svg className="mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
+                   </svg>
+                   Visitar site da empresa
+                   <svg className="ml-1.5 h-3 w-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                     <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                     <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                   </svg>
+                 </a>
+               </div>
+             )}
            </div>
 
            {/* Placeholder for similar jobs/other sidebar content */}

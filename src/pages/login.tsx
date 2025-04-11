@@ -5,7 +5,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { FaGoogle, FaLinkedin } from 'react-icons/fa';
 
-export default function Login(props) {
+export default function Login() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [isLoading, setIsLoading] = useState(false);
