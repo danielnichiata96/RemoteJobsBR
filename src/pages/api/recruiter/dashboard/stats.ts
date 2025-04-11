@@ -45,20 +45,22 @@ export default async function handler(
       },
     });
 
-    // Contar visualizações das vagas
-    const viewsCount = await prisma.job.aggregate({
+    // Contar visualizações e cliques das vagas
+    const statsAggregation = await prisma.job.aggregate({
       where: {
         companyId: user.id,
       },
       _sum: {
         viewCount: true,
+        clickCount: true,
       },
     });
 
     return res.status(200).json({
       publishedJobsCount,
       totalJobsCount,
-      viewsCount: viewsCount._sum.viewCount || 0,
+      viewsCount: statsAggregation._sum.viewCount || 0,
+      clicksCount: statsAggregation._sum.clickCount || 0,
     });
 
   } catch (error) {

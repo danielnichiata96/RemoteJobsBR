@@ -34,13 +34,17 @@ LLM should update this file based on conversational progress.
 *   [ ] **User Features:** Implementar sistema de vagas salvas (favoritos) para usuários.
 *   [x] **User Features:** Implement click tracking system for external job links (**API & Hook created, used in JobDetail, Tests added**)
 *   [x] **Recruiter Dashboard:** Implement API route to fetch jobs posted by a recruiter.
-*   [~] **Recruiter Dashboard:** Reconstruir para focar em métricas de cliques e visualizações de vagas (**API Updated, Frontend requires manual change**).
+*   [x] **Recruiter Dashboard:** Reconstruir para focar em métricas de cliques e visualizações de vagas (**API & Frontend Updated**).
 *   [ ] **Testing:** Write initial unit tests for Auth logic.
 *   [ ] **Testing:** Write more component tests for major UI elements (filters, pagination).
 *   [x] **Testing:** Add unit tests for `useTrackJobClick` hook.
 *   [x] **Testing:** Add API tests for `/api/jobs/[jobId]/track-click` endpoint.
 *   [ ] **Monitoring:** Setup basic Error Monitoring (e.g., Sentry integration or Vercel monitoring).
 *   [x] **Notifications:** Setup email service (e.g., Resend) integration.
+*   [ ] **Filters:** Implement URL query parameter state management for filters.
+*   [ ] **Filters:** Add "Technology/Stack" filter option (Schema, API, UI).
+*   [ ] **Filters:** Enhance Filter UI/UX (Collapsible mobile, Chips, Clear All, Result Count).
+*   [ ] **Filters:** Implement debounce for filter inputs.
 
 ## Future Ideas / Full Backlog (Phase 2 & Beyond)
 
@@ -64,6 +68,13 @@ LLM should update this file based on conversational progress.
 *   [ ] Revenue: Implement featured job listings.
 *   [ ] Revenue: Develop partnership features (schools/bootcamps).
 *   [ ] Mobile: Consider mobile app development.
+*   [ ] **Filters:** Add Salary Range filter.
+*   [ ] **Filters:** Add Company filter.
+*   [ ] **Filters:** Add Geographic restrictions filter (e.g., states in Brazil).
+*   [ ] **Filters:** Add Language requirements filter.
+*   [ ] **Filters:** Implement text search for job listings with result highlighting.
+*   [ ] **Filters:** Implement infinite scroll/lazy loading for job list pagination.
+*   [ ] **Filters:** Show popular filter tags based on usage.
 *   [ ] **Integrations:** Add more job board integrations (LinkedIn API, Indeed API, etc.).
 *   [ ] **Integrations:** Implement job scraping framework for other aggregators (requires careful legal review).
 *   [ ] **Integrations:** Implement standard API for companies to post jobs directly.
@@ -90,33 +101,14 @@ LLM should update this file based on conversational progress.
 *   [ ] **Documentation:** Create API documentation for endpoints
 *   [ ] **i18n:** Prepare codebase for proper internationalization (currently has i18n config but might need structure)
 *   [ ] **Analytics:** Implementar sistema de rastreamento de cliques em vagas externas
-*   [ ] **DB:** Add specific indexes to `Job` table for faster filtering/sorting
-
-## Discovered During Work
-
-*   [x] **Architecture:** O modelo de dados atual assume aplicações diretas - precisa ser refatorado para agregador de links
-*   [x] **Schema:** Remover/adaptar modelos `Application` e `InterviewEvent` do schema do Prisma
-*   [x] **Schema:** Adicionar campos para URLs de vagas externas e tracking de cliques
-*   [ ] **UX:** Melhorar UI para claramente indicar redirecionamento a sites externos para aplicação
-*   [ ] **Testing Gap:** Need to setup Jest and React Testing Library configurations
-*   [ ] **Testing Gap:** Create E2E test setup for critical user flows (job search, job click tracking)
-*   [ ] **Testing Gap:** Add API endpoint tests for authentication routes
-*   [ ] **Testing Gap:** Add Unit Tests for `fetchGreenhouseJobs.ts` filtering logic
-*   [ ] **Testing Gap:** Add Integration Tests for job fetching scripts (mocking APIs and DB)
-*   [x] **Testing:** Add unit tests for `useTrackJobClick` hook.
-*   [x] **Testing:** Add API tests for `/api/jobs/[jobId]/track-click` endpoint.
-*   [ ] **Tech Debt:** Implement proper error handling for API routes
-*   [ ] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components
-*   [ ] **Optimization:** Add caching layer for frequently accessed job listings
-*   [ ] **Optimization:** Implement server-side pagination for job listings
-*   [ ] **Security:** Add rate limiting for authentication endpoints
-*   [ ] **Security:** Implement CSRF protection for sensitive operations
-*   [ ] **Security:** Implement rate limiting for job search API endpoints
-*   [ ] **Documentation:** Create API documentation for endpoints
-*   [ ] **i18n:** Prepare codebase for proper internationalization (currently has i18n config but might need structure)
-*   [ ] **Analytics:** Implementar sistema de rastreamento de cliques em vagas externas
-*   [ ] **Refactor:** Refactor jobs listing page (`src/pages/jobs/index.tsx`) to use client-side fetching (e.g., SWR/React Query) for filters and pagination to enable better loading states (skeletons).
+*   [x] **Refactor:** Refactor jobs listing page (`src/pages/jobs/index.tsx`) to use client-side fetching (e.g., SWR/React Query) for filters and pagination to enable better loading states (skeletons). (**SWR implemented, loading state improved, pagination added, tests added**)
 *   [ ] **Bug Fix:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields and invalid dates.
+*   [x] **Jobs:** Implement sorting functionality for job listings page.
+*   [x] **Refactor:** Migrate job listing functionality from `/jobs` page to home page (`/`).
+
+## Bug Fixes
+
+*   [x] **React Error:** Fix "Objects are not valid as a React child (found: object with keys {name, logo})" error occurring on page load (likely home page). (Reported: {Current Date})
 
 ## Milestones
 
@@ -136,4 +128,5 @@ LLM should update this file based on conversational progress.
 *   **{Current Date}:** Refatorar código inicial (tipos, UI) para remover referências a `Application` e campos relacionados.
 *   **{Current Date}:** Instalar e configurar Jest para testes unitários.
 *   **{Current Date}:** Adicionar mock para `next-auth/react` em `jest.setup.js`.
-*   **{Current Date}:** Expandir testes unitários para `src/lib` (email, services, utils, adapters, jobProcessors). 
+*   **{Current Date}:** Expandir testes unitários para `src/lib` (email, services, utils, adapters, jobProcessors).
+*   **{Current Date}:** Implement sorting functionality for job listings page. 

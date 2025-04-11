@@ -3,7 +3,7 @@
 ## 1. Project Purpose & Vision
 
 *   **Core Goal:** Create a website aggregating international remote job opportunities specifically curated for Brazilian applicants.
-*   **Target Audience:** Brazilian professionals seeking remote work with international companies.
+*   **Target Audience:** Brazilian professionals seeking 100% remote work with international companies.
 *   **Job Board Model:** Functioning as a job listing aggregator (similar to Remotive, Remote OK) that redirects users to external application pages rather than handling applications directly.
 
 ## 2. Architecture & Structure

@@ -12,6 +12,7 @@ export default function RecruiterDashboard(props) {
   const [activeJobsCount, setActiveJobsCount] = useState(null);
   const [totalJobsCount, setTotalJobsCount] = useState(null);
   const [viewsCount, setViewsCount] = useState(null);
+  const [clicksCount, setClicksCount] = useState(null);
   const [statsError, setStatsError] = useState<string | null>(null);
   
   // Verificar se o usuário está autenticado e buscar estatísticas
@@ -50,6 +51,7 @@ export default function RecruiterDashboard(props) {
         setActiveJobsCount(data.publishedJobsCount);
         setTotalJobsCount(data.totalJobsCount);
         setViewsCount(data.viewsCount);
+        setClicksCount(data.clicksCount);
       } else {
         console.error('Erro ao buscar estatísticas do dashboard');
       }
@@ -59,6 +61,7 @@ export default function RecruiterDashboard(props) {
       setActiveJobsCount(0);
       setTotalJobsCount(0);
       setViewsCount(0);
+      setClicksCount(0);
     } finally {
       setIsLoadingStats(false);
     }
@@ -218,6 +221,43 @@ export default function RecruiterDashboard(props) {
                         <Link href="/recruiter/dashboard/jobs" className="font-medium text-green-700 hover:text-green-900">
                           Manage All Jobs ({totalJobsCount ?? 0})
                         </Link>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Card for Clicks Count */}
+                  <div className="bg-purple-50 overflow-hidden shadow rounded-lg">
+                    <div className="p-5">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0 bg-purple-100 rounded-md p-3">
+                          {/* Click Icon (replace with actual icon if available) */}
+                          <svg className="h-6 w-6 text-purple-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                          </svg>
+                        </div>
+                        <div className="ml-5 w-0 flex-1">
+                          <dl>
+                            <dt className="text-sm font-medium text-gray-500 truncate">
+                              Total Clicks
+                            </dt>
+                            <dd>
+                              <div className="text-lg font-medium text-gray-900">
+                                {isLoadingStats ? (
+                                  <span className="animate-pulse h-5 w-8 bg-gray-300 inline-block rounded"></span>
+                                ) : (
+                                  clicksCount ?? 0
+                                )}
+                              </div>
+                            </dd>
+                          </dl>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-purple-100 px-5 py-3">
+                      <div className="text-sm">
+                        <span className="font-medium text-purple-700">
+                          Clicks on 'Apply'
+                        </span>
                       </div>
                     </div>
                   </div>

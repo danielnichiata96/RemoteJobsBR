@@ -60,7 +60,7 @@ const WideJobCard = ({ job }: WideJobCardProps) => {
           {/* Informações da vaga */}
           <div className="flex-grow">
             <h3 className="text-lg font-medium text-gray-900 mb-1">{job.title}</h3>
-            <p className="text-gray-600 mb-2">{job.company}</p>
+            <p className="text-gray-600 mb-2">{job.company?.name}</p>
             
             <div className="flex flex-wrap gap-2 mb-2">
               {/* Localização */}

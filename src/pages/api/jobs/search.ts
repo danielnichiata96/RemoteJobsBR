@@ -140,7 +140,7 @@ export default async function handler(
           company: {
             select: {
               name: true,
-              logoUrl: true
+              logo: true
             }
           },
           location: true,
@@ -160,7 +160,6 @@ export default async function handler(
           viewCount: true,
           _count: {
             select: {
-              applications: true,
               savedBy: true
             }
           }
