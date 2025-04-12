@@ -10,6 +10,7 @@ export interface FilterConfig {
     STRONG_POSITIVE_LATAM: string[];
     STRONG_NEGATIVE_RESTRICTION: string[];
     AMBIGUOUS: string[];
+    ACCEPT_EXACT_LATAM_COUNTRIES?: string[];
   };
   CONTENT_KEYWORDS: {
     STRONG_POSITIVE_GLOBAL: string[];

@@ -1,4 +1,4 @@
-import { JobType, ExperienceLevel, Currency, JobSource } from '@prisma/client';
+import { JobType, ExperienceLevel, Currency, JobSource, HiringRegion } from '@prisma/client';
 
 // Core interface for standardized job data BEFORE final database mapping
 export interface StandardizedJob {
@@ -15,6 +15,7 @@ export interface StandardizedJob {
   tags?: string[];
   location: string; // Raw location string from the source
   country?: string; // Determined country (e.g., 'Worldwide', 'LATAM')
+  hiringRegion?: HiringRegion;
   workplaceType?: string; // e.g., 'REMOTE'
   minSalary?: number;
   maxSalary?: number;

@@ -8,7 +8,7 @@ import {
   isRemoteJob 
 } from '../utils/jobUtils';
 import pino from 'pino';
-import { JobType, ExperienceLevel, HiringRegion, JobSource } from '@prisma/client';
+import { JobType, ExperienceLevel, HiringRegion, JobSource, Prisma } from '@prisma/client';
 import { extractDomain } from '../utils/logoUtils';
 
 const logger = pino({
@@ -64,19 +64,21 @@ export class GreenhouseProcessor implements JobProcessor {
       const enhancedJob = rawJob as EnhancedGreenhouseJob;
 
       // Determine HiringRegion based on the type passed from the fetcher
-      const tempJob = rawJob as any; // Cast to access the temporary property
-      let determinedRegion: HiringRegion | null = null;
+      const tempJob = rawJob as any; // Keep this cast for flexibility
+      let determinedRegion: HiringRegion | undefined = undefined; // Default to undefined
 
+      // Check the property added by the fetcher
       if (tempJob._determinedHiringRegionType === 'latam') {
         determinedRegion = HiringRegion.LATAM;
       } else if (tempJob._determinedHiringRegionType === 'global') {
-        determinedRegion = HiringRegion.GLOBAL;
-      } else if (enhancedJob.hiringRegion && Object.values(HiringRegion).includes(enhancedJob.hiringRegion)) {
-        // Fallback to existing enhancedJob.hiringRegion if _determinedHiringRegionType is not set/valid
-        // and if enhancedJob.hiringRegion is a valid enum value
-        determinedRegion = enhancedJob.hiringRegion;
+        // Use WORLDWIDE instead of GLOBAL if that's the enum value
+        determinedRegion = HiringRegion.WORLDWIDE; 
       }
-      // Otherwise, determinedRegion remains null
+      // Remove the fallback check for enhancedJob.hiringRegion as it caused errors
+      // If _determinedHiringRegionType wasn't set, determinedRegion will remain undefined.
+
+      // Ensure config is treated as JSON object for boardToken access
+      const sourceConfig = sourceData?.config as Prisma.JsonObject | null;
 
       const standardizedJob: StandardizedJob = {
         sourceId: `${rawJob.id}`,
@@ -92,16 +94,18 @@ export class GreenhouseProcessor implements JobProcessor {
         skills: enhancedJob.skills || skills,
         tags: enhancedJob.tags || [...skills], // Use skills as tags if not provided
         // Use the determined region, falling back if necessary
-        hiringRegion: determinedRegion,
+        hiringRegion: determinedRegion, // Assign the potentially undefined value
         location: rawJob.location.name,
         country: enhancedJob.country || 'Worldwide', // Default for remote jobs
         workplaceType: enhancedJob.workplaceType || 'REMOTE',
         applicationUrl: rawJob.absolute_url,
         // Map to flat company properties
         companyName: sourceData?.name || enhancedJob.company?.name || '',
-        companyEmail: `${sourceData?.config?.boardToken || enhancedJob.company?.boardToken || 'unknown'}@greenhouse.placeholder.com`,
-        companyLogo: null,
-        companyWebsite: sourceData?.companyWebsite || enhancedJob.company?.website || null,
+        // Use boardToken from sourceData.config safely
+        companyEmail: `${sourceConfig?.boardToken || 'unknown'}@greenhouse.placeholder.com`,
+        // Assign undefined instead of null for optional string fields
+        companyLogo: undefined,
+        companyWebsite: sourceData?.companyWebsite || enhancedJob.company?.website || undefined,
         updatedAt: new Date(rawJob.updated_at), // Include updatedAt
         publishedAt: new Date(rawJob.updated_at) // Use updated_at as publishedAt for now
       };
@@ -109,11 +113,10 @@ export class GreenhouseProcessor implements JobProcessor {
       // --- Logo Fetching (using logo.dev) ---
       try {
         // Use website from sourceData first, then from rawJob if available
-        const websiteForLogo = sourceData?.companyWebsite || enhancedJob.company?.website;
+        const websiteForLogo = standardizedJob.companyWebsite; // Use the value already assigned
         if (websiteForLogo) { 
           const domain = extractDomain(websiteForLogo);
           if (domain) {
-            // Usar API token se disponível
             const apiToken = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN || '';
             const tokenParam = apiToken ? `?token=${apiToken}` : '';
             standardizedJob.companyLogo = `https://img.logo.dev/${domain}${tokenParam}`;
@@ -125,7 +128,7 @@ export class GreenhouseProcessor implements JobProcessor {
              logger.trace({ jobId: rawJob.id }, 'Company website not available for logo fetching.');
         }
       } catch (logoError) {
-        logger.warn({ jobId: rawJob.id, website: sourceData?.companyWebsite, error: logoError }, 'Error processing company website for logo URL.');
+        logger.warn({ jobId: rawJob.id, website: standardizedJob.companyWebsite, error: logoError }, 'Error processing company website for logo URL.');
       }
       // -------------------------------------
 

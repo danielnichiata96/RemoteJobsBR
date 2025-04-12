@@ -5,6 +5,7 @@ import pMap from 'p-map';
 import pino from 'pino';
 import * as fs from 'fs';
 import * as path from 'path';
+import sanitizeHtml from 'sanitize-html';
 import { JobProcessingAdapter } from '../adapters/JobProcessingAdapter';
 import { FilterConfig, FilterMetadataConfig, getGreenhouseConfig } from '../../types/JobSource'; // Adjust path
 import { StandardizedJob } from '../../types/StandardizedJob'; // Adjust path
@@ -33,6 +34,7 @@ interface GreenhouseJob {
     offices: GreenhouseOffice[];
     departments: Array<{ name: string }>;
     company?: { name: string };
+    _determinedHiringRegionType?: 'global' | 'latam';
 }
 interface FilterResult {
     relevant: boolean;
@@ -164,45 +166,71 @@ export class GreenhouseFetcher implements JobFetcher {
         return { stats, foundSourceIds };
     }
 
-    // --- Private Helper Methods (Replaced with stricter logic provided by user) ---
+    // --- Private Helper Methods ---
 
-    // Function to normalize and check keywords (case-insensitive)
-    private _includesKeyword(text: string | null | undefined, keywords: string[]): boolean {
+    // Function to normalize and check keywords (case-insensitive, substring match)
+    // Use for positive keywords or where partial matches are acceptable.
+    private _includesSubstringKeyword(text: string | null | undefined, keywords: string[]): boolean {
         if (!text) return false;
         const lowerText = text.toLowerCase();
-        // Use word boundaries for some keywords to avoid partial matches (e.g., 'us' in 'business') ?
-        // For now, stick to includes, but be aware of potential false positives.
         return keywords.some(keyword => lowerText.includes(keyword.toLowerCase()));
     };
+
+    // Function to check for specific keywords using word boundaries (case-insensitive)
+    // Use for restrictive keywords (like countries 'us', 'uk') to avoid partial matches (e.g., 'us' in 'business').
+    private _matchesKeywordRegex(text: string | null | undefined, keywords: string[]): boolean {
+        if (!text || keywords.length === 0) return false;
+        const lowerText = text.toLowerCase();
+        // Escape special regex characters in keywords and join with '|'
+        const pattern = new RegExp(`\\b(${keywords.map(kw =>
+            kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') // Escape regex chars
+        ).join('|')})\\b`);
+        return pattern.test(lowerText);
+    }
 
     // Helper to process and clean job content for keyword checks
     private _processJobContent(content: string): string {
         if (!content) return '';
         try {
-            let processedContent = decode(content); // Decode HTML entities
-            // Basic tag stripping (consider sanitize-html for robustness)
-            processedContent = processedContent.replace(/<style[^>]*>.*<\/style>/gms, ''); // Remove style blocks
-            processedContent = processedContent.replace(/<script[^>]*>.*<\/script>/gms, ''); // Remove script blocks
-            processedContent = processedContent.replace(/<[^>]+>/g, ' '); // Replace all tags with spaces
+            let processedContent = decode(content); // Decode HTML entities first
 
-            // Normalize whitespace
+            // Use sanitize-html to remove tags, keeping line breaks potentially important
+            processedContent = sanitizeHtml(processedContent, {
+                allowedTags: [], // Remove all tags
+                allowedAttributes: {}, // Remove all attributes
+                // Basic handling to maybe preserve some structure with line breaks
+                // You might need more sophisticated options depending on content structure
+                parseStyleAttributes: false,
+                 nonTextTags: [ 'style', 'script', 'textarea', 'option' ],
+                // Add options here if you want to preserve line breaks represented by <br>, <p>, etc.
+                // e.g., allowedTags: ['br', 'p'], transformTags: { 'p': '\n', 'br': '\n' }
+                // For now, stripping all tags might merge lines.
+            });
+
+            // Normalize whitespace after sanitization
             processedContent = processedContent
-                .replace(/(\r\n|\n|\r){2,}/g, '\n') // Collapse multiple newlines to one
-                .replace(/[ \t]{2,}/g, ' ') // Collapse multiple spaces/tabs to one
+                .replace(/(\r\n|\n|\r|\u2028|\u2029){2,}/g, '\n') // Collapse multiple newlines/linebreaks
+                .replace(/[ \t\u00A0]{2,}/g, ' ') // Collapse multiple spaces/tabs/nbsp
                 .replace(/\n /g, '\n') // Remove space after newline
                 .replace(/ \n/g, '\n') // Remove space before newline
                 .trim();
 
             return processedContent;
         } catch (error) {
-            // Use a logger if available, otherwise console.error
-            console.error('Error processing job content:', error);
-            return content; // Return original on error
+             // Use a logger if available and configured, otherwise fallback to console
+             console.error('Error processing job content with sanitize-html:', error);
+             // Fallback to basic regex stripping on error
+             let fallbackContent = decode(content);
+             // Replace dot (.) with [\s\S] to mimic dotAll (s flag) behavior without requiring ES2018 target
+             fallbackContent = fallbackContent.replace(/<style[^>]*>[\s\S]*?<\/style>/gm, ''); // Remove style blocks
+             fallbackContent = fallbackContent.replace(/<script[^>]*>[\s\S]*?<\/script>/gm, ''); // Remove script blocks
+             fallbackContent = fallbackContent.replace(/<[^>]+>/g, ' '); // Replace all tags with spaces
+             fallbackContent = fallbackContent.replace(/\s+/g, ' ').trim(); // Normalize whitespace
+             return fallbackContent;
         }
     }
 
-
-    // Check metadata (adapted from user example)
+    // Check metadata (Remains largely unchanged, uses simple includes)
     private _checkMetadataForRemoteness(metadata: GreenhouseMetadata[], filterConfig: FilterConfig, logger: pino.Logger): 'ACCEPT_GLOBAL' | 'ACCEPT_LATAM' | 'REJECT' | 'UNKNOWN' {
         if (!metadata || metadata.length === 0 || !filterConfig.REMOTE_METADATA_FIELDS) return 'UNKNOWN';
 
@@ -227,7 +255,7 @@ export class GreenhouseFetcher implements JobFetcher {
                         case 'boolean':
                             if ('positiveValue' in config && val === config.positiveValue?.toLowerCase()) {
                                 hasGlobalIndicator = true; // Assume global unless specified otherwise
-                            } else if ('negativeValue' in config && config.negativeValue && val === config.negativeValue.toLowerCase()) { // Added optional negativeValue check
+                            } else if ('negativeValue' in config && typeof config.negativeValue === 'string' && val === config.negativeValue.toLowerCase()) {
                                  hasRejectionIndicator = true;
                             } else {
                                  // If boolean but not matching positive/negative, could be reject or unknown based on field meaning
@@ -239,8 +267,8 @@ export class GreenhouseFetcher implements JobFetcher {
                              if ('disallowedValues' in config && config.disallowedValues?.some(disallowed => val.includes(disallowed.toLowerCase()))) {
                                 hasRejectionIndicator = true;
                             }
-                             // Check allowed values *before* positive values for more specific matching
-                            if ('allowedValues' in config && config.allowedValues?.some(allowed => val.includes(allowed.toLowerCase()))) {
+                            // Check allowed values *before* positive values for more specific matching
+                            if (!hasRejectionIndicator && 'allowedValues' in config && config.allowedValues?.some(allowed => val.includes(allowed.toLowerCase()))) {
                                 const allowedValue = config.allowedValues.find(allowed => val.includes(allowed.toLowerCase()));
                                 if (allowedValue) {
                                     if (['latam', 'americas'].includes(allowedValue.toLowerCase())) {
@@ -287,94 +315,214 @@ export class GreenhouseFetcher implements JobFetcher {
         return 'UNKNOWN'; // No conclusive indicators found
     }
 
+    // Check location name AND offices (Simplified and Corrected Flow)
+    private _checkLocationName(
+        locationName: string | null | undefined,
+        offices: GreenhouseOffice[] | null | undefined,
+        filterConfig: FilterConfig,
+        logger: pino.Logger
+    ): 'ACCEPT_GLOBAL' | 'ACCEPT_LATAM' | 'REJECT' | 'UNKNOWN' {
+        const nameLower = locationName?.toLowerCase().trim() ?? '';
+        const keywords = filterConfig.LOCATION_KEYWORDS;
+        const officeNames = (offices ?? []).map(o => o.name?.toLowerCase()).filter(Boolean);
+        const acceptableLatamCountries = keywords.ACCEPT_EXACT_LATAM_COUNTRIES || [];
+        const nonLatamLocations = keywords.STRONG_NEGATIVE_RESTRICTION || [];
 
-    // Check location name (adapted from user example)
-    private _checkLocationName(locationName: string | null | undefined, filterConfig: FilterConfig, logger: pino.Logger): 'ACCEPT_GLOBAL' | 'ACCEPT_LATAM' | 'REJECT' | 'UNKNOWN' {
-        if (!locationName) return 'UNKNOWN'; // Treat missing location as unknown
-
-        const nameLower = locationName.toLowerCase().trim();
-        const keywords = filterConfig.LOCATION_KEYWORDS; // Use loaded config
-
-        // --- Strong Rejection First ---
-        // Check specific negative keywords
-        if (this._includesKeyword(nameLower, keywords.STRONG_NEGATIVE_RESTRICTION)) {
-            // Further check needed: Avoid rejecting "Remote - Latin America" just because it contains "Remote - "
-            const isExplicitLatam = this._includesKeyword(nameLower, keywords.STRONG_POSITIVE_LATAM);
-            const isExplicitGlobal = this._includesKeyword(nameLower, keywords.STRONG_POSITIVE_GLOBAL);
-
-            if (!isExplicitLatam && !isExplicitGlobal) {
-                 // Check if a negative keyword *specifically* matches, not just a substring of a positive one
-                 const matchedNegative = keywords.STRONG_NEGATIVE_RESTRICTION.find(neg => nameLower.includes(neg.toLowerCase()));
-                 // More robust check: ensure the matched negative term isn't part of an allowed phrase
-                 if (matchedNegative && !keywords.STRONG_POSITIVE_LATAM.some(pos => nameLower.includes(pos.toLowerCase())) && !keywords.STRONG_POSITIVE_GLOBAL.some(pos => nameLower.includes(pos.toLowerCase()))) {
-                      logger.trace({ locationName, matchedNegative }, 'Location rejected due to STRONG_NEGATIVE_RESTRICTION keyword');
-                      return 'REJECT';
-                 }
+        // 1. Explicit LATAM Acceptance (Direct Country or Remote + Country)
+        if (acceptableLatamCountries.length > 0) {
+            const latamCountryPattern = new RegExp(`^(${acceptableLatamCountries.join('|')})$`, 'i');
+            if (latamCountryPattern.test(nameLower)) {
+                logger.trace({ locationName }, 'Location accepted as LATAM (Direct Country Match from Config)');
+                return 'ACCEPT_LATAM';
             }
+            const remoteLatamCountryPattern = new RegExp(`remote.*\\b(${acceptableLatamCountries.join('|')})\\b`, 'i');
+            if (remoteLatamCountryPattern.test(nameLower)) {
+                 logger.trace({ locationName }, 'Location accepted as LATAM (Remote + Country Match from Config)');
+                 return 'ACCEPT_LATAM';
+             }
         }
-        // Reject if it contains a non-LATAM city/country name and isn't explicitly Worldwide/LATAM
-         const containsNonLatamLocation = keywords.STRONG_NEGATIVE_RESTRICTION.some(loc => nameLower.includes(loc.toLowerCase()) && !['remote - ', 'remote in ', 'remote from '].includes(loc.toLowerCase())); // Avoid generic 'remote - ' triggering this alone
-         if (containsNonLatamLocation && !this._includesKeyword(nameLower, keywords.STRONG_POSITIVE_LATAM) && !this._includesKeyword(nameLower, keywords.STRONG_POSITIVE_GLOBAL)) {
-             logger.trace({ locationName }, 'Location rejected due to specific non-LATAM city/country name');
-             return 'REJECT';
-         }
 
-        // --- Strong Acceptance ---
-        if (this._includesKeyword(nameLower, keywords.STRONG_POSITIVE_GLOBAL)) {
-            logger.trace({ locationName }, 'Location accepted as GLOBAL');
+        // 2. Explicit GLOBAL Acceptance (Keywords)
+        if (this._includesSubstringKeyword(nameLower, keywords.STRONG_POSITIVE_GLOBAL || [])) {
+            logger.trace({ locationName }, 'Location accepted as GLOBAL via keyword');
             return 'ACCEPT_GLOBAL';
         }
-        if (this._includesKeyword(nameLower, keywords.STRONG_POSITIVE_LATAM)) {
-            logger.trace({ locationName }, 'Location accepted as LATAM');
+
+        // 3. Generic LATAM Acceptance (Keywords like "Remote Latam")
+        if (this._includesSubstringKeyword(nameLower, keywords.STRONG_POSITIVE_LATAM || [])) {
+            logger.trace({ locationName }, 'Location accepted as LATAM via keyword');
             return 'ACCEPT_LATAM';
         }
 
-        // --- Ambiguous "Remote" vs. Non-Remote ---
-        if (nameLower.includes('remote')) {
-            // It says remote, but didn't match strong positive/negative keywords. Needs content check.
-            if (keywords.AMBIGUOUS && keywords.AMBIGUOUS.some(kw => nameLower === kw.toLowerCase())) {
-                 logger.trace({ locationName }, 'Location is ambiguous "Remote", deferring to content');
-                 return 'UNKNOWN';
+            // 4. Strong Rejection Check (Direct Negative or Remote-Negative Pattern)
+            // Inserted here: If this matches, reject immediately.
+            if (nonLatamLocations.length > 0) {
+                // Check direct match
+                const directNegativeMatch = nonLatamLocations.find(loc => this._matchesKeywordRegex(nameLower, [loc]));
+                if (directNegativeMatch) {
+                    logger.trace({ locationName, matchedNegativeLocation: directNegativeMatch }, 'Location rejected due to Direct Negative Keyword Match');
+                    return 'REJECT';
+                }
+                // Check "Remote - [NegativeKeyword]" pattern
+                const escapedLocations = nonLatamLocations.map(l => l.replace(/[-\/\\^$*+?.()|[\\]{}]/g, '\\$&'));
+                const remoteNegativePattern = new RegExp(`^remote[\\s-]*(${escapedLocations.join('|')})\\b`, 'i');
+                const remoteNegativeMatch = remoteNegativePattern.exec(nameLower);
+                if (remoteNegativeMatch) {
+                     const matchedNegativeTerm = remoteNegativeMatch[1];
+                     logger.trace({ locationName, matchedNegativeLocation: matchedNegativeTerm }, 'Location rejected due to Remote - Negative Keyword Pattern');
+                     return 'REJECT';
+                }
             }
-            // If it contains "remote" but isn't just the ambiguous term, assume global unless content rejects
-             logger.trace({ locationName }, 'Location contains "Remote" but not specifically LATAM/Global/Ambiguous, tentatively Global');
-             return 'UNKNOWN'; // Treat as UNKNOWN for now, let content check confirm/reject
+    
+            // --- If not explicitly accepted or rejected by name pattern, check ambiguity/offices ---
+    
+            // 5. Check if potentially remote/ambiguous 
+        const isPotentiallyRemoteOrAmbiguous = nameLower.includes('remote') || nameLower.includes('distributed') || (keywords.AMBIGUOUS && keywords.AMBIGUOUS.some(kw => nameLower === kw.toLowerCase()));
+
+        // 6. Check Offices if Potentially Remote/Ambiguous
+        if (isPotentiallyRemoteOrAmbiguous) {
+            let officeCheckResult: 'ACCEPT_LATAM' | 'REJECT' | 'UNKNOWN' = 'UNKNOWN';
+            if (officeNames.length > 0) {
+                 logger.trace({ locationName, officeNames }, 'Location name is potentially remote/ambiguous, checking offices...');
+                 const hasLatamOffice = officeNames.some(officeName =>
+                      this._includesSubstringKeyword(officeName, keywords.STRONG_POSITIVE_LATAM || []) ||
+                      acceptableLatamCountries.some((country: string) => officeName.includes(country))
+                 );
+                 if (hasLatamOffice) {
+                     logger.trace({ locationName, officeNames }, 'Office check accepted as LATAM');
+                     officeCheckResult = 'ACCEPT_LATAM';
+                 } else {
+                      const hasOnlyRestrictedOffices = officeNames.every(officeName =>
+                          this._matchesKeywordRegex(officeName, nonLatamLocations) // Use nonLatamLocations here
+                      );
+                       if (hasOnlyRestrictedOffices) {
+                          logger.trace({ locationName, officeNames }, 'Office check rejected (all offices in restricted locations)');
+                          officeCheckResult = 'REJECT';
+                      } else {
+                          logger.trace({ locationName, officeNames }, 'Office check inconclusive (no clear LATAM or exclusive restriction signal)');
+                          officeCheckResult = 'UNKNOWN';
+                      }
+                 }
+            } else {
+                // No offices provided, treat as UNKNOWN
+                logger.trace({ locationName }, 'Location potentially remote/ambiguous, but no office data provided.');
+                officeCheckResult = 'UNKNOWN';
+            }
+
+            // --- Process Office Check Result ---
+            if (officeCheckResult === 'REJECT') {
+                return 'REJECT';
+            }
+            if (officeCheckResult === 'ACCEPT_LATAM') {
+                 return 'ACCEPT_LATAM';
+            }
+            // If officeCheckResult is UNKNOWN (or no offices), defer to content check
+            logger.trace({ locationName }, 'Location is potentially remote/ambiguous and office check inconclusive, deferring to content');
+            return 'UNKNOWN';
         }
 
-        // --- Rejection for non-remote ---
-        // If it doesn't contain "remote" and wasn't explicitly accepted via keywords.
-        logger.trace({ locationName }, 'Location rejected as non-remote or unspecified');
+        // 7. Final Rejection (Default for non-remote/unspecified)
+        // Reached only if: not explicitly LATAM/Global by name, not rejected by name pattern, AND not potentially remote/ambiguous.
+        logger.trace({ locationName }, 'Location rejected as non-remote or unspecified (default final)');
         return 'REJECT';
     }
 
-    // Check content keywords (adapted from user example)
+    // Check content keywords (Refactored with context)
     private _checkContentKeywords(title: string | null | undefined, content: string | null | undefined, filterConfig: FilterConfig, logger: pino.Logger): 'ACCEPT_GLOBAL' | 'ACCEPT_LATAM' | 'REJECT' | 'UNKNOWN' {
         if (!content && !title) return 'UNKNOWN';
 
-        // Decode and clean content slightly for keyword matching
-        const cleanContent = this._processJobContent(content || ''); // Use the helper method
+        // Use the improved processing method
+        const cleanContent = this._processJobContent(content || '');
         const titleLower = title?.toLowerCase() || '';
-        const contentLower = cleanContent?.toLowerCase() || '';
-        const fullText = `${titleLower} ${contentLower}`; // Combine title and cleaned content
-        const keywords = filterConfig.CONTENT_KEYWORDS; // Use loaded config
+        // Combine title and cleaned content for broader search
+        const fullText = `${titleLower}\n${cleanContent}`.toLowerCase(); // Use newline separator
+        const keywords = filterConfig.CONTENT_KEYWORDS;
+        const locationKeywords = filterConfig.LOCATION_KEYWORDS; // Need negative locations
 
-        // --- Strong Rejection First ---
-        if (this._includesKeyword(fullText, keywords.STRONG_NEGATIVE_REGION) ||
-            this._includesKeyword(fullText, keywords.STRONG_NEGATIVE_TIMEZONE)) {
-            const reason = this._includesKeyword(fullText, keywords.STRONG_NEGATIVE_REGION)
-                ? 'Content includes STRONG_NEGATIVE_REGION keyword'
-                : 'Content includes STRONG_NEGATIVE_TIMEZONE keyword';
-            const matchedKeyword = [...keywords.STRONG_NEGATIVE_REGION, ...keywords.STRONG_NEGATIVE_TIMEZONE].find(kw => fullText.includes(kw.toLowerCase()));
-            logger.trace({ title, reason, matchedKeyword }, 'Content rejected');
+        // --- Contextual Rejection (Phrases + Locations) ---
+        const restrictionPhrases = [
+            'must be located in', 'must reside in', 'eligible to work in', 'must be based in',
+            'currently located in', 'currently residing in', 'position based in',
+            'based in', 'located in', 'residing in', 'resident of', 'based out of',
+            'authorized to work in', 'must possess work authorization for',
+            'applicants must be residents of', 'open [only]? to candidates in', // Optional 'only'
+            'position is based in', 'role is based in', 'this role is based in',
+            'you must be located in', 'you must reside in', 'must work from',
+            'requirement to live in', 'requirement to be based in',
+            'local candidates only', 'domestic candidates only', 'restricted to residents of',
+            // Add variants like: 'candidate must be in', 'hiring only in'
+            'candidate must be in', 'hiring [only]? in', 'we can [only]? hire in',
+            'will only consider applicants in', 'must be physically located in'
+            // Add more as identified
+        ];
+        // Use the stricter regex matching for locations within the phrase check
+        const negativeLocations = locationKeywords.STRONG_NEGATIVE_RESTRICTION; // From LOCATION_KEYWORDS
+
+        if (negativeLocations && negativeLocations.length > 0) {
+            // Escape special characters in phrases and locations
+            const escapedPhrases = restrictionPhrases.map(p => p.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+            const escapedLocations = negativeLocations.map(l => l.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+
+             // Build the pattern: (phrase) + optional space/punctuation + optional (the) + (location - word boundary)
+             const pattern = new RegExp(
+                 `(${escapedPhrases.join('|')})` + // Capture the phrase
+                 `[\\s\\p{P}]*` +                  // Allow space or punctuation between phrase and location
+                 `(?:the\\s+)?` +                  // Optional "the "
+                 `(${escapedLocations.join('|')})\\b`, // Capture the location with word boundary
+                 'i' // Case-insensitive
+             );
+
+             const match = pattern.exec(fullText);
+             if (match) {
+                 // Basic check to avoid rejecting if a positive LATAM keyword is very close by (e.g., "must be located in the US or LatAm")
+                 // This is a simple heuristic and might need refinement. Look within a small window around the match.
+                 const matchEndIndex = match.index + match[0].length;
+                 const contextWindow = fullText.substring(matchEndIndex, matchEndIndex + 30); // Look 30 chars ahead
+                 const mentionsLatamNearby = this._includesSubstringKeyword(contextWindow, keywords.STRONG_POSITIVE_LATAM);
+
+                 if (!mentionsLatamNearby) {
+                     logger.trace({ title, matchedPhrase: match[1], matchedLocation: match[2] }, 'Content rejected due to restriction phrase + negative location');
+                     return 'REJECT';
+                 } else {
+                      logger.trace({ title, matchedPhrase: match[1], matchedLocation: match[2], contextWindow }, 'Potential rejection phrase found, but LATAM mentioned nearby. Deferring decision.');
+                 }
+             }
+        }
+
+
+        // --- Other Rejections (Timezone, Citizenship/Visa - Use Substring Match) ---
+        const citizenshipVisaKeywords = [
+             'us citizen', 'u.s. citizen', 'u.s. citizenship', 'us citizenship',
+             'no visa sponsorship', 'sponsorship is not available', 'unable to provide sponsorship',
+             'must have work authorization', // Careful: needs context, but often implies US/specific country
+             'valid work authorization in the u.s.', // Be specific
+             'green card', 'permanent resident' // Often US context
+        ];
+        // Use stricter Regex match for timezones to avoid partial matches like 'est' in 'latest'
+        if (this._matchesKeywordRegex(fullText, keywords.STRONG_NEGATIVE_TIMEZONE) ||
+            this._includesSubstringKeyword(fullText, citizenshipVisaKeywords)) {
+             const reason = this._matchesKeywordRegex(fullText, keywords.STRONG_NEGATIVE_TIMEZONE)
+                 ? 'Content includes STRONG_NEGATIVE_TIMEZONE keyword (Regex Match)'
+                 : 'Content includes citizenship/sponsorship restriction';
+             // Find the specific keyword that matched
+             const matchedTimezone = this._matchesKeywordRegex(fullText, keywords.STRONG_NEGATIVE_TIMEZONE) 
+                 ? keywords.STRONG_NEGATIVE_TIMEZONE.find(kw => this._matchesKeywordRegex(fullText, [kw]))
+                 : undefined;
+             const matchedCitizenship = this._includesSubstringKeyword(fullText, citizenshipVisaKeywords)
+                 ? citizenshipVisaKeywords.find(kw => fullText.includes(kw.toLowerCase()))
+                 : undefined;
+             const matchedKeyword = matchedTimezone || matchedCitizenship;
+             logger.trace({ title, reason, matchedKeyword }, 'Content rejected');
             return 'REJECT';
         }
 
-        // --- Strong Acceptance (Prioritize LATAM) ---
-        if (this._includesKeyword(fullText, keywords.STRONG_POSITIVE_LATAM)) {
+
+        // --- Strong Acceptance (Prioritize LATAM - Use Substring Match) ---
+        if (this._includesSubstringKeyword(fullText, keywords.STRONG_POSITIVE_LATAM)) {
             logger.trace({ title }, 'Content accepted as LATAM');
             return 'ACCEPT_LATAM';
         }
-        if (this._includesKeyword(fullText, keywords.STRONG_POSITIVE_GLOBAL)) {
+        if (this._includesSubstringKeyword(fullText, keywords.STRONG_POSITIVE_GLOBAL)) {
             logger.trace({ title }, 'Content accepted as GLOBAL');
             return 'ACCEPT_GLOBAL';
         }
@@ -384,97 +532,57 @@ export class GreenhouseFetcher implements JobFetcher {
         return 'UNKNOWN';
     }
 
-     // Main relevance check function (adapted from user example)
+     // Main relevance check function (Refined Logic)
     private _isJobRelevant(job: GreenhouseJob, filterConfig: FilterConfig, logger: pino.Logger): FilterResult {
         const title = job.title || '';
         const locationName = job.location?.name;
         const metadata = job.metadata;
         const content = job.content;
-        const jobLogger = logger.child({ jobId: job.id, title }); // Create child logger for context
+        const offices = job.offices; // Get offices
+        const jobLogger = logger.child({ jobId: job.id, title });
 
-        // 1. Check Metadata First (often most structured)
+        // 1. Check Metadata First
         const metadataCheck = this._checkMetadataForRemoteness(metadata, filterConfig, jobLogger);
         if (metadataCheck === 'REJECT') {
              jobLogger.debug(`Job rejected by Metadata`);
              return { relevant: false, reason: 'Metadata indicates Restriction' };
         }
-        // Don't accept yet, allow location/content to potentially reject
+        // Potential acceptance signal, but don't accept yet
 
-        // 2. Check Location Name (very common indicator)
-        const locationCheck = this._checkLocationName(locationName, filterConfig, jobLogger);
+        // 2. Check Location Name AND Offices (Passing offices now)
+        const locationCheck = this._checkLocationName(locationName, offices, filterConfig, jobLogger);
         if (locationCheck === 'REJECT') {
-            jobLogger.debug({ locationName }, `Job rejected by Location Name`);
-            return { relevant: false, reason: `Location Name indicates Restriction or is non-remote: "${locationName}"` };
+            jobLogger.debug({ locationName, offices: offices?.map(o=>o.name) }, `Job rejected by Location Name / Office Analysis`);
+            return { relevant: false, reason: `Location/Office indicates Restriction or is non-remote: "${locationName}" / Offices: ${offices?.map(o=>o.name).join(', ')}` };
         }
-         // Don't accept yet, allow content to potentially reject
+         // Potential acceptance signal, but don't accept yet
 
-        // 3. Check Content Keywords (last resort for acceptance, but important for rejection)
+        // 3. Check Content Keywords (Contextual)
         const contentCheck = this._checkContentKeywords(title, content, filterConfig, jobLogger);
          if (contentCheck === 'REJECT') {
             jobLogger.debug(`Job rejected by Content Keywords`);
             return { relevant: false, reason: 'Content indicates Restriction (Region/Timezone/Citizenship)' };
         }
+        // Potential acceptance signal
 
         // 4. Determine Acceptance based on priority if no rejection occurred
-        // Prioritize LATAM
+        // Prioritize LATAM from any source
         if (metadataCheck === 'ACCEPT_LATAM' || locationCheck === 'ACCEPT_LATAM' || contentCheck === 'ACCEPT_LATAM') {
-            const reason = metadataCheck === 'ACCEPT_LATAM' ? 'Metadata indicates LATAM' :
-                           locationCheck === 'ACCEPT_LATAM' ? 'Location Name indicates LATAM' : 'Content indicates LATAM';
+            const reason = metadataCheck === 'ACCEPT_LATAM' ? 'Metadata(LATAM)' :
+                           locationCheck === 'ACCEPT_LATAM' ? 'Location/Office(LATAM)' : 'Content(LATAM)';
             jobLogger.debug(`Job accepted as LATAM (${reason})`);
             return { relevant: true, reason, type: 'latam' };
         }
-        // Then Global
+        // Then Global from any source
         if (metadataCheck === 'ACCEPT_GLOBAL' || locationCheck === 'ACCEPT_GLOBAL' || contentCheck === 'ACCEPT_GLOBAL') {
-             const reason = metadataCheck === 'ACCEPT_GLOBAL' ? 'Metadata indicates Global' :
-                            locationCheck === 'ACCEPT_GLOBAL' ? 'Location Name indicates Global' : 'Content indicates Global';
+             const reason = metadataCheck === 'ACCEPT_GLOBAL' ? 'Metadata(Global)' :
+                            locationCheck === 'ACCEPT_GLOBAL' ? 'Location/Office(Global)' : 'Content(Global)';
              jobLogger.debug(`Job accepted as GLOBAL (${reason})`);
              return { relevant: true, reason, type: 'global' };
         }
 
-
-        // 5. Default Strict Case: If no explicit acceptance or rejection was found after all checks.
-        jobLogger.debug({ metadataCheck, locationCheck, contentCheck }, 'Job considered irrelevant by default (strict rule - no clear accept signal)');
-        return { relevant: false, reason: 'No clear Worldwide/LATAM indicator found after checking Metadata, Location, and Content.' };
+        // No strong indicators found in content
+        logger.trace({ title }, 'Content check inconclusive (UNKNOWN)');
+        return { relevant: false, reason: 'No strong indicators found in content' };
     }
-
-    private _extractSectionsFromContent(content: string): { requirements: string, responsibilities: string, benefits: string } {
-        const sections = {
-            requirements: '',
-            responsibilities: '',
-            benefits: '',
-        };
-        if (!content) return sections;
-
-        // Basic extraction based on common headings (case-insensitive)
-        // This needs refinement for robustness
-        const reqMatch = content.match(/<(?:h[1-6]|strong|b)>\s*(requirements|qualifications|needed|experience|you have|you need|necess[aá]rio|requisitos)[^<]*<\/(?:h[1-6]|strong|b)>([\s\S]*?)(?:<(?:h[1-6]|strong|b)>|$)/i);
-        if (reqMatch && reqMatch[2]) {
-            sections.requirements = this._cleanExtractedSection(reqMatch[2]);
-        }
-
-        const respMatch = content.match(/<(?:h[1-6]|strong|b)>\s*(responsibilities|role|duties|you will do|what you['']ll do|suas fun[cç][oõ]es|atividades)[^<]*<\/(?:h[1-6]|strong|b)>([\s\S]*?)(?:<(?:h[1-6]|strong|b)>|$)/i);
-        if (respMatch && respMatch[2]) {
-            sections.responsibilities = this._cleanExtractedSection(respMatch[2]);
-        }
-
-        const benMatch = content.match(/<(?:h[1-6]|strong|b)>\s*(benefits|perks|what we offer|oferecemos|benef[ií]cios)[^<]*<\/(?:h[1-6]|strong|b)>([\s\S]*?)(?:<(?:h[1-6]|strong|b)>|$)/i);
-        if (benMatch && benMatch[2]) {
-            sections.benefits = this._cleanExtractedSection(benMatch[2]);
-        }
-
-        // Fallback if specific sections aren't found (less ideal)
-        if (!sections.requirements && !sections.responsibilities && !sections.benefits) {
-            // Could try splitting content or just assign all to description?
-        }
-
-        return sections;
-    }
-
-    private _cleanExtractedSection(htmlContent: string): string {
-        // Remove leading/trailing whitespace and potentially unwanted tags
-        let cleaned = htmlContent.trim();
-        // Example: Remove potential leading/trailing list tags if they are the immediate wrappers
-        cleaned = cleaned.replace(/^\s*<\/?(?:ul|ol)[^>]*>/i, '').replace(/<\/?(?:ul|ol)[^>]*>\s*$/i, '');
-        return cleaned.trim();
-    }
-} 
+}

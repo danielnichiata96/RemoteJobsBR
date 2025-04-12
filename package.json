@@ -25,6 +25,7 @@
     "@sentry/nextjs": "^9.12.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cheerio": "^0.22.35",
+    "@types/sanitize-html": "^2.15.0",
     "axios": "^1.8.4",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
@@ -43,6 +44,7 @@
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.49.2",
     "react-icons": "^5.5.0",
+    "sanitize-html": "^2.15.0",
     "swr": "^2.3.3",
     "zod": "^3.22.4"
   },
