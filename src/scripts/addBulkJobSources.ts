@@ -12,35 +12,21 @@ const companiesToAdd: { name: string; boardToken: string; website: string }[] = 
   { name: 'Automattic', boardToken: 'automattic', website: 'https://automattic.com' },
   { name: 'Buffer', boardToken: 'buffer', website: 'https://buffer.com' },
   { name: 'GitLab', boardToken: 'gitlab', website: 'https://gitlab.com' },
-  { name: 'CircleCI', boardToken: 'circleci', website: 'https://circleci.com' },
   { name: 'Auth0', boardToken: 'auth0', website: 'https://auth0.com' },
   { name: 'Zapier', boardToken: 'zapier', website: 'https://zapier.com' },
-  { name: 'Miro', boardToken: 'miro', website: 'https://miro.com' },
-  { name: 'HubSpot', boardToken: 'hubspot', website: 'https://hubspot.com' },
-  { name: 'Mozilla', boardToken: 'mozilla', website: 'https://mozilla.org' }, // .org
   { name: 'Wikimedia Foundation', boardToken: 'wikimedia', website: 'https://wikimediafoundation.org' }, // .org
   { name: 'DuckDuckGo', boardToken: 'duckduckgo', website: 'https://duckduckgo.com' },
-  { name: 'Toptal', boardToken: 'toptal', website: 'https://toptal.com' },
   { name: 'Remote', boardToken: 'remotecom', website: 'https://remote.com' }, // Adjusted website
   { name: 'Deel', boardToken: 'deel', website: 'https://deel.com' },
   { name: 'Coinbase', boardToken: 'coinbase', website: 'https://coinbase.com' },
   { name: 'Twilio', boardToken: 'twilio', website: 'https://twilio.com' },
-  { name: 'Dropbox', boardToken: 'dropbox', website: 'https://dropbox.com' },
   { name: 'Reddit', boardToken: 'reddit', website: 'https://reddit.com' },
-  { name: 'HashiCorp', boardToken: 'hashicorp', website: 'https://hashicorp.com' },
-  { name: 'Vercel', boardToken: 'vercel', website: 'https://vercel.com' },
-  { name: 'Plaid', boardToken: 'plaid', website: 'https://plaid.com' },
-  { name: 'Figma', boardToken: 'figma', website: 'https://figma.com' },
-  { name: 'Affirm', boardToken: 'affirm', website: 'https://affirm.com' },
-  { name: 'Cloudflare', boardToken: 'cloudflare', website: 'https://cloudflare.com' },
   { name: 'Datadog', boardToken: 'datadog', website: 'https://datadoghq.com' }, // Adjusted website
   { name: 'Elastic', boardToken: 'elastic', website: 'https://elastic.co' }, // .co
   { name: 'Grafana Labs', boardToken: 'grafanalabs', website: 'https://grafana.com' }, // Adjusted website
-  { name: 'PlanetScale', boardToken: 'planetscale', website: 'https://planetscale.com' },
-  { name: 'Revolut', boardToken: 'revolut', website: 'https://revolut.com' },
-  { name: 'Wise', boardToken: 'transferwise', website: 'https://wise.com' }, // Adjusted website
-  { name: '1Password', boardToken: '1password', website: 'https://1password.com' },
-  { name: 'Articulate', boardToken: 'articulate', website: 'https://articulate.com' },
+  { name: 'Valtech', boardToken: 'valtechgreenhouse', website: 'https://valtech.com' },
+  { name: 'Brave', boardToken: 'brave', website: 'https://brave.com' },
+  { name: 'Canonical', boardToken: 'canonical', website: 'https://canonical.com' },
 ];
 
 async function main() {

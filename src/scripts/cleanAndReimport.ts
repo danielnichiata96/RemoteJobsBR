@@ -32,8 +32,8 @@ async function main() {
     // 2. Atualizar as fontes no banco de dados
     console.log('\n📌 Atualizando fontes de vagas...');
     try {
-      console.log('Executando script add-greenhouse-companies.js...');
-      const { stdout: addOutput } = await execAsync('node add-greenhouse-companies.js');
+      console.log('Executando script addBulkJobSources.ts...');
+      const { stdout: addOutput } = await execAsync('npx ts-node src/scripts/addBulkJobSources.ts');
       console.log(addOutput);
     } catch (error) {
       console.error('❌ Erro ao adicionar empresas:', error);
@@ -42,8 +42,8 @@ async function main() {
     // 3. Reimportar todas as vagas
     console.log('\n🔄 Reimportando vagas...');
     try {
-      console.log('Executando script fetchGreenhouseJobs.ts...');
-      const { stdout: importOutput } = await execAsync('npx ts-node src/scripts/fetchGreenhouseJobs.ts');
+      console.log('Executando script fetchJobSources.ts...');
+      const { stdout: importOutput } = await execAsync('npx ts-node src/scripts/fetchJobSources.ts');
       console.log(importOutput);
     } catch (error) {
       console.error('❌ Erro ao importar vagas:', error);

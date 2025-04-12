@@ -94,6 +94,13 @@ export class LeverFetcher implements JobFetcher {
                         sourceLogger.warn('Skipping posting - could not find job link.');
                         return; // Continue to next element
                     }
+                    
+                    // Ensure apiUrl is not null before using it in URL constructor
+                    if (!apiUrl) {
+                        sourceLogger.warn('Skipping posting - base URL is not valid.');
+                        return; // Continue to next element
+                    }
+                    
                     const applicationUrl = new URL(relativeUrl, apiUrl).toString(); // Construct absolute URL
                     
                     // Extract title (often within the link)

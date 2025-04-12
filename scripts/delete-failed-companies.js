@@ -11,8 +11,9 @@ async function deleteFailedCompanies() {
   console.log('⚠️ ATENÇÃO: Este script irá DELETAR permanentemente as empresas com falha na API do Greenhouse!');
   console.log('🚀 Iniciando exclusão de empresas com falha na API do Greenhouse...');
   
-  // Lista de IDs e nomes das empresas com falha
+  // Lista de empresas com falha (as que retornaram 404 ou outros erros)
   const failedCompanies = [
+    // Lista original
     { id: 'cm909fab9000012qeuoc6sl86', name: 'Automattic' },
     { id: 'cm909fabf000112qeyjoldzeb', name: 'Buffer' },
     { id: 'cm909fabv000412qecuctjij4', name: 'Auth0' },
@@ -26,12 +27,30 @@ async function deleteFailedCompanies() {
     { id: 'cm909faet000u12qegx5ahlnt', name: '1Password' },
     { id: 'cm909faek000s12qecpsucbnl', name: 'Revolut' },
     { id: 'cm909faeq000t12qezynqtua6', name: 'Wise' },
-    { id: 'cm909faex000v12qevv0v4vrw', name: 'Articulate' }
+    { id: 'cm909faex000v12qevv0v4vrw', name: 'Articulate' },
+    
+    // Adicionar fontes que falharam nos testes recentes
+    // Nota: Os IDs precisam ser substituídos pelos corretos do seu banco de dados
+    // Use o comando de busca para encontrar os IDs corretos:
+    // SELECT * FROM "JobSource" WHERE name IN ('Miro', 'Toptal', 'Plaid', 'Revolut', 'Wise', '1Password', 'Articulate');
+    { id: 'cm9epcl4h000136wunvkzad8h', name: 'Miro' },
+    { id: 'cm9epcl4v000436wubzy8jcs4', name: 'Toptal' },
+    { id: 'cm9epcl5d000836wut5gust15', name: 'Plaid' },
+    { id: 'cm9epcl5x000d36wu7vhipmt5', name: 'Revolut' },
+    { id: 'cm9epcl60000e36wuvi1tz975', name: 'Wise' },
+    { id: 'cm9epcl64000f36wun5v3wt06', name: '1Password' },
+    { id: 'cm9epcl69000g36wuqgaujydf', name: 'Articulate' },
+    { id: 'cm9epcl5u000c36wu62a2ihb9', name: 'PlanetScale' }
   ];
   
+  // Remover duplicatas baseadas no nome da empresa
+  const uniqueCompanies = Array.from(
+    new Map(failedCompanies.map(company => [company.name, company])).values()
+  );
+  
   // IDs para exclusão
-  const companyIds = failedCompanies.map(company => company.id);
-  const companyNames = failedCompanies.map(company => company.name);
+  const companyIds = uniqueCompanies.map(company => company.id);
+  const companyNames = uniqueCompanies.map(company => company.name);
   
   // Stats para o relatório
   const stats = {
@@ -87,13 +106,13 @@ async function deleteFailedCompanies() {
     // Mostrar relatório resumido
     console.log('\n📊 RELATÓRIO DE EXCLUSÃO:');
     console.log('--------------------------------------------');
-    console.log(`Total de fontes processadas: ${failedCompanies.length}`);
+    console.log(`Total de fontes processadas: ${uniqueCompanies.length}`);
     console.log(`Fontes deletadas: ${stats.deletedJobSources}`);
     console.log(`Vagas deletadas: ${stats.deletedJobs}`);
     
     // Listar as empresas excluídas
     console.log('\nEmpresas excluídas do sistema:');
-    failedCompanies.forEach((company, index) => {
+    uniqueCompanies.forEach((company, index) => {
       const matchedUser = companies.find(c => c.name === company.name);
       console.log(`${index + 1}. ${company.name} (ID: ${company.id})`);
       if (!matchedUser) {

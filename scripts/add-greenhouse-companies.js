@@ -17,40 +17,29 @@ const prisma = new PrismaClient();
 const companies = [
   // Original List
   { name: 'Stripe', boardToken: 'stripe' },
-  { name: 'Automattic', boardToken: 'automattic' }, // Known for distributed work (WordPress.com, Tumblr, etc.)
-  { name: 'Buffer', boardToken: 'buffer' },       // Remote-first company
   { name: 'GitLab', boardToken: 'gitlab' },       // All-remote company
   { name: 'CircleCI', boardToken: 'circleci' },   // CI/CD platform, often remote roles
-  { name: 'Auth0', boardToken: 'auth0' },         // Identity platform (now part of Okta, check Okta's board too if needed)
-  { name: 'Zapier', boardToken: 'zapier' },       // All-remote company
-  { name: 'Miro', boardToken: 'miro' },           // Collaboration platform, many remote roles
 
   // Additional Companies (Verified Greenhouse Usage & Remote Hiring Reputation)
   { name: 'HubSpot', boardToken: 'hubspot' },     // Marketing/Sales software, offers remote options
   { name: 'Mozilla', boardToken: 'mozilla' },     // Firefox browser, non-profit, remote-friendly
   { name: 'Wikimedia Foundation', boardToken: 'wikimedia' }, // Wikipedia's parent org, remote-friendly non-profit
-  { name: 'DuckDuckGo', boardToken: 'duckduckgo' }, // Privacy-focused search engine, remote-first
-  { name: 'Toptal', boardToken: 'toptal' },       // Freelance platform, core team often remote
   { name: 'Remote', boardToken: 'remotecom' },      // Company focused on remote work itself
-  { name: 'Deel', boardToken: 'deel' },           // Global payroll/compliance, remote-first
   { name: 'Coinbase', boardToken: 'coinbase' },   // Cryptocurrency exchange, remote-first announced
   { name: 'Twilio', boardToken: 'twilio' },       // Communications API, historically remote-friendly
   { name: 'Dropbox', boardToken: 'dropbox' },     // Cloud storage, shifted to "Virtual First"
   { name: 'Reddit', boardToken: 'reddit' },       // Social media platform, increased remote hiring
   { name: 'HashiCorp', boardToken: 'hashicorp' }, // Infrastructure software (Terraform, Vault), remote-first foundation
   { name: 'Vercel', boardToken: 'vercel' },       // Frontend cloud platform (Next.js), remote-friendly
-  { name: 'Plaid', boardToken: 'plaid' },         // Fintech API, offers remote roles
   { name: 'Figma', boardToken: 'figma' },         // Design tool, offers remote roles
   { name: 'Affirm', boardToken: 'affirm' },       // Fintech (BNPL), remote-first
   { name: 'Cloudflare', boardToken: 'cloudflare' }, // Web infrastructure/security, global presence, many remote roles
   { name: 'Datadog', boardToken: 'datadog' },     // Monitoring/Analytics, global presence, offers remote
   { name: 'Elastic', boardToken: 'elastic' },     // Search/Analytics (Elasticsearch), distributed company
   { name: 'Grafana Labs', boardToken: 'grafanalabs' }, // Observability platform (Grafana), remote-first
-  { name: 'PlanetScale', boardToken: 'planetscale' }, // Database platform, remote-friendly
-  { name: 'Revolut', boardToken: 'revolut' },      // Fintech, global company, many remote/hybrid options
-  { name: 'Wise', boardToken: 'transferwise' }, // Fintech (formerly TransferWise), global, remote options (Note: boardToken might still be 'transferwise')
-  { name: '1Password', boardToken: '1password' },   // Password manager, remote-friendly culture
-  { name: 'Articulate', boardToken: 'articulate' }, // E-learning software, remote-first
+  { name: 'Valtech', boardToken: 'valtechgreenhouse' }, // Digital agency, various remote roles
+  { name: 'Brave', boardToken: 'brave' },         // Privacy-focused browser, remote-friendly
+  { name: 'Canonical', boardToken: 'canonical' }, // Ubuntu Linux, remote-friendly
   // Add more as you find them!
 ];
 
@@ -131,4 +120,4 @@ async function main() {
   }
 }
 
-main();
+main(); 
