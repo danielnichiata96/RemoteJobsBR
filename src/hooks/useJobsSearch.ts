@@ -1,5 +1,6 @@
 import useSWR from 'swr';
-import { Job, JobType, ExperienceLevel } from '@/types/models';
+import { Job, HiringRegion } from '@prisma/client'; // Assuming HiringRegion is here
+// import { Job, JobType, ExperienceLevel, HiringRegion } from '@/types/models'; // Use this if types are defined
 
 interface PaginationInfo {
   totalCount: number;
@@ -34,6 +35,7 @@ interface UseJobsSearchProps {
   remote?: boolean;
   sortBy?: 'newest' | 'salary' | 'relevance';
   technologies?: string[];
+  hiringRegion?: HiringRegion;
 }
 
 // Generic fetcher function for SWR
@@ -64,6 +66,7 @@ export function useJobsSearch({
   remote = false,
   sortBy = 'newest',
   technologies = [],
+  hiringRegion,
 }: UseJobsSearchProps = {}) {
   const params = new URLSearchParams();
   params.append('page', page.toString());
@@ -75,6 +78,7 @@ export function useJobsSearch({
   if (technologies.length) params.append('technologies', technologies.join(','));
   if (remote) params.append('remote', 'true');
   if (sortBy && sortBy !== 'newest') params.append('sortBy', sortBy);
+  if (hiringRegion) params.append('hiringRegion', hiringRegion);
 
   // Construct the API endpoint URL
   const apiUrl = `/api/jobs/search?${params.toString()}`;

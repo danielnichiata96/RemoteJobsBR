@@ -101,9 +101,9 @@ describe('Jobs Search API', () => {
     expect(prisma.job.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          company: {
-            name: { contains: 'ExampleCorp', mode: 'insensitive' }
-          }
+          AND: expect.arrayContaining([
+            { company: { name: { contains: 'ExampleCorp', mode: 'insensitive' } } }
+          ])
         }),
       })
     );
@@ -112,9 +112,9 @@ describe('Jobs Search API', () => {
     expect(prisma.job.count).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          company: {
-            name: { contains: 'ExampleCorp', mode: 'insensitive' }
-          }
+          AND: expect.arrayContaining([
+            { company: { name: { contains: 'ExampleCorp', mode: 'insensitive' } } }
+          ])
         }),
       })
     );
@@ -144,14 +144,154 @@ describe('Jobs Search API', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           status: 'ACTIVE',
-          OR: expect.arrayContaining([
-            { title: { contains: 'developer', mode: 'insensitive' } },
-          ]),
-          company: { // Check for company filter
-            name: { contains: 'Test Inc', mode: 'insensitive' }
-          },
-          jobType: { in: ['FULL_TIME'] },
-          workplaceType: { equals: 'REMOTE' },
+          AND: expect.arrayContaining([
+            { OR: expect.arrayContaining([
+                { title: { contains: 'developer', mode: 'insensitive' } },
+                { description: { contains: 'developer', mode: 'insensitive' } },
+                { requirements: { contains: 'developer', mode: 'insensitive' } },
+                { tags: { hasSome: ['developer'] } },
+              ])
+            },
+            { company: { name: { contains: 'Test Inc', mode: 'insensitive' } } },
+            { jobType: { in: ['FULL_TIME'] } },
+          ])
+        }),
+      })
+    );
+  });
+
+  // --- Tests for Hiring Region Filter --- 
+
+  it('does not add hiringRegion filter when not provided', async () => {
+    (prisma.job.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.job.count as jest.Mock).mockResolvedValue(0);
+    (prisma.job.groupBy as jest.Mock).mockResolvedValue([]); 
+    (prisma.technology.findMany as jest.Mock).mockResolvedValue([]);
+
+    const { req, res } = createMocks<NextApiRequest, NextApiResponse>({
+      method: 'GET',
+      query: { q: 'test' }, // Basic query without region
+    });
+
+    await handler(req, res);
+
+    expect(prisma.job.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.not.arrayContaining([
+            expect.objectContaining({ hiringRegion: expect.anything() }), // Should not have direct region filter
+            expect.objectContaining({ OR: expect.arrayContaining([expect.objectContaining({ hiringRegion: expect.anything() })]) }) // Should not have region OR filter
+          ])
+        }),
+      })
+    );
+  });
+
+  it('applies BRAZIL hiringRegion filter correctly', async () => {
+    (prisma.job.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.job.count as jest.Mock).mockResolvedValue(0);
+    (prisma.job.groupBy as jest.Mock).mockResolvedValue([]); 
+    (prisma.technology.findMany as jest.Mock).mockResolvedValue([]);
+
+    const { req, res } = createMocks<NextApiRequest, NextApiResponse>({
+      method: 'GET',
+      query: { hiringRegion: 'BRAZIL' },
+    });
+
+    await handler(req, res);
+
+    expect(prisma.job.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            { hiringRegion: 'BRAZIL' }
+          ])
+        }),
+      })
+    );
+  });
+
+  it('applies LATAM hiringRegion filter correctly', async () => {
+    (prisma.job.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.job.count as jest.Mock).mockResolvedValue(0);
+    (prisma.job.groupBy as jest.Mock).mockResolvedValue([]); 
+    (prisma.technology.findMany as jest.Mock).mockResolvedValue([]);
+
+    const { req, res } = createMocks<NextApiRequest, NextApiResponse>({
+      method: 'GET',
+      query: { hiringRegion: 'LATAM' },
+    });
+
+    await handler(req, res);
+
+    expect(prisma.job.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            { hiringRegion: 'LATAM' }
+          ])
+        }),
+      })
+    );
+  });
+
+  it('applies WORLDWIDE hiringRegion filter correctly (OR condition)', async () => {
+    (prisma.job.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.job.count as jest.Mock).mockResolvedValue(0);
+    (prisma.job.groupBy as jest.Mock).mockResolvedValue([]); 
+    (prisma.technology.findMany as jest.Mock).mockResolvedValue([]);
+
+    const { req, res } = createMocks<NextApiRequest, NextApiResponse>({
+      method: 'GET',
+      query: { hiringRegion: 'WORLDWIDE' },
+    });
+
+    await handler(req, res);
+
+    expect(prisma.job.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            { OR: expect.arrayContaining([ // Check for the specific OR block
+                { hiringRegion: 'WORLDWIDE' },
+                { hiringRegion: null }
+              ])
+            }
+          ])
+        }),
+      })
+    );
+  });
+
+  it('combines WORLDWIDE filter and text search correctly using AND', async () => {
+    (prisma.job.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.job.count as jest.Mock).mockResolvedValue(0);
+    (prisma.job.groupBy as jest.Mock).mockResolvedValue([]); 
+    (prisma.technology.findMany as jest.Mock).mockResolvedValue([]);
+
+    const { req, res } = createMocks<NextApiRequest, NextApiResponse>({
+      method: 'GET',
+      query: { q: 'developer', hiringRegion: 'WORLDWIDE' },
+    });
+
+    await handler(req, res);
+
+    expect(prisma.job.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            // Check for text search OR block
+            { OR: expect.arrayContaining([ 
+                { title: { contains: 'developer', mode: 'insensitive' } }
+              ])
+            },
+            // Check for WORLDWIDE region OR block
+            { OR: expect.arrayContaining([
+                { hiringRegion: 'WORLDWIDE' },
+                { hiringRegion: null }
+              ])
+            }
+          ])
         }),
       })
     );

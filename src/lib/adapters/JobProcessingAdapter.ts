@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, JobSource } from '@prisma/client';
 import { JobProcessingService } from '../services/jobProcessingService';
 import { StandardizedJob } from '../../types/StandardizedJob';
-import { JobProcessor, ProcessedJobResult, GreenhouseJob, LeverBasicJobData } from '../jobProcessors/types';
+import { JobProcessor, ProcessedJobResult, GreenhouseJob } from '../jobProcessors/types';
 import { GreenhouseProcessor } from '../jobProcessors/greenhouseProcessor';
 import { LeverProcessor } from '../jobProcessors/leverProcessor';
 import pino from 'pino';
@@ -30,7 +30,8 @@ export class JobProcessingAdapter {
     // Initialize processors
     this.processors = new Map<string, JobProcessor>();
     this.processors.set('greenhouse', new GreenhouseProcessor());
-    this.processors.set('lever', new LeverProcessor());
+    // Temporariamente desativando o processador Lever até corrigir a interface
+    // this.processors.set('lever', new LeverProcessor());
     // Add other processors here as needed
   }
 
@@ -41,9 +42,10 @@ export class JobProcessingAdapter {
    *
    * @param source The source identifier (e.g., 'greenhouse', 'lever')
    * @param rawJobData The raw data object fetched from the source (structure varies by source)
+   * @param sourceData Optional source data
    * @returns Promise<boolean> True if the job was successfully processed and saved/updated, false otherwise.
    */
-  async processRawJob(source: string, rawJobData: any): Promise<boolean> { // Use 'any' for rawJobData initially
+  async processRawJob(source: string, rawJobData: any, sourceData?: JobSource): Promise<boolean> {
     const processor = this.processors.get(source.toLowerCase());
 
     if (!processor) {
@@ -55,9 +57,8 @@ export class JobProcessingAdapter {
     processLogger.debug({ rawJobData }, `Starting processing with ${processor.source} processor`);
 
     try {
-      // Type assertion might be needed depending on processor implementation
-      // Let's assume processors handle the raw type internally for now
-      const result: ProcessedJobResult = await processor.processJob(rawJobData, processLogger);
+      // Pass sourceData to the processor
+      const result: ProcessedJobResult = await processor.processJob(rawJobData, sourceData);
 
       if (!result.success || !result.job) {
         processLogger.warn({ error: result.error, rawJobData }, `Processor failed or determined job irrelevant`);

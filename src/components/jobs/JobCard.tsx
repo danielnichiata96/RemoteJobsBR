@@ -4,6 +4,7 @@ import { Job } from '@/types/job';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useState } from 'react';
+import { getCompanyLogo } from '@/lib/utils/logoUtils';
 
 interface JobCardProps {
   job: Job;
@@ -12,41 +13,20 @@ interface JobCardProps {
 export default function JobCard({ job }: JobCardProps) {
   const [imgError, setImgError] = useState(false);
   
-  // Função para obter um logo padrão do logo.dev com base no nome da empresa
-  const getLogoFromCompanyName = (companyName: string): string => {
-    // Usar API token se disponível
-    const apiToken = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN || '';
-    const tokenParam = apiToken ? `?token=${apiToken}` : '';
-    
-    // Verificar se o nome da empresa contém um domínio
-    const domainPattern = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
-    
-    // Se o nome parece ser um domínio, use-o diretamente
-    if (domainPattern.test(companyName.toLowerCase())) {
-      return `https://img.logo.dev/${companyName.toLowerCase()}${tokenParam}`;
-    }
-    
-    // Caso contrário, adicione .com para tentar obter um logotipo genérico
-    // Este é um fallback, pois o Logo.dev funciona melhor com domínios
-    const formattedName = companyName.trim().toLowerCase().replace(/\s+/g, '') + '.com';
-    return `https://img.logo.dev/${formattedName}${tokenParam}`;
-  };
-  
   // Determinar o logo a ser usado
   let companyName = '';
-  if (typeof job.company === 'string') {
+  // Ensure job.company exists and is an object before accessing name
+  if (job.company && typeof job.company === 'object' && job.company.name) {
+    companyName = job.company.name;
+  } else if (typeof job.company === 'string') {
+    // Fallback if job.company is just a string (less ideal)
     companyName = job.company;
-  } else if (job.company && typeof job.company === 'object') {
-    companyName = job.company.name || 'Empresa';
   } else {
-    companyName = 'Empresa';
+    companyName = 'Empresa'; // Default if no name found
   }
   
-  let companyLogo = job.companyLogo;
-  
-  if (!companyLogo) {
-    companyLogo = getLogoFromCompanyName(companyName);
-  }
+  // Usar a função utilitária centralizada para obter o logo
+  const companyLogo = job.companyLogo || getCompanyLogo(companyName);
   
   // Função para garantir que temos um objeto Date válido
   const getFormattedDate = (date: Date | string) => {
@@ -134,19 +114,19 @@ export default function JobCard({ job }: JobCardProps) {
             </span>
           </div>
           
-          {job.skills && job.skills.length > 0 && (
+          {job.tags && job.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-3">
-              {job.skills.slice(0, 5).map((skill, index) => (
+              {job.tags.slice(0, 5).map((tag: string, index: number) => (
                 <span 
                   key={index}
                   className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded"
                 >
-                  {skill}
+                  {tag}
                 </span>
               ))}
-              {job.skills.length > 5 && (
+              {job.tags.length > 5 && (
                 <span className="text-xs text-gray-500">
-                  +{job.skills.length - 5}
+                  +{job.tags.length - 5}
                 </span>
               )}
             </div>

@@ -1,4 +1,5 @@
 import { JobType, ExperienceLevel, Currency } from '@prisma/client';
+import { HiringRegion } from '@prisma/client';
 
 /**
  * StandardizedJob represents the normalized job data structure
@@ -26,6 +27,7 @@ export interface StandardizedJob {
   location: string;
   country?: string;
   workplaceType?: string;
+  hiringRegion?: HiringRegion;
   
   // Salary details
   minSalary?: number;

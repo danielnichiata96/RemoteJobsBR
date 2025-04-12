@@ -7,6 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import { Job } from '@/types/models';
 import { useState } from 'react';
 import SaveJobButton from './SaveJobButton';
+import { getCompanyLogo } from '@/lib/utils/logoUtils';
 
 type WideJobCardProps = {
   job: Job;
@@ -23,8 +24,8 @@ const WideJobCard = ({ job }: WideJobCardProps) => {
     locale: ptBR,
   });
   
-  // Determinar o logotipo a ser exibido
-  const companyLogo = job.companyLogo || getDefaultLogo(job.company);
+  // Determinar o logotipo a ser exibido usando a função utilitária centralizada
+  const companyLogo = job.companyLogo || getCompanyLogo(job.company);
   
   return (
     <div 
@@ -114,32 +115,6 @@ const WideJobCard = ({ job }: WideJobCardProps) => {
     </div>
   );
 };
-
-// Função para obter uma imagem padrão
-function getDefaultLogo(companyName: string | any): string {
-  if (!companyName) return '';
-  
-  // Se companyName for um objeto, usar o nome
-  const name = typeof companyName === 'string' ? companyName : (companyName?.name || '');
-  if (!name) return '';
-  
-  // Usar API token se disponível (como variável de ambiente)
-  const apiToken = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN || '';
-  const tokenParam = apiToken ? `?token=${apiToken}` : '';
-  
-  // Verificar se o nome da empresa contém um domínio
-  const domainPattern = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
-  
-  // Se o nome parece ser um domínio, use-o diretamente
-  if (domainPattern.test(name.toLowerCase())) {
-    return `https://img.logo.dev/${name.toLowerCase()}${tokenParam}`;
-  }
-  
-  // Caso contrário, adicione .com para tentar obter um logotipo genérico
-  // Este é um fallback, pois o Logo.dev funciona melhor com domínios
-  const formattedName = name.trim().toLowerCase().replace(/\s+/g, '') + '.com';
-  return `https://img.logo.dev/${formattedName}${tokenParam}`;
-}
 
 // Função para formatar o tipo de trabalho
 function formatJobType(jobType: string): string {

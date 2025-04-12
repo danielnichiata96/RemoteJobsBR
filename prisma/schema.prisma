@@ -110,6 +110,7 @@ model Job {
   workplaceType    String          @default("REMOTE")
   minSalary        Float?
   maxSalary        Float?
+  hiringRegion     HiringRegion?   // Add hiring region filter
   currency         String?         @default("BRL")
   salaryCycle      String?
   showSalary       Boolean         @default(false)
@@ -174,14 +175,15 @@ model PasswordResetToken {
 
 model JobSource {
   id            String   @id @default(cuid())
-  name          String
-  type          String   @default("greenhouse")
+  name          String   // Company Name (e.g., "Stripe")
+  type          String   @default("greenhouse") // Source type (e.g., "greenhouse", "lever")
+  companyWebsite String?  // Add company website URL
   isEnabled     Boolean  @default(true)
-  url           String?
-  logoUrl       String?
-  apiKey        String?
-  apiEndpoint   String?
-  config        Json     @default("{}")
+  // url           String? // Original job board URL (Optional, maybe less useful now)
+  logoUrl       String?  // Potentially useful for direct logo override?
+  // apiKey        String? // Not typically needed for Greenhouse GET
+  // apiEndpoint   String? // Base endpoint might be useful for other sources
+  config        Json     @default("{}") // Store specific config like boardToken
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   lastFetched   DateTime?
@@ -198,6 +200,8 @@ model Technology {
 
   @@index([name]) // Index for faster lookups by name
 }
+
+// --- Enums ---
 
 enum UserRole {
   CANDIDATE
@@ -237,3 +241,11 @@ enum Currency {
   CAD
   AUD
 }
+
+enum HiringRegion {
+  WORLDWIDE
+  LATAM
+  BRAZIL
+}
+
+// --- Enums ---

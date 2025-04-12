@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '@/lib/prisma';
-import { JobStatus, JobType, ExperienceLevel, Prisma } from '@prisma/client';
+import { JobStatus, JobType, ExperienceLevel, HiringRegion, Prisma } from '@prisma/client';
 import NodeCache from 'node-cache';
 
 // --- Cache Setup ---
@@ -40,6 +40,7 @@ interface SearchParams {
   technologies?: string[];
   remote?: boolean;
   sortBy?: 'newest' | 'salary' | 'relevance';
+  hiringRegion?: HiringRegion;
 }
 
 // Define type for aggregation results
@@ -89,85 +90,139 @@ export default async function handler(
       languages: req.query.languages ? (req.query.languages as string).split(',') : undefined,
       technologies: req.query.technologies ? (req.query.technologies as string).split(',').filter(Boolean) : undefined,
       remote: req.query.remote === 'true',
-      sortBy: (req.query.sortBy as 'newest' | 'salary' | 'relevance') || 'newest'
+      sortBy: (req.query.sortBy as 'newest' | 'salary' | 'relevance') || 'newest',
+      hiringRegion: req.query.hiringRegion && Object.values(HiringRegion).includes(req.query.hiringRegion as HiringRegion)
+                    ? req.query.hiringRegion as HiringRegion
+                    : undefined
     };
 
     // Preparar parâmetros para o Prisma
     const { query, company, page, limit, ...filters } = searchParams;
     const skip = (page - 1) * limit;
     
-    // Construir o objeto de filtros
-    const whereClause: any = {
-      status: JobStatus.ACTIVE, // Apenas vagas ativas
+    // Default to ACTIVE status and include LATAM, WORLDWIDE, or unspecified regions
+    const whereClause: Prisma.JobWhereInput = {
+      status: JobStatus.ACTIVE,
+      OR: [
+        { hiringRegion: HiringRegion.LATAM },
+        { hiringRegion: HiringRegion.WORLDWIDE }, // Include WORLDWIDE
+        { hiringRegion: null }                    // Include jobs with unspecified region
+      ]
     };
+    const andConditions: Prisma.JobWhereInput[] = [];
     
     // Filtro de texto (busca em título, descrição, requisitos)
     if (query) {
-      whereClause.OR = [
+      const textSearchCondition: Prisma.JobWhereInput = { OR: [
         { title: { contains: query, mode: 'insensitive' } },
         { description: { contains: query, mode: 'insensitive' } },
         { requirements: { contains: query, mode: 'insensitive' } },
         { tags: { hasSome: [query] } }
-      ];
+      ]};
+      andConditions.push(textSearchCondition);
     }
     
     // Company Name Filter
     if (company) {
-      whereClause.company = {
+      const companyCondition: Prisma.JobWhereInput = { company: {
         name: { contains: company, mode: 'insensitive' }
-      };
+      }};
+      andConditions.push(companyCondition);
     }
     
     // Aplicar filtros adicionais
-    if (filters.jobType) {
-      whereClause.jobType = { in: filters.jobType };
+    if (filters.jobType && filters.jobType.length > 0) {
+      andConditions.push({ jobType: { in: filters.jobType } });
     }
     
-    if (filters.experienceLevel) {
-      whereClause.experienceLevel = { in: filters.experienceLevel };
+    if (filters.experienceLevel && filters.experienceLevel.length > 0) {
+      andConditions.push({ experienceLevel: { in: filters.experienceLevel } });
     }
     
     if (filters.location) {
-      whereClause.location = { contains: filters.location, mode: 'insensitive' };
+      andConditions.push({ location: { contains: filters.location, mode: 'insensitive' } });
     }
     
     if (filters.country) {
-      whereClause.country = { equals: filters.country };
+      andConditions.push({ country: { equals: filters.country } });
     }
     
     if (filters.workplaceType) {
-      whereClause.workplaceType = { equals: filters.workplaceType };
+      andConditions.push({ workplaceType: { equals: filters.workplaceType } });
     }
     
     if (filters.minSalary) {
-      whereClause.minSalary = { gte: filters.minSalary };
+      andConditions.push({ minSalary: { gte: filters.minSalary } });
     }
     
     if (filters.tags && filters.tags.length > 0) {
-      whereClause.tags = { hasSome: filters.tags };
+      andConditions.push({ tags: { hasSome: filters.tags } });
     }
     
     if (filters.technologies && filters.technologies.length > 0) {
-      whereClause.technologies = {
+      const techCondition: Prisma.JobWhereInput = { technologies: {
         some: {
           name: {
             in: filters.technologies,
             mode: 'insensitive'
           }
         }
-      };
+      }};
+      andConditions.push(techCondition);
     }
     
     if (filters.visas && filters.visas.length > 0) {
-      whereClause.visas = { hasSome: filters.visas };
+      andConditions.push({ visas: { hasSome: filters.visas } });
     }
     
     if (filters.languages && filters.languages.length > 0) {
-      whereClause.languages = { hasSome: filters.languages };
+      andConditions.push({ languages: { hasSome: filters.languages } });
     }
     
-    if (filters.remote) {
-      whereClause.workplaceType = { equals: 'REMOTE' };
+    // Hiring Region Filter (Handles explicit override, though default is LATAM)
+    // Note: Currently, the only hiringRegion handled besides the default LATAM is WORLDWIDE,
+    // but the core goal is LATAM, so overriding might not be desired.
+    if (filters.hiringRegion && filters.hiringRegion !== HiringRegion.LATAM) {
+      // If an explicit, non-LATAM region is requested, find whereClause.AND or initialize it
+      let currentAnd = whereClause.AND ? (Array.isArray(whereClause.AND) ? whereClause.AND : [whereClause.AND]) : [];
+      
+      // Remove the default LATAM filter if present in the base whereClause
+      delete whereClause.hiringRegion;
+
+      // Add the explicitly requested region filter
+      if (filters.hiringRegion === HiringRegion.WORLDWIDE) {
+        currentAnd.push({ 
+          OR: [
+            { hiringRegion: HiringRegion.WORLDWIDE },
+            { hiringRegion: null } // Include jobs where region couldn't be determined
+          ]
+        });
+      } else {
+        // If other regions were supported, they'd go here
+        // For now, only WORLDWIDE override is considered
+        // currentAnd.push({ hiringRegion: filters.hiringRegion });
+         console.warn(`Requested hiringRegion ${filters.hiringRegion} is not explicitly handled beyond LATAM/WORLDWIDE.`);
+      }
+      
+      // Re-assign the AND conditions
+      if (currentAnd.length > 0) {
+           whereClause.AND = currentAnd;
+      } else {
+           delete whereClause.AND; // Remove AND if it became empty
+      }      
+    }
+
+    // Combine *other* filters using AND
+    if (andConditions.length > 0) {
+      // If whereClause.AND already exists (from hiringRegion override), merge;
+      // otherwise, assign andConditions.
+      if (whereClause.AND) {
+         // Ensure it's an array and merge
+         const existingAnd = Array.isArray(whereClause.AND) ? whereClause.AND : [whereClause.AND];
+         whereClause.AND = [...existingAnd, ...andConditions];
+      } else {
+         whereClause.AND = andConditions;
+      }
     }
 
     // Determinar ordenação

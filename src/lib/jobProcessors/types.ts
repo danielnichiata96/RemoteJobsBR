@@ -1,4 +1,4 @@
-import { JobType, ExperienceLevel, Currency } from '@prisma/client';
+import { JobType, ExperienceLevel, Currency, JobSource } from '@prisma/client';
 
 // Core interface for standardized job data BEFORE final database mapping
 export interface StandardizedJob {
@@ -41,7 +41,7 @@ export interface ProcessedJobResult {
 // Interface for any job processor
 export interface JobProcessor {
   source: string; // e.g., 'greenhouse', 'linkedin'
-  processJob(rawJob: any): Promise<ProcessedJobResult>;
+  processJob(rawJob: any, sourceData?: JobSource): Promise<ProcessedJobResult>;
 }
 
 // Interface specifically for raw Greenhouse job data

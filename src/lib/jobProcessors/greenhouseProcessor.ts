@@ -8,23 +8,18 @@ import {
   isRemoteJob 
 } from '../utils/jobUtils';
 import pino from 'pino';
-import { JobType, ExperienceLevel } from '@prisma/client';
+import { JobType, ExperienceLevel, HiringRegion, JobSource } from '@prisma/client';
+import { extractDomain } from '../utils/logoUtils';
 
 const logger = pino({
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'HH:MM:ss',
-      ignore: 'pid,hostname',
-    }
-  }
+  name: 'greenhouseProcessor',
+  level: process.env.LOG_LEVEL || 'info',
 });
 
 export class GreenhouseProcessor implements JobProcessor {
   source = 'greenhouse';
 
-  async processJob(rawJob: GreenhouseJob | EnhancedGreenhouseJob): Promise<ProcessedJobResult> {
+  async processJob(rawJob: GreenhouseJob | EnhancedGreenhouseJob, sourceData?: JobSource): Promise<ProcessedJobResult> {
     try {
       // Check if job is remote - skip if we already pre-verified (by having additional fields)
       const isEnhancedJob = 'requirements' in rawJob && 'responsibilities' in rawJob;
@@ -68,6 +63,21 @@ export class GreenhouseProcessor implements JobProcessor {
 
       const enhancedJob = rawJob as EnhancedGreenhouseJob;
 
+      // Determine HiringRegion based on the type passed from the fetcher
+      const tempJob = rawJob as any; // Cast to access the temporary property
+      let determinedRegion: HiringRegion | null = null;
+
+      if (tempJob._determinedHiringRegionType === 'latam') {
+        determinedRegion = HiringRegion.LATAM;
+      } else if (tempJob._determinedHiringRegionType === 'global') {
+        determinedRegion = HiringRegion.GLOBAL;
+      } else if (enhancedJob.hiringRegion && Object.values(HiringRegion).includes(enhancedJob.hiringRegion)) {
+        // Fallback to existing enhancedJob.hiringRegion if _determinedHiringRegionType is not set/valid
+        // and if enhancedJob.hiringRegion is a valid enum value
+        determinedRegion = enhancedJob.hiringRegion;
+      }
+      // Otherwise, determinedRegion remains null
+
       const standardizedJob: StandardizedJob = {
         sourceId: `${rawJob.id}`,
         source: this.source,
@@ -81,18 +91,51 @@ export class GreenhouseProcessor implements JobProcessor {
         experienceLevel: enhancedJob.experienceLevel || detectExperienceLevel(cleanContent),
         skills: enhancedJob.skills || skills,
         tags: enhancedJob.tags || [...skills], // Use skills as tags if not provided
+        // Use the determined region, falling back if necessary
+        hiringRegion: determinedRegion,
         location: rawJob.location.name,
         country: enhancedJob.country || 'Worldwide', // Default for remote jobs
         workplaceType: enhancedJob.workplaceType || 'REMOTE',
         applicationUrl: rawJob.absolute_url,
         // Map to flat company properties
-        companyName: rawJob.company.name,
-        companyEmail: `${rawJob.company.boardToken}@greenhouse.placeholder.com`, // Generate placeholder email
-        companyLogo: rawJob.company.logo,
-        companyWebsite: rawJob.company.website,
+        companyName: sourceData?.name || enhancedJob.company?.name || '',
+        companyEmail: `${sourceData?.config?.boardToken || enhancedJob.company?.boardToken || 'unknown'}@greenhouse.placeholder.com`,
+        companyLogo: null,
+        companyWebsite: sourceData?.companyWebsite || enhancedJob.company?.website || null,
         updatedAt: new Date(rawJob.updated_at), // Include updatedAt
         publishedAt: new Date(rawJob.updated_at) // Use updated_at as publishedAt for now
       };
+
+      // --- Logo Fetching (using logo.dev) ---
+      try {
+        // Use website from sourceData first, then from rawJob if available
+        const websiteForLogo = sourceData?.companyWebsite || enhancedJob.company?.website;
+        if (websiteForLogo) { 
+          const domain = extractDomain(websiteForLogo);
+          if (domain) {
+            // Usar API token se disponível
+            const apiToken = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN || '';
+            const tokenParam = apiToken ? `?token=${apiToken}` : '';
+            standardizedJob.companyLogo = `https://img.logo.dev/${domain}${tokenParam}`;
+            logger.trace({ jobId: rawJob.id, domain, websiteUsed: websiteForLogo, logoUrl: standardizedJob.companyLogo }, 'Generated logo URL.');
+          } else {
+             logger.trace({ jobId: rawJob.id, website: websiteForLogo }, 'Could not extract domain for logo.');
+          }
+        } else {
+             logger.trace({ jobId: rawJob.id }, 'Company website not available for logo fetching.');
+        }
+      } catch (logoError) {
+        logger.warn({ jobId: rawJob.id, website: sourceData?.companyWebsite, error: logoError }, 'Error processing company website for logo URL.');
+      }
+      // -------------------------------------
+
+      // Log the final logo URL before returning
+      logger.debug({ 
+          jobId: rawJob.id, 
+          companyName: standardizedJob.companyName, 
+          companyWebsite: standardizedJob.companyWebsite,
+          finalCompanyLogo: standardizedJob.companyLogo 
+      }, 'Final standardizedJob details before returning from processor');
 
       return {
         success: true,

@@ -10,7 +10,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "prisma:studio": "prisma studio",
-    "fetch-jobs": "ts-node --transpile-only src/scripts/fetchGreenhouseJobs.ts",
+    "fetch-jobs": "ts-node --transpile-only src/scripts/fetchJobSources.ts",
+    "add-bulk-sources": "ts-node --transpile-only src/scripts/addBulkJobSources.ts",
+    "list-sources": "ts-node --transpile-only src/scripts/listJobSources.ts",
     "clean-db": "ts-node --transpile-only src/scripts/cleanDatabase.ts",
     "fix-jobs": "ts-node --transpile-only src/scripts/fixJobSources.ts"
   },

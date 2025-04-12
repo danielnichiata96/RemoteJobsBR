@@ -11,13 +11,15 @@ LLM should update this file based on conversational progress.
 *   [x] **Phase 1 Complete!** Todas as tarefas da Phase 1: Core UX & Stability foram concluídas.
 *   [x] Preparando para Phase 2 - Selecionar próximas prioridades.
 *   [x] **Phase 2: Job Integration Focus** - Melhorar sistema de integração de vagas.
-*   [x] **Integrations:** Refatorar `fetchGreenhouseJobs.ts` - Mover config. hardcoded para arquivo de configuração.
-*   [x] **Integrations:** Melhorar tratamento de erros nos scripts de fetch de vagas.
-*   [x] **Integrations:** Desenvolver framework de scraping para novas fontes de vagas. (Foundation Complete)
+*   [x] **Integrations:** Refatorar `fetchGreenhouseJobs.ts` - Mover config. hardcoded para arquivo de configuração. (Completed - Now uses DB)
+*   [x] **Integrations:** Melhorar tratamento de erros nos scripts de fetch de vagas. (Basic improvements done)
+*   [x] **Integrations:** Desenvolver framework de scraping para novas fontes de vagas. (Foundation Complete - Fetcher/Processor/Adapter pattern established)
 *   [ ] **Integrations:** Implementar integração com nova plataforma de vagas. (On Hold - Pending Framework Refinement & Approval)
-*   [x] **Testing:** Fix `Pagination` test. (JobFilters still On Hold - Blocked by Jest/Env issues)
-*   [ ] **Testing:** Adicionar testes unitários para lógica de filtragem do fetcher. (Filter logic tested, On Hold for `processSource` tests)
+*   [x] **Testing:** Fix `Pagination` test.
+*   [ ] **Testing:** Adicionar testes unitários para lógica de filtragem do fetcher. (On Hold - Pending Filter Refinement)
 *   [x] **Optimization:** Implementar camada de cache para listagens de vagas frequentemente acessadas (API Cache Implemented and Tested)
+*   [ ] **Integrations:** Refinar lógica de filtragem de vagas remotas/LATAM no `GreenhouseFetcher`. (Active)
+*   [ ] **Integrations:** Investigar e corrigir erros de fetch para fontes Greenhouse (Plaid, Revolut, Wise, 1Password, Articulate, etc.). (Active)
 
 ## Phase 2: Growth & Enhanced Features (Current)
 
@@ -28,11 +30,14 @@ LLM should update this file based on conversational progress.
 ### Phase 2.1: Job Integrations & Fetch Enhancement
 *   [x] **Core:** Refatorar `fetchGreenhouseJobs.ts` para usar configuração externa (DB/arquivo).
 *   [x] **Core:** Implementar sistema robusto de tratamento de erros nos scripts de fetch.
-*   [x] **Core:** Criar framework modular para adicionar novas fontes de vagas. (Foundation Complete)
+*   [x] **Core:** Criar framework modular para adicionar novas fontes de vagas. (Foundation Complete - Fetcher/Processor/Adapter pattern)
+*   [x] **Core:** Adicionar múltiplas fontes Greenhouse via script (`addBulkJobSources.ts`).
 *   [ ] **Core:** Implementar primeira integração adicional (LinkedIn, Indeed, ou similar). (On Hold - Pending Framework Refinement & Approval)
-*   [x] **Testing:** Fix `Pagination` test. (JobFilters still On Hold - Blocked by Jest/Env issues)
-*   [ ] **Testing:** Criar testes unitários para lógica de filtragem do fetch de vagas. (Filter logic tested, On Hold for `processSource` tests)
+*   [x] **Testing:** Fix `Pagination` test.
+*   [ ] **Testing:** Criar testes unitários para lógica de filtragem do fetch de vagas. (On Hold - Pending Filter Refinement)
 *   [x] **Performance:** Adicionar cache para resultados de busca de vagas frequentes. (API Cache Implemented and Tested)
+*   [ ] **Filtering:** Refinar palavras-chave e lógica em `greenhouse-filter-config.json` e `GreenhouseFetcher` para maior precisão (LATAM/Remote). (Active)
+*   [ ] **BugFix:** Investigar e corrigir erros 404 e outros durante `npm run fetch-jobs`. (Active)
 
 ## Future Ideas / Full Backlog (Phase 2 & Beyond)
 
@@ -79,21 +84,22 @@ LLM should update this file based on conversational progress.
 *   [ ] **Integrations:** Add more job board integrations (LinkedIn API, Indeed API, etc.).
 *   [ ] **Integrations:** Implement job scraping framework for other aggregators (requires careful legal review).
 *   [ ] **Integrations:** Implement standard API for companies to post jobs directly.
-*   [ ] **Integrations:** Refactor `fetchGreenhouseJobs.ts` filtering logic (move hardcoded `DEFAULT_FILTER_CONFIG` to DB/config file).
-*   [ ] **Integrations:** Improve reliability/error handling of job fetching scripts.
+*   [ ] **Integrations:** Refactor `fetchGreenhouseJobs.ts` filtering logic (move hardcoded `DEFAULT_FILTER_CONFIG` to DB/config file). (Done - uses external config file now)
+*   [ ] **Integrations:** Improve reliability/error handling of job fetching scripts. (Ongoing)
 *   [ ] **Integrations:** Improve content section extraction logic in `fetchGreenhouseJobs.ts`.
 *   [ ] **Testing Gap:** Create E2E test setup for critical user flows (job search, job click tracking)
-*   [ ] **Testing Gap:** Add Unit Tests for ~~`fetchGreenhouseJobs.ts`~~ `GreenhouseFetcher.ts` filtering logic
+*   [ ] **Testing Gap:** Add Unit Tests for `GreenhouseFetcher.ts` filtering logic (On Hold)
 *   [ ] **Testing Gap:** Add Integration Tests for job fetching scripts (mocking APIs and DB)
 *   [ ] **Tech Debt:** Implement proper error handling for API routes
 *   [x] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components (Completed)
-*   [ ] **Optimization:** Add caching layer for frequently accessed job listings
+*   [x] **Optimization:** Add caching layer for frequently accessed job listings (Completed - API Cache)
 *   [ ] **Security:** Add rate limiting for authentication endpoints
 *   [ ] **Security:** Implement CSRF protection for sensitive operations
 *   [ ] **Security:** Implement rate limiting for job search API endpoints
 *   [ ] **Documentation:** Create API documentation for endpoints
 *   [ ] **i18n:** Prepare codebase for proper internationalization (currently has i18n config but might need structure)
 *   [x] **Bug Fix:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields and invalid dates. (Completed)
+*   [x] **Bug Fix:** Fix company logos not displaying correctly on job cards. (Completed 2025-04-12)
 
 ## Milestones
 
@@ -105,6 +111,13 @@ LLM should update this file based on conversational progress.
 
 ## Recently Completed
 
+*   **2025-04-12:** Fix company logo display issue by adding `companyWebsite` to `JobSource`, updating fetcher/processor logic, and ensuring API token is used correctly.
+*   **2025-04-12:** Created script `addBulkJobSources.ts` to add/update multiple Greenhouse sources.
+*   **2025-04-12:** Corrected `JobSource` type usage in `addBulkJobSources.ts`.
+*   **2025-04-12:** Fixed import path alias issue in `greenhouseProcessor.ts`.
+*   **2025-04-12:** Created script `addJobSource.ts` for adding single Greenhouse sources.
+*   **2025-04-12:** Corrected salary field mapping in `jobProcessingService.ts`.
+*   **2025-04-15:** Fix widespread test suite failures (polyfill, Lever processor/fetcher assertions, Prisma mock init).
 *   **2025-04-15:** Refactor profile.tsx using ProfileForm/ProfileView components, fixed related bugs.
 *   **2025-04-14:** Refactor `profile.tsx` into `ProfileForm` and `ProfileView` components, including tests.
 *   **2025-04-14:** Implement Company filter (UI, state, API, tests).
@@ -189,5 +202,6 @@ LLM should update this file based on conversational progress.
 ## Bug Fixes
 
 *   [x] **React Error:** Fix "Objects are not valid as a React child (found: object with keys {name, logo})" error occurring on page load (likely home page). (Reported: {Current Date})
+*   [x] **Bug Fix:** Fix company logos not displaying correctly on job cards. (Completed 2025-04-12)
 
 ### 📈 Analytics & Tracking 

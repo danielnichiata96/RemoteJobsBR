@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { HiringRegion } from '@prisma/client';
 
 // Define types for props (can be refined later)
 type FilterAggregations = {
@@ -16,7 +17,9 @@ type JobFiltersProps = {
     selectedJobTypes: string[];
     selectedExperienceLevels: string[];
     selectedTechnologies: string[];
-    isRemoteOnly: boolean;
+
+    // Hiring Region
+    selectedHiringRegion?: HiringRegion;
 
     // Handlers / Callbacks
     onSearchTermChange: (value: string) => void;
@@ -24,8 +27,8 @@ type JobFiltersProps = {
     onJobTypeChange: (value: string) => void;
     onExperienceLevelChange: (value: string) => void;
     onTechnologyChange: (value: string) => void;
-    onRemoteChange: () => void;
     onClearFilters: () => void;
+    onHiringRegionChange: (value: HiringRegion | null) => void;
     onSearchSubmit: (e?: React.FormEvent) => void;
 
     // Data for display
@@ -59,6 +62,12 @@ const technologyOptions = [
     { value: 'JavaScript', label: 'JavaScript' },
 ];
 
+// Hiring Region Options
+const hiringRegionOptions = [
+    { value: HiringRegion.WORLDWIDE, label: 'Worldwide' },
+    { value: HiringRegion.LATAM, label: 'LATAM' },
+    { value: HiringRegion.BRAZIL, label: 'Brasil' },
+];
 
 export default function JobFilters({
     searchTerm: initialSearchTerm,
@@ -66,14 +75,14 @@ export default function JobFilters({
     selectedJobTypes,
     selectedExperienceLevels,
     selectedTechnologies,
-    isRemoteOnly,
+    selectedHiringRegion, // Added
     onSearchTermChange,
     onCompanyNameChange, // Added
     onJobTypeChange,
     onExperienceLevelChange,
     onTechnologyChange,
-    onRemoteChange,
     onClearFilters,
+    onHiringRegionChange, // Added
     onSearchSubmit,
     aggregations,
 }: JobFiltersProps) {
@@ -235,20 +244,37 @@ export default function JobFilters({
                                         })}
                                     </div>
                                 </div>
-                                <div className="md:col-span-1"> {/* Adjust span if needed */}
+                                <div>
                                     <h3 className="font-medium text-gray-900 mb-3">Localização</h3>
                                     <div className="space-y-2">
-                                       <label className="flex items-center cursor-pointer">
-                                          <input
-                                             type="checkbox"
-                                             className="h-4 w-4 text-primary-600 focus:ring-primary-500 rounded"
-                                             checked={isRemoteOnly}
-                                             onChange={onRemoteChange}
-                                          />
-                                          <span className="ml-2 text-gray-700">Apenas Remoto</span>
-                                       </label>
+                                        <label className="flex items-center cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="hiringRegion"
+                                                className="h-4 w-4 text-primary-600 focus:ring-primary-500"
+                                                checked={!selectedHiringRegion}
+                                                onChange={() => onHiringRegionChange(null)}
+                                            />
+                                            <span className="ml-2 text-gray-700">Todas</span>
+                                        </label>
+
+                                        {hiringRegionOptions.map(option => (
+                                            <label key={option.value} className="flex items-center cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="hiringRegion"
+                                                    value={option.value}
+                                                    className="h-4 w-4 text-primary-600 focus:ring-primary-500"
+                                                    checked={selectedHiringRegion === option.value}
+                                                    onChange={() => onHiringRegionChange(option.value)}
+                                                />
+                                                <span className="ml-2 text-gray-700">
+                                                    {option.label}
+                                                </span>
+                                            </label>
+                                        ))}
                                     </div>
-                                 </div>
+                                </div>
                             </div>
                             <div className="mt-6 flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4">
                                 <button

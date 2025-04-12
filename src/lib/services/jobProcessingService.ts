@@ -33,8 +33,8 @@ export class JobProcessingService {
    */
   public async saveOrUpdateJob(job: StandardizedJob): Promise<boolean> {
     // Check for required fields from StandardizedJob
-    if (!job || !job.source || !job.sourceId || !job.title || !job.companyName || !job.applicationUrl) {
-        this.logger.error({ jobData: job }, 'Job data is missing required fields (source, sourceId, title, companyName, applicationUrl). Skipping save.');
+    if (!job || !job.source || !job.sourceId || !job.title || !job.applicationUrl) {
+        this.logger.error({ jobData: job }, 'Job data is missing essential fields (source, sourceId, title, applicationUrl). Skipping save.');
         return false;
     }
 
@@ -42,7 +42,7 @@ export class JobProcessingService {
 
     try {
       // Normalize company name to ensure consistency
-      const normalizedCompanyName = job.companyName.trim();
+      const normalizedCompanyName = job.companyName?.trim() || '';
       
       // --- 1. Find or Create Company ---
       let company = await this.prisma.user.findFirst({
@@ -96,6 +96,14 @@ export class JobProcessingService {
          // Optionally update existing company details (e.g., logo, website) if needed
          // Be cautious about overwriting verified data.
          // Consider adding logic here if we want scraped data to update existing fields.
+         if (!company.logo && job.companyLogo) {
+           // Update logo if missing on existing record and provided in job data
+           await this.prisma.user.update({
+             where: { id: company.id },
+             data: { logo: job.companyLogo },
+           });
+           this.logger.debug({ companyId: company.id }, 'Updated missing company logo.');
+         }
       }
 
       // --- 2. Prepare Job Data (with Defaults) ---
@@ -112,19 +120,20 @@ export class JobProcessingService {
         country: job.country || 'Worldwide', // Default required
         workplaceType: job.workplaceType || 'REMOTE', // Default required
         applicationUrl: job.applicationUrl, 
-        minSalary: job.salaryMin, // Map from StandardizedJob field name
-        maxSalary: job.salaryMax, // Map from StandardizedJob field name
-        currency: job.salaryCurrency, // Map from StandardizedJob field name
-        salaryCycle: job.salaryPeriod, // Map from StandardizedJob field name
-        showSalary: !!(job.salaryMin && job.salaryMax), // Show salary if min/max provided
+        minSalary: job.minSalary, // Usar o campo correto da interface StandardizedJob
+        maxSalary: job.maxSalary, // Usar o campo correto da interface StandardizedJob
+        currency: job.currency, // Usar o campo correto da interface StandardizedJob
+        salaryCycle: job.salaryCycle, // Usar o campo correto da interface StandardizedJob
+        showSalary: !!(job.minSalary && job.maxSalary), // Verificar se os valores de salário estão presentes
         publishedAt: job.publishedAt || new Date(), // Default to now if not provided
         updatedAt: new Date(), // Always set updatedAt
-        status: job.status || JobStatus.ACTIVE, // Use provided status or default to ACTIVE
+        status: JobStatus.ACTIVE, // Sempre define como ACTIVE ao salvar uma nova vaga
         companyId: company.id, // Link to the found/created company
         source: job.source,
         sourceId: job.sourceId,
         visas: [], // Default empty
         languages: [], // Default empty
+        hiringRegion: job.hiringRegion, // Save the hiringRegion
       };
 
       // --- 3. Upsert Job ---

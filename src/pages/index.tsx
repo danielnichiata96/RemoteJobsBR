@@ -7,7 +7,7 @@ import WideJobCard from '@/components/jobs/WideJobCard';
 import ErrorMessage from '@/components/common/ErrorMessage';
 import JobListSkeleton from '@/components/jobs/JobListSkeleton';
 import { useJobsSearch } from '@/hooks/useJobsSearch';
-import { Job } from '@/types/models';
+import { HiringRegion } from '@prisma/client';
 import CustomSelect from '@/components/common/CustomSelect';
 import JobFilters from '@/components/jobs/JobFilters';
 
@@ -18,7 +18,7 @@ export type FilterState = {
   jobTypes: string[];
   experienceLevels: string[];
   technologies: string[];
-  isRemoteOnly: boolean;
+  hiringRegion?: HiringRegion;
 };
 
 // Define valid sort options type (copied from jobs/index.tsx)
@@ -42,7 +42,7 @@ export default function Home() {
     jobTypes: [],
     experienceLevels: [],
     technologies: [],
-    isRemoteOnly: false,
+    hiringRegion: undefined,
   });
   const [sortBy, setSortBy] = useState<SortByType>('newest');
 
@@ -55,7 +55,11 @@ export default function Home() {
     if (query.jobType) initialFilters.jobTypes = (query.jobType as string).split(',').filter(Boolean);
     if (query.experienceLevel) initialFilters.experienceLevels = (query.experienceLevel as string).split(',').filter(Boolean);
     if (query.technologies) initialFilters.technologies = (query.technologies as string).split(',').filter(Boolean);
-    if (query.remote === 'true') initialFilters.isRemoteOnly = true;
+    
+    // Parse hiringRegion (ensure it's a valid enum value)
+    if (query.hiringRegion && Object.values(HiringRegion).includes(query.hiringRegion as HiringRegion)) {
+      initialFilters.hiringRegion = query.hiringRegion as HiringRegion;
+    }
     
     // Update state only if there are changes from initial empty state or previous query
     setCurrentFilters(prev => ({ ...prev, ...initialFilters }));
@@ -80,7 +84,7 @@ export default function Home() {
     jobTypes: currentFilters.jobTypes,
     experienceLevels: currentFilters.experienceLevels,
     technologies: currentFilters.technologies,
-    remote: currentFilters.isRemoteOnly,
+    hiringRegion: currentFilters.hiringRegion,
     sortBy: sortBy,
   });
 
@@ -120,7 +124,7 @@ export default function Home() {
     if (filters.jobTypes.length) queryParams.jobType = filters.jobTypes.join(',');
     if (filters.experienceLevels.length) queryParams.experienceLevel = filters.experienceLevels.join(',');
     if (filters.technologies.length) queryParams.technologies = filters.technologies.join(',');
-    if (filters.isRemoteOnly) queryParams.remote = 'true';
+    if (filters.hiringRegion) queryParams.hiringRegion = filters.hiringRegion;
     if (page > 1) queryParams.page = page.toString();
     if (sort !== 'newest') queryParams.sortBy = sort;
 
@@ -216,14 +220,14 @@ export default function Home() {
           Vagas remotas para Brasileiros
         </h1>
         
-        {/* Render the JobFilters component */}
+        {/* Render the JobFilters component - CORRECTED */}
         <JobFilters
           searchTerm={currentFilters.searchTerm}
           companyName={currentFilters.companyName}
           selectedJobTypes={currentFilters.jobTypes}
           selectedExperienceLevels={currentFilters.experienceLevels}
           selectedTechnologies={currentFilters.technologies}
-          isRemoteOnly={currentFilters.isRemoteOnly}
+          selectedHiringRegion={currentFilters.hiringRegion}
           aggregations={aggregations}
           
           // Pass callback handlers down
@@ -247,17 +251,19 @@ export default function Home() {
               : [...currentFilters.technologies, value];
             handleFilterUpdate({ technologies: newSelection });
           }}
-           onRemoteChange={() => {
-             handleFilterUpdate({ isRemoteOnly: !currentFilters.isRemoteOnly });
-           }}
+          onHiringRegionChange={(value: HiringRegion | null) => {
+             // Assuming single select for region for now (e.g., radio buttons)
+             handleFilterUpdate({ hiringRegion: value || undefined });
+          }}
           onClearFilters={() => {
+             // CORRECTED: Removed isRemoteOnly
              const clearedFilters: FilterState = {
                searchTerm: '',
                companyName: '',
                jobTypes: [],
                experienceLevels: [],
                technologies: [],
-               isRemoteOnly: false,
+               hiringRegion: undefined,
              };
              handleFilterUpdate(clearedFilters);
           }}
@@ -267,14 +273,14 @@ export default function Home() {
           }}
         />
 
-        {/* Active Filter Chips Section - Updated chip generation */}
+        {/* Active Filter Chips Section - CORRECTED */}
         {(() => {
           const activeChips = [];
           if (currentFilters.searchTerm) {
             activeChips.push({ type: 'search', label: `Busca: "${currentFilters.searchTerm}"`, onRemove: () => handleFilterUpdate({ searchTerm: '' }) });
           }
-          if (currentFilters.isRemoteOnly) {
-            activeChips.push({ type: 'remote', label: 'Apenas Remoto', onRemove: () => handleFilterUpdate({ isRemoteOnly: false }) });
+          if (currentFilters.companyName) { // Added company chip generation
+            activeChips.push({ type: 'company', label: `Empresa: "${currentFilters.companyName}"`, onRemove: () => handleFilterUpdate({ companyName: '' }) });
           }
           
           // Chip generation for JobType
@@ -304,6 +310,16 @@ export default function Home() {
                  handleFilterUpdate({ technologies: newSelection });
              } });
           });
+          
+          // Chip generation for HiringRegion
+          if (currentFilters.hiringRegion) {
+            // Simple label, could be more descriptive
+            activeChips.push({ 
+              type: 'hiringRegion', 
+              label: `Região: ${currentFilters.hiringRegion}`,
+              onRemove: () => handleFilterUpdate({ hiringRegion: undefined })
+            });
+          }
            
           if (activeChips.length === 0) return null;
 
@@ -328,11 +344,11 @@ export default function Home() {
                    </button>
                  </span>
               ))}
-              {/* Clear All Button */}
+              {/* Clear All Button - CORRECTED */}
               {activeChips.length > 0 && (
                  <button
                     type="button"
-                    onClick={() => handleFilterUpdate({searchTerm: '', jobTypes: [], experienceLevels: [], technologies: [], isRemoteOnly: false})}
+                    onClick={() => handleFilterUpdate({searchTerm: '', companyName: '', jobTypes: [], experienceLevels: [], technologies: [], hiringRegion: undefined})}
                     className="text-sm text-primary-600 hover:text-primary-800 hover:underline ml-2"
                  >
                    Limpar Todos
