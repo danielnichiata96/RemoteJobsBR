@@ -40,4 +40,7 @@ next-env.d.ts
 /prisma/migrations
 
 # Screenshots
-screenshots/ 
+screenshots/
+
+# Temporary or local files
+empresas-greenhouse.txt 

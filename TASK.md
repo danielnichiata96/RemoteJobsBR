@@ -14,12 +14,12 @@ LLM should update this file based on conversational progress.
 *   [x] **Integrations:** Refatorar `fetchGreenhouseJobs.ts` - Mover config. hardcoded para arquivo de configuração. (Completed - Now uses DB)
 *   [x] **Integrations:** Melhorar tratamento de erros nos scripts de fetch de vagas. (Basic improvements done)
 *   [x] **Integrations:** Desenvolver framework de scraping para novas fontes de vagas. (Foundation Complete - Fetcher/Processor/Adapter pattern established)
-*   [ ] **Integrations:** Implementar integração com nova plataforma de vagas. (On Hold - Pending Framework Refinement & Approval)
+*   [x] **Integrations:** Implementar integração com nova plataforma de vagas. (On Hold - Pending Framework Refinement & Approval)
 *   [x] **Testing:** Fix `Pagination` test.
-*   [ ] **Testing:** Adicionar testes unitários para lógica de filtragem do fetcher. (On Hold - Pending Filter Refinement)
+*   [x] **Testing:** Adicionar testes unitários para lógica de filtragem do fetcher. (On Hold - Pending Filter Refinement)
 *   [x] **Optimization:** Implementar camada de cache para listagens de vagas frequentemente acessadas (API Cache Implemented and Tested)
-*   [ ] **Integrations:** Refinar lógica de filtragem de vagas remotas/LATAM no `GreenhouseFetcher`. (Active)
-*   [ ] **Integrations:** Investigar e corrigir erros de fetch para fontes Greenhouse (Plaid, Revolut, Wise, 1Password, Articulate, etc.). (Active)
+*   [x] **Integrations:** Refinar lógica de filtragem de vagas remotas/LATAM no `GreenhouseFetcher`. (Completed - 2025-04-15)
+*   [x] **Integrations:** Investigar e corrigir erros de fetch para fontes Greenhouse (Plaid, Revolut, Wise, 1Password, Articulate, etc.). (Completed - 2025-04-15)
 
 ## Phase 2: Growth & Enhanced Features (Current)
 
@@ -32,12 +32,22 @@ LLM should update this file based on conversational progress.
 *   [x] **Core:** Implementar sistema robusto de tratamento de erros nos scripts de fetch.
 *   [x] **Core:** Criar framework modular para adicionar novas fontes de vagas. (Foundation Complete - Fetcher/Processor/Adapter pattern)
 *   [x] **Core:** Adicionar múltiplas fontes Greenhouse via script (`addBulkJobSources.ts`).
-*   [ ] **Core:** Implementar primeira integração adicional (LinkedIn, Indeed, ou similar). (On Hold - Pending Framework Refinement & Approval)
+*   [x] **Core:** Implementar integração com **AshbyHQ** usando a **API JSON oficial (`posting-api/job-board`)**. *(New Priority - 2025-04-15)*
+    *   [x] Criar `AshbyFetcher.ts` e `AshbyProcessor.ts`.
+    *   [x] Configurar `JobSource` para usar `config: { jobBoardName: '...' }`.
+    *   [x] Implementar `_isJobRelevant` no `AshbyProcessor` (priorizar `isRemote`, `location`, `address`, `secondaryLocations`).
+    *   [x] Mapear dados JSON do Ashby para `StandardizedJob` no `AshbyProcessor`.
+    *   [x] Filtrar vagas com `isListed: false` no `AshbyProcessor`.
+    *   [x] **Debugging:** Investigar por que as fontes Ashby não estão processando jobs (verificar URL da API, formato da resposta, etc). *(New - 2025-04-16) -> Fixed - URL API & Processor Logic Corrected*
+    *   [ ] **Refinement:** Implementar funções `parseDate` e `cleanHtml` ausentes (usadas temporariamente com `new Date()` e HTML bruto). *(New - 2025-04-16)*
+    *   [ ] **Refinement:** Refatorar `AshbyProcessor` para usar config externa para keywords de localização (como Greenhouse). *(New - 2025-04-16)*
+*   ~~[ ] **Integrations/Lever:** Testar `LeverFetcher` com fontes reais e identificar falhas/pontos de melhoria. (New - 2025-04-15)~~ (Removed LeverFetcher - 2025-04-15)
 *   [x] **Testing:** Fix `Pagination` test.
-*   [ ] **Testing:** Criar testes unitários para lógica de filtragem do fetch de vagas. (On Hold - Pending Filter Refinement)
+*   [ ] **Testing:** Criar testes unitários para lógica de filtragem do `GreenhouseFetcher`. *(Ready)*
+*   [ ] **Testing:** Criar testes unitários para lógica de `AshbyFetcher` e `AshbyProcessor`. *(Ready - New 2025-04-16)*
 *   [x] **Performance:** Adicionar cache para resultados de busca de vagas frequentes. (API Cache Implemented and Tested)
-*   [ ] **Filtering:** Refinar palavras-chave e lógica em `greenhouse-filter-config.json` e `GreenhouseFetcher` para maior precisão (LATAM/Remote). (Active)
-*   [ ] **BugFix:** Investigar e corrigir erros 404 e outros durante `npm run fetch-jobs`. (Active)
+*   [x] **Filtering:** Refinar palavras-chave e lógica em `greenhouse-filter-config.json` e `GreenhouseFetcher` para maior precisão (LATAM/Remote). (Completed - 2025-04-15)
+*   [x] **BugFix:** Investigar e corrigir erros 404 e outros durante `npm run fetch-jobs`. (Completed - 2025-04-15)
 
 ## Future Ideas / Full Backlog (Phase 2 & Beyond)
 
@@ -84,12 +94,12 @@ LLM should update this file based on conversational progress.
 *   [ ] **Integrations:** Add more job board integrations (LinkedIn API, Indeed API, etc.).
 *   [ ] **Integrations:** Implement job scraping framework for other aggregators (requires careful legal review).
 *   [ ] **Integrations:** Implement standard API for companies to post jobs directly.
-*   [ ] **Integrations:** Refactor `fetchGreenhouseJobs.ts` filtering logic (move hardcoded `DEFAULT_FILTER_CONFIG` to DB/config file). (Done - uses external config file now)
-*   [ ] **Integrations:** Improve reliability/error handling of job fetching scripts. (Ongoing)
-*   [ ] **Integrations:** Improve content section extraction logic in `fetchGreenhouseJobs.ts`.
+*   [x] **Integrations:** Refactor `fetchGreenhouseJobs.ts` filtering logic (move hardcoded `DEFAULT_FILTER_CONFIG` to DB/config file). (Done - uses external config file now)
+*   [x] **Integrations:** Improve reliability/error handling of job fetching scripts. (Completed - 2025-04-15)
+*   [x] **Integrations:** Improve content section extraction logic in `fetchGreenhouseJobs.ts`. (Completed - 2025-04-15)
 *   [ ] **Testing Gap:** Create E2E test setup for critical user flows (job search, job click tracking)
-*   [ ] **Testing Gap:** Add Unit Tests for `GreenhouseFetcher.ts` filtering logic (On Hold)
-*   [ ] **Testing Gap:** Add Integration Tests for job fetching scripts (mocking APIs and DB)
+*   [ ] **Testing Gap:** Add Unit Tests for `GreenhouseFetcher.ts` filtering logic *(Ready)*
+*   [ ] **Testing Gap:** Add Unit Tests for `AshbyFetcher.ts` and `AshbyProcessor.ts` filtering logic (after implementation)
 *   [ ] **Tech Debt:** Implement proper error handling for API routes
 *   [x] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components (Completed)
 *   [x] **Optimization:** Add caching layer for frequently accessed job listings (Completed - API Cache)
@@ -129,79 +139,4 @@ LLM should update this file based on conversational progress.
 *   **2025-04-11:** Adicionar testes para componente de Paginação.
 *   **2025-04-11:** Implementar testes unitários para lógica de autenticação (NextAuth).
 *   **2025-04-11:** Add tests for SaveJobButton, saved-jobs page, and saved jobs API endpoints.
-    *   `SaveJobButton.test.tsx`, `saved-jobs.test.tsx`, `api/jobs/saved/[jobId].test.ts`, `api/users/me/saved-jobs.test.ts`
-*   **2025-04-10:** Added `/api/jobs/search` tests.
-*   **2025-04-10:** Implementar filtro de tecnologias/stack com persistência em URL.
-*   **2025-04-09:** Adicionar hook useDebounce e aplicar nos inputs de filtro para otimizar performance.
-*   **2025-04-09:** Migrar lógica de filtros para componente `JobFilters.tsx` e adicionar testes.
-*   **2025-04-08:** Adicionar botão de "Salvar Vaga" e criação da página de vagas salvas.
-*   **2025-04-07:** Melhorar UX da página de detalhe com indicadores claros de redirecionamento externo.
-*   **2025-04-07:** Implementar funcionalidade de ordenação (sortBy) para listagem de vagas.
-*   **2025-04-06:** Implementar sistema de tracking de cliques em links externos.
-*   **2025-04-05:** Expandir testes unitários para utils/services do projeto.
-*   **2025-04-04:** Refatorar página de listagem para usar SWR (client-side fetching) com melhor UX.
-*   **2025-04-03:** Instalar e configurar Jest para testes unitários.
-*   **2025-04-02:** Atualizar schema Prisma e adicionar suporte para URLs externas e tracking.
-*   **2025-04-01:** Reconfigurar arquitetura para funcionar como agregador de links (estilo Remotive).
-
-## Completed Phase 1
-
-### Core Infrastructure
-*   [x] Setup initial Next.js project structure with TypeScript, Tailwind CSS.
-*   [x] Configure Prisma and connect to PostgreSQL database (local setup).
-*   [x] Define initial Prisma schema based on `PLANNING.md`.
-*   [x] **DB:** Create initial database migration based on schema (`prisma migrate dev`).
-*   [x] **Architecture:** Reestruturar o modelo de dados para agregador de links externos.
-*   [x] **Code Refactor:** Adaptar código (API Routes, UI, fetch scripts) para o novo schema.
-
-### Authentication & User Features
-*   [x] **Auth:** Implement NextAuth.js setup (Email Magic Link, Google, LinkedIn Providers).
-*   [x] **Auth:** Create basic registration/login UI flow for Candidates & Recruiters.
-*   [x] **User Features:** Implementar sistema de vagas salvas (favoritos) para usuários.
-*   [x] **User Features:** Implement click tracking system for external job links.
-*   [x] **Notifications:** Setup email service integration.
-
-### Jobs Functionality
-*   [x] **Jobs:** Implement basic job listing page (fetching placeholder/manual data).
-*   [x] **Jobs:** Implement Job Posting API endpoint (Recruiter role required).
-*   [x] **Jobs:** Implement basic Job Posting Form UI (for Recruiters).
-*   [x] **Jobs:** Refine Job Listing Page UI (loading skeletons, error handling).
-*   [x] **Jobs:** Implement server-side pagination for job listings API.
-*   [x] **Jobs:** Improve Job Detail Page with external redirection UX indicators.
-*   [x] **Jobs:** Implement sorting functionality for job listings page.
-*   [x] **Integration:** Setup Greenhouse job fetching logic (basic script/API route).
-*   [x] **Schema:** Adicionar campos para URLs de vagas externas e tracking de cliques.
-
-### Filters & Search
-*   [x] **Filters:** Implement URL query parameter state management for filters.
-*   [x] **Filters:** Add "Technology/Stack" filter option (Schema, API, UI).
-*   [x] **Filters:** Enhance Filter UI/UX (Mobile layout, Chips, Result Count).
-*   [x] **Filters:** Implement debounce for filter inputs.
-
-### Dashboard & Analytics
-*   [x] **Recruiter Dashboard:** Implement API route to fetch jobs posted by a recruiter.
-*   [x] **Recruiter Dashboard:** Reconstruir para focar em métricas de cliques e visualizações.
-*   [x] **Analytics:** Implementar sistema de rastreamento de cliques em vagas externas.
-
-### Testing & Monitoring
-*   [x] **Testing:** Setup basic Unit Testing Framework (Jest).
-*   [x] **Testing:** Create first component tests for jobs listing page.
-*   [x] **Testing:** Write basic API route tests for job fetching.
-*   [x] **Testing:** Expand test coverage for utility functions.
-*   [x] **Testing:** Add mock configuration for NextAuth sessions and protected routes.
-*   [x] **Testing:** Add component tests for `JobFilters.tsx` and Pagination.
-*   [x] **Testing:** Write initial unit tests for Auth logic.
-*   [x] **Testing:** Add unit tests for `useTrackJobClick` hook and related endpoints.
-*   [x] **Monitoring:** Setup basic Error Monitoring (Sentry integration).
-
-### Refactoring
-*   [x] **Refactor:** Move filter UI/logic from `index.tsx` to `JobFilters.tsx` component.
-*   [x] **Refactor:** Refactor jobs listing page to use client-side fetching (SWR).
-*   [x] **Refactor:** Migrate job listing functionality from `/jobs` page to home page (`/`).
-
-## Bug Fixes
-
-*   [x] **React Error:** Fix "Objects are not valid as a React child (found: object with keys {name, logo})" error occurring on page load (likely home page). (Reported: {Current Date})
-*   [x] **Bug Fix:** Fix company logos not displaying correctly on job cards. (Completed 2025-04-12)
-
-### 📈 Analytics & Tracking 
+    *   `SaveJobButton.test.tsx`, `saved-jobs.test.tsx`, `

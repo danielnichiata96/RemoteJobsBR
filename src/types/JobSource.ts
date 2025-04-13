@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 
 // Define the structure for filter configuration
 export interface FilterConfig {
@@ -24,10 +25,44 @@ export type FilterMetadataConfig =
   | { type: 'boolean'; positiveValue: string }
   | { type: 'string'; positiveValues?: string[]; allowedValues?: string[]; disallowedValues?: string[] };
 
-export interface GreenhouseConfig {
-  boardToken: string;
-  filterConfig?: FilterConfig;
-}
+// Define the shape of the config JSON for Greenhouse
+export const FilterConfigSchema = z.object({
+  REMOTE_METADATA_FIELDS: z.record(z.union([
+    z.object({ type: z.literal('boolean'), positiveValue: z.string() }),
+    z.object({
+      type: z.literal('string'),
+      positiveValues: z.array(z.string()).optional(),
+      allowedValues: z.array(z.string()).optional(),
+      disallowedValues: z.array(z.string()).optional()
+    })
+  ])),
+  LOCATION_KEYWORDS: z.object({
+    STRONG_POSITIVE_GLOBAL: z.array(z.string()),
+    STRONG_POSITIVE_LATAM: z.array(z.string()),
+    STRONG_NEGATIVE_RESTRICTION: z.array(z.string()),
+    AMBIGUOUS: z.array(z.string()),
+    ACCEPT_EXACT_LATAM_COUNTRIES: z.array(z.string()).optional()
+  }),
+  CONTENT_KEYWORDS: z.object({
+    STRONG_POSITIVE_GLOBAL: z.array(z.string()),
+    STRONG_POSITIVE_LATAM: z.array(z.string()),
+    STRONG_NEGATIVE_REGION: z.array(z.string()),
+    STRONG_NEGATIVE_TIMEZONE: z.array(z.string())
+  })
+});
+
+export const GreenhouseConfigSchema = z.object({
+  boardToken: z.string().min(1, "Board token is required"),
+  filterConfig: z.optional(z.lazy(() => FilterConfigSchema)),
+});
+export type GreenhouseConfig = z.infer<typeof GreenhouseConfigSchema>;
+
+// Define the shape of the config JSON for Ashby
+export const AshbyConfigSchema = z.object({
+    jobBoardName: z.string().min(1, "Job board name (slug) is required"),
+    // Add other Ashby-specific config fields if needed
+});
+export type AshbyConfig = z.infer<typeof AshbyConfigSchema>;
 
 // Lever Configuration
 export interface LeverConfig {
@@ -35,21 +70,27 @@ export interface LeverConfig {
   // Add any Lever-specific filter overrides here if needed in the future
 }
 
-// Helper functions to work with JobSource config
-export function getGreenhouseConfig(config: Prisma.JsonValue | null): GreenhouseConfig | null {
-  if (!config) return null;
-  
-  try {
-    // Check if config is an object with a boardToken property
-    if (typeof config === 'object' && config !== null && !Array.isArray(config) && 'boardToken' in config) {
-      return config as unknown as GreenhouseConfig;
-    }
-  } catch (error) {
-    console.error('Failed to parse config:', error);
+// Helper function to safely parse and validate Greenhouse config
+export function getGreenhouseConfig(config: any): GreenhouseConfig | null {
+  const result = GreenhouseConfigSchema.safeParse(config);
+  if (result.success) {
+    return result.data;
+  } else {
+    console.error("Invalid Greenhouse config:", result.error.format());
+    return null;
   }
-  
-  return null;
 }
+
+// Helper function to safely parse and validate Ashby config
+export function getAshbyConfig(config: any): AshbyConfig | null {
+    const result = AshbyConfigSchema.safeParse(config);
+    if (result.success) {
+      return result.data;
+    } else {
+      console.error("Invalid Ashby config:", result.error.format());
+      return null;
+    }
+  }
 
 // Helper function for Lever config
 export function getLeverConfig(config: Prisma.JsonValue | null): LeverConfig | null {

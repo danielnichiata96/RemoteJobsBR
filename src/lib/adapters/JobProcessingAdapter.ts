@@ -3,7 +3,7 @@ import { JobProcessingService } from '../services/jobProcessingService';
 import { StandardizedJob } from '../../types/StandardizedJob';
 import { JobProcessor, ProcessedJobResult, GreenhouseJob } from '../jobProcessors/types';
 import { GreenhouseProcessor } from '../jobProcessors/greenhouseProcessor';
-import { LeverProcessor } from '../jobProcessors/leverProcessor';
+import { AshbyProcessor } from '../jobProcessors/AshbyProcessor';
 import pino from 'pino';
 
 const logger = pino({
@@ -30,8 +30,7 @@ export class JobProcessingAdapter {
     // Initialize processors
     this.processors = new Map<string, JobProcessor>();
     this.processors.set('greenhouse', new GreenhouseProcessor());
-    // Temporariamente desativando o processador Lever até corrigir a interface
-    // this.processors.set('lever', new LeverProcessor());
+    this.processors.set('ashby', new AshbyProcessor());
     // Add other processors here as needed
   }
 

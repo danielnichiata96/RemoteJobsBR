@@ -67,7 +67,7 @@ export class GreenhouseFetcher implements JobFetcher {
                 stats.errors++;
                 return { stats, foundSourceIds };
             }
-            boardToken = greenhouseConfig.boardToken;
+            boardToken = String(greenhouseConfig.boardToken);
             apiUrl = `https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs?content=true`;
             sourceLogger.info({ boardToken }, `-> Starting processing...`);
 
@@ -378,12 +378,22 @@ export class GreenhouseFetcher implements JobFetcher {
         const strongLatamKeywords = keywords.STRONG_POSITIVE_LATAM || [];
         const ambiguousKeywords = keywords.AMBIGUOUS || []; // e.g., ["remote"]
 
+        // --- Extract individual words for more granular checking ---
+        const words = nameLower.split(/[\s\-\(\)\/]+/).filter(w => w.length > 2); // Split on spaces, hyphens, parentheses, slashes
+
         // --- Pre-computation for clarity ---
         const nameContainsAmbiguous = this._includesSubstringKeyword(nameLower, ambiguousKeywords).match;
         const nameMatchNegative = this._matchesKeywordRegex(nameLower, strongNegativeKeywords);
         const nameMatchGlobal = this._includesSubstringKeyword(nameLower, strongGlobalKeywords); // Use includes for broader "Remote Worldwide"
         const nameMatchLatam = this._includesSubstringKeyword(nameLower, strongLatamKeywords); // Use includes for broader "Remote LATAM"
         const nameMatchExactLatamCountry = this._matchesKeywordRegex(nameLower, acceptableLatamCountries);
+
+        // New checks for individual words that are strong indicators
+        const hasWorldwideWord = words.includes('worldwide') || words.includes('global') || words.includes('anywhere');
+        const hasAmericasWord = words.includes('americas') || words.includes('america');
+        const hasLatamWord = words.includes('latam') || words.includes('latin');
+        const hasHomeBasedWord = words.includes('home') && (words.includes('based') || words.includes('base'));
+        const hasRemoteWord = words.includes('remote');
 
         // --- Step 1: Direct Rejection based on Location Name ---
         // If the location name *itself* contains a strong negative keyword (using regex for word boundaries)
@@ -410,11 +420,28 @@ export class GreenhouseFetcher implements JobFetcher {
             return 'ACCEPT_GLOBAL';
         }
 
+        // --- Step 2.5: NEW Check for key words that indicate worldwide/global/americas ---
+        if (hasWorldwideWord) {
+            logger.debug({ locationName: nameRaw, keyword: 'worldwide/global/anywhere' }, 'Location accepted as GLOBAL: Name contains explicit worldwide/global word.');
+            return 'ACCEPT_GLOBAL';
+        }
+        
+        if (hasLatamWord) {
+            logger.debug({ locationName: nameRaw, keyword: 'latam/latin' }, 'Location accepted as LATAM: Name contains explicit latam word.');
+            return 'ACCEPT_LATAM';
+        }
+        
+        if (hasAmericasWord) {
+            // "Americas" is ambiguous (could be North America or all Americas)
+            // but likely includes LATAM, so mark as LATAM
+            logger.debug({ locationName: nameRaw, keyword: 'americas' }, 'Location accepted as LATAM: Name contains "Americas" word (ambiguous but includes LATAM).');
+            return 'ACCEPT_LATAM';
+        }
 
         // --- Step 3: Analyze Offices if Location Name is Ambiguous or Generic ---
         // This applies if the name is *only* something like "Remote", "Distributed", or potentially empty,
         // AND it hasn't already been accepted/rejected.
-        if (nameContainsAmbiguous || nameLower === '') {
+        if (nameContainsAmbiguous || nameLower === '' || (hasHomeBasedWord && !hasWorldwideWord && !hasAmericasWord && !hasLatamWord)) {
             logger.trace({ locationName: nameRaw, officeNames: officeNamesLower }, 'Location name is ambiguous or empty, checking offices...');
             if (officeNamesLower.length > 0) {
                 const officeMatchNegative = officeNamesLower.some(officeName => this._matchesKeywordRegex(officeName, strongNegativeKeywords).match);
@@ -457,10 +484,15 @@ export class GreenhouseFetcher implements JobFetcher {
             }
         }
 
-        // --- Step 4: Default Rejection ---
-        // If the location name wasn't explicitly Global/LATAM, wasn't explicitly negative,
-        // and wasn't ambiguous (e.g., it was a specific city/state not in negative list but also not positive)
-        // -> treat as implicitly restricted or non-remote.
+        // --- Step 4: Default case - Much less aggressive rejection ---
+        // If "Home based" is in the name but we haven't classified it yet, it's likely remote
+        // so defer to content check rather than reject
+        if (hasHomeBasedWord || hasRemoteWord) {
+            logger.debug({ locationName: nameRaw }, 'Location name contains "home based" or "remote" but could not be classified. Deferring to content check.');
+            return 'UNKNOWN';
+        }
+
+        // If we reach here, the location is specific but not matched by any of our rules
         logger.debug({ locationName: nameRaw }, 'Location rejected: Name is specific but not recognized as Global/LATAM and not explicitly Negative.');
         return 'REJECT';
     }
@@ -609,12 +641,12 @@ export class GreenhouseFetcher implements JobFetcher {
              return { relevant: false, reason: `Location/Office indicates Restriction or is non-remote: "${locationName}" / Offices: ${offices?.map(o=>o.name).join(', ')}` };
         }
         if (locationCheck === 'ACCEPT_LATAM') {
-             logger.info(`Accepted as LATAM based on Location/Office`);
+             logger.debug(`Job accepted as LATAM (${locationName})`);
              return { relevant: true, reason: 'Location/Office(LATAM)', type: 'latam' };
         }
         if (locationCheck === 'ACCEPT_GLOBAL') {
-              logger.info(`Accepted as GLOBAL based on Location/Office`);
-              return { relevant: true, reason: 'Location/Office(Global)', type: 'global' };
+             logger.debug(`Job accepted as GLOBAL (${locationName})`);
+             return { relevant: true, reason: 'Location/Office(Global)', type: 'global' };
         }
         // If location is UNKNOWN, continue to content check.
 
@@ -626,18 +658,18 @@ export class GreenhouseFetcher implements JobFetcher {
             return { relevant: false, reason: 'Content indicates Restriction (Region/Timezone/Citizenship/Phrase)' };
         }
         if (contentCheck === 'ACCEPT_LATAM') {
-            logger.info(`Accepted as LATAM based on Content`);
+            logger.debug(`Job accepted as LATAM based on Content`);
             return { relevant: true, reason: 'Content(LATAM)', type: 'latam' };
         }
         if (contentCheck === 'ACCEPT_GLOBAL') {
-             logger.info(`Accepted as GLOBAL based on Content`);
+             logger.debug(`Job accepted as GLOBAL based on Content`);
              return { relevant: true, reason: 'Content(Global)', type: 'global' };
         }
 
         // 4. Final Decision if still UNKNOWN after Content
         // If metadata previously indicated Global, accept now.
         if (metadataCheck === 'ACCEPT_GLOBAL') {
-             logger.info(`Accepted as GLOBAL based on prior Metadata signal (Location/Content were UNKNOWN)`);
+             logger.debug(`Job accepted as GLOBAL based on prior Metadata signal (Location/Content were UNKNOWN)`);
              return { relevant: true, reason: 'Metadata(Global) - Confirmed by non-rejecting Location/Content', type: 'global' };
         }
 

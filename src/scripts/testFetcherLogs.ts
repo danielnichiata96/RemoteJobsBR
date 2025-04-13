@@ -15,7 +15,7 @@ import { JobProcessingAdapter } from '../lib/adapters/JobProcessingAdapter';
 const LOG_TO_FILE = true; // Se true, grava logs em um arquivo
 const DETAILED_LOGS = true; // Se true, ativa logs trace/debug
 const TEST_ALL_SOURCES = false; // Se true, testa todas as fontes ativas
-const TARGET_SOURCES = ['Vercel']; // Alterado para testar GitLab
+const TARGET_SOURCES = ['Canonical']; // Alterado para testar GitLab
 const SKIP_SAVING = true; // Se true, não salva as vagas no banco (apenas simula)
 
 // Configurar logger

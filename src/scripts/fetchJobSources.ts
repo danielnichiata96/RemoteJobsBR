@@ -4,8 +4,8 @@ import pino from 'pino';
 import { JobProcessingAdapter } from '../lib/adapters/JobProcessingAdapter';
 import { JobProcessingService } from '../lib/services/jobProcessingService';
 import { GreenhouseFetcher } from '../lib/fetchers/GreenhouseFetcher';
-import { LeverFetcher } from '../lib/fetchers/LeverFetcher';
 import { JobFetcher, FetcherResult } from '../lib/fetchers/types';
+import { AshbyFetcher } from '../lib/fetchers/AshbyFetcher';
 
 // --- Configuração Inicial ---
 const prisma = new PrismaClient();
@@ -32,7 +32,7 @@ const jobProcessingService = new JobProcessingService(); // Service handles savi
 // Maps source type string to the corresponding fetcher class instance
 const fetcherMap = new Map<string, JobFetcher>();
 fetcherMap.set('greenhouse', new GreenhouseFetcher(prisma, jobProcessorAdapter));
-fetcherMap.set('lever', new LeverFetcher(prisma, jobProcessorAdapter));
+fetcherMap.set('ashby', new AshbyFetcher(prisma, jobProcessorAdapter));
 // Add mappings for new fetchers here, e.g.:
 // fetcherMap.set('workable', new WorkableFetcher(prisma, jobProcessorAdapter));
 
