@@ -33,7 +33,7 @@ const sourcesToAddOrUpdate: (GreenhouseSourceInput | AshbySourceInput)[] = [
     {
         name: 'Deel',
         type: 'ashby',
-        config: { jobBoardName: 'deel' },
+        config: { jobBoardName: 'Deel' },
         companyWebsite: 'https://www.deel.com/',
         logoUrl: null
     },
@@ -55,18 +55,28 @@ async function main() {
                 existingSource = await prisma.jobSource.findFirst({
                     where: {
                         type: 'greenhouse',
-                        // A busca por JSON exato pode ser complexa, vamos usar o boardToken como chave única assumida para Greenhouse
                         config: { path: ['boardToken'], equals: sourceInput.boardToken }, 
                     },
                 });
+                // Fallback: Try finding by name and type if config lookup fails
+                if (!existingSource) {
+                    existingSource = await prisma.jobSource.findUnique({
+                        where: { name_type: { name: sourceInput.name, type: sourceInput.type } },
+                    });
+                }
             } else if (sourceInput.type === 'ashby') {
                 existingSource = await prisma.jobSource.findFirst({
                     where: {
                         type: 'ashby',
-                        // Usar jobBoardName como chave única assumida para Ashby
                         config: { path: ['jobBoardName'], equals: sourceInput.config.jobBoardName }, 
                     },
                 });
+                // Fallback: Try finding by name and type if config lookup fails
+                if (!existingSource) {
+                    existingSource = await prisma.jobSource.findUnique({
+                         where: { name_type: { name: sourceInput.name, type: sourceInput.type } },
+                    });
+                }
             } else {
                 // Explicitly cast to any to access properties, or handle the 'never' case differently
                 const unknownSource = sourceInput as any;

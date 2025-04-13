@@ -40,7 +40,7 @@ LLM should update this file based on conversational progress.
     *   [x] Filtrar vagas com `isListed: false` no `AshbyProcessor`.
     *   [x] **Debugging:** Investigar por que as fontes Ashby não estão processando jobs (verificar URL da API, formato da resposta, etc). *(New - 2025-04-16) -> Fixed - URL API & Processor Logic Corrected*
     *   [ ] **Refinement:** Implementar funções `parseDate` e `cleanHtml` ausentes (usadas temporariamente com `new Date()` e HTML bruto). *(New - 2025-04-16)*
-    *   [ ] **Refinement:** Refatorar `AshbyProcessor` para usar config externa para keywords de localização (como Greenhouse). *(New - 2025-04-16)*
+    *   [x] **Refinement:** Refatorar `AshbyProcessor` para usar config externa para keywords de localização (como Greenhouse). *(New - 2025-04-16)* *(Completed - 2025-04-16)*
 *   ~~[ ] **Integrations/Lever:** Testar `LeverFetcher` com fontes reais e identificar falhas/pontos de melhoria. (New - 2025-04-15)~~ (Removed LeverFetcher - 2025-04-15)
 *   [x] **Testing:** Fix `Pagination` test.
 *   [ ] **Testing:** Criar testes unitários para lógica de filtragem do `GreenhouseFetcher`. *(Ready)*

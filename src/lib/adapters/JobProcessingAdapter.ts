@@ -26,12 +26,31 @@ export class JobProcessingAdapter {
   private processors: Map<string, JobProcessor>;
 
   constructor() {
+    logger.info('Initializing JobProcessingAdapter...');
     this.jobProcessingService = new JobProcessingService();
+    logger.info('JobProcessingService instantiated.');
+    
     // Initialize processors
     this.processors = new Map<string, JobProcessor>();
-    this.processors.set('greenhouse', new GreenhouseProcessor());
-    this.processors.set('ashby', new AshbyProcessor());
+    logger.info('Processor map created.');
+
+    try {
+      logger.info('Attempting to instantiate GreenhouseProcessor...');
+      this.processors.set('greenhouse', new GreenhouseProcessor());
+      logger.info('GreenhouseProcessor instantiated and added.');
+    } catch (error: any) {
+        logger.error({ error }, 'Failed to instantiate GreenhouseProcessor');
+    }
+
+    try {
+        logger.info('Attempting to instantiate AshbyProcessor...');
+        this.processors.set('ashby', new AshbyProcessor());
+        logger.info('AshbyProcessor instantiated and added.');
+    } catch (error: any) {
+        logger.error({ error }, 'Failed to instantiate AshbyProcessor');
+    }
     // Add other processors here as needed
+    logger.info('JobProcessingAdapter initialization complete. Processors: %s', Array.from(this.processors.keys()).join(', '));
   }
 
   /**
@@ -45,22 +64,32 @@ export class JobProcessingAdapter {
    * @returns Promise<boolean> True if the job was successfully processed and saved/updated, false otherwise.
    */
   async processRawJob(source: string, rawJobData: any, sourceData?: JobSource): Promise<boolean> {
-    const processor = this.processors.get(source.toLowerCase());
+    // Enhanced logging for processor selection
+    const lowerCaseSource = source.toLowerCase();
+    const processor = this.processors.get(lowerCaseSource);
+    const adapterLogger = logger.child({ adapter: 'JobProcessingAdapter', source: source });
+
+    adapterLogger.info({ availableProcessors: Array.from(this.processors.keys()), requestedSource: source, lowerCaseSource }, `Attempting to find processor for source.`);
 
     if (!processor) {
-      logger.error({ source }, `No processor found for source`);
+      adapterLogger.error(`No processor found for source.`);
       return false;
     }
 
-    const processLogger = logger.child({ source, processor: processor.source });
-    processLogger.debug({ rawJobData }, `Starting processing with ${processor.source} processor`);
+    adapterLogger.info({ processorSource: processor.source }, `Found processor. Starting processing...`);
+
+    // Use a logger specific to this processing attempt
+    const processLogger = adapterLogger.child({ processor: processor.source });
+    // processLogger.debug({ rawJobData }, `Starting processing with ${processor.source} processor`); // Redundant with log above
 
     try {
       // Pass sourceData to the processor
+      processLogger.info('>>> PRE-CALL: Attempting to call processor.processJob...');
       const result: ProcessedJobResult = await processor.processJob(rawJobData, sourceData);
+      processLogger.info('<<< POST-CALL: processor.processJob completed.');
 
       if (!result.success || !result.job) {
-        processLogger.warn({ error: result.error, rawJobData }, `Processor failed or determined job irrelevant`);
+        processLogger.warn({ error: result.error }, `Processor reported failure or irrelevant job.`);
         return false; // Processor failed or job wasn't relevant
       }
 
@@ -70,13 +99,20 @@ export class JobProcessingAdapter {
       const saved = await this.jobProcessingService.saveOrUpdateJob(result.job);
       
       if (!saved) {
-         processLogger.warn({ standardizedJob: result.job }, `JobProcessingService failed to save/update the job.`);
+         processLogger.warn({ standardizedJobId: result.job.sourceId }, `JobProcessingService failed to save/update the job.`);
       }
       
       return saved;
 
-    } catch (error) {
-      processLogger.error({ error, rawJobData }, `Unhandled error during processing or saving`);
+    } catch (error: any) { // Catch any error
+      // Log detailed error information
+      const errorDetails = {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        rawJobData: JSON.stringify(rawJobData)?.substring(0, 500) + '...' // Log snippet of raw data
+      };
+      processLogger.error({ error: errorDetails }, `*** CATCH BLOCK in JobProcessingAdapter.processRawJob ***`);
       return false;
     }
   }
