@@ -1,107 +1,91 @@
 import axios, { AxiosError } from 'axios';
-import { PrismaClient, JobSource, HiringRegion } from '@prisma/client';
+import { PrismaClient, JobSource, JobStatus, JobType, ExperienceLevel } from '@prisma/client'; // Added missing imports
 import pMap from 'p-map';
 import pino from 'pino';
 import { JobProcessingAdapter } from '../adapters/JobProcessingAdapter';
-import { getAshbyConfig } from '../../types/JobSource';
+import { getAshbyConfig, FilterConfig as GreenhouseFilterConfig } from '../../types/JobSource'; // Combined imports
 import { JobFetcher, SourceStats, FetcherResult } from './types';
 import sanitizeHtml from 'sanitize-html';
 import { decode } from 'html-entities';
 import * as fs from 'fs';
 import * as path from 'path';
-import { FilterConfig as GreenhouseFilterConfig } from '../../types/JobSource'; // For negative keywords
+// Assuming jobUtils are in the correct relative path
+import { detectJobType, detectExperienceLevel } from '../utils/jobUtils';
+
 
 // --- Interfaces ---
 
-// Define a interface que representa o formato dos jobs retornados pela API Ashby
-// Based on: https://api.ashbyhq.com/posting-api-schema#JobPosting
+// Updated AshbyApiJob interface based on official schema + potential secondaryLocations
 interface AshbyApiJob {
-    id: string; // The internal ID of the Job Posting
+    id: string;
     title: string;
-    // Deprecated: Prefer locations field
-    // location?: string; 
-    locations: AshbyLocation[]; // NEW: Use this array
+    locations: AshbyLocation[]; // Primary locations array
+    secondaryLocations?: AshbyLocation[]; // Optional secondary locations array <<< CORRECTED: ADDED THIS
     department?: { id: string; name: string; } | null;
     team?: { id: string; name: string; } | null;
-    isRemote: boolean; // If true, candidates can work remotely for this job.
+    isRemote: boolean | null; // Allow null based on user feedback
     descriptionHtml?: string | null;
     descriptionPlain?: string | null;
-    publishedAt: string; // ISO DateTime string when listed
-    updatedAt: string; // ISO DateTime string of last update
+    publishedAt: string;
+    updatedAt: string;
     employmentType?: "FullTime" | "PartTime" | "Intern" | "Contract" | "Temporary" | null;
     compensationTier?: { id: string; name: string; } | null;
-    compensationRange?: string | null; // Example: "$100,000 - $150,000"
-    isListed: boolean; // If false, this JobPosting should not be displayed.
-    jobUrl: string; // The URL to the Job Posting page on the Ashby Job Board.
-    applyUrl: string; // The URL to the application form for the Job Posting.
-    // Potentially useful fields not strictly needed for filtering/mapping yet:
-    // customFields?: Record<string, any>[];
-    // isArchived: boolean;
-    // openingIds?: string[];
+    compensationRange?: string | null;
+    isListed: boolean;
+    jobUrl: string;
+    applyUrl: string;
+    // Adding _determinedHiringRegionType for passing filter result
+    _determinedHiringRegionType?: 'global' | 'latam';
 }
 
 // Based on: https://api.ashbyhq.com/posting-api-schema#Location
 interface AshbyLocation {
   id: string;
-  name: string; // Example: "San Francisco", "Remote", "Remote - United States"
-  type: 'country' | 'administrativeAreaLevel1' | 'administrativeAreaLevel2' | 'locality' | 'sublocality' | 'neighborhood' | 'postalCode' | 'pointOfInterest' | 'route' | 'streetAddress' | 'premise' | 'subpremise' | 'naturalFeature' | 'airport' | 'park' | 'transitStation' | 'intersection' | 'floor' | 'room' | 'other';
+  name: string;
+  type: string; // Using string for flexibility as exact enum might vary
   address?: {
     rawAddress: string | null;
     streetAddress1: string | null;
     streetAddress2: string | null;
     city: string | null;
-    state: string | null; // Administrative area level 1
+    state: string | null;
     postalCode: string | null;
-    country: string | null; // Example: "United States", "Brazil"
+    country: string | null;
     countryCode: string | null; // Example: "US", "BR"
   } | null;
-  isRemote: boolean;
+  isRemote: boolean; // Location specific remote flag
 }
 
 
-// Define a interface para a resposta da API Ashby
 interface AshbyApiResponse {
-    jobs: AshbyApiJob[]; // CORRECTED: The API uses "jobs" field
-    // Potentially has pagination fields if API supports it
+    jobs: AshbyApiJob[];
 }
 
-// Interface for the result of the relevance filtering
 interface FilterResult {
     relevant: boolean;
     reason: string;
-    type?: 'global' | 'latam'; // The determined hiring region type
+    type?: 'global' | 'latam';
 }
 
-// Specific filter config for Ashby positive keywords
 interface AshbyPositiveFilterConfig {
     remoteKeywords: string[];
     latamKeywords: string[];
     brazilKeywords: string[];
 }
 
-// Combined negative keywords (from Greenhouse config)
 interface NegativeFilterConfig {
     keywords: string[];
 }
 
-// Global logger instance
-const logger = pino({
+// Global logger instance (assuming pino is configured elsewhere or use a default)
+const baseLogger = pino({
   transport: {
     target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'HH:MM:ss',
-      ignore: 'pid,hostname',
-    }
+    options: { colorize: true, translateTime: 'HH:MM:ss', ignore: 'pid,hostname' }
   },
-  level: process.env.LOG_LEVEL || 'info', // Use environment variable or default to 'info'
+  level: process.env.LOG_LEVEL || 'info',
 });
 
-/**
- * Fetcher implementation for Ashby job board API.
- * API docs: https://app.ashbyhq.com/docs/api/job-board-api
- * Uses the official posting-api endpoint.
- */
 export class AshbyFetcher implements JobFetcher {
     private prisma: PrismaClient;
     private jobProcessor: JobProcessingAdapter;
@@ -111,19 +95,20 @@ export class AshbyFetcher implements JobFetcher {
     constructor(prismaClient: PrismaClient, jobProcessingAdapter: JobProcessingAdapter) {
         this.prisma = prismaClient;
         this.jobProcessor = jobProcessingAdapter;
-        this._loadFilterConfigs(); // Load configs on instantiation
+        this._loadFilterConfigs();
     }
 
-    // --- Configuration Loading ---
     private _loadFilterConfigs(): void {
+        const currentLogger = baseLogger.child({ class: 'AshbyFetcher', method: '_loadFilterConfigs' });
         try {
             const positiveConfigPath = path.resolve(__dirname, '../../config/ashby-filter-config.json');
             const positiveConfigFile = fs.readFileSync(positiveConfigPath, 'utf-8');
             this.ashbyPositiveConfig = JSON.parse(positiveConfigFile) as AshbyPositiveFilterConfig;
-            logger.info({ configPath: positiveConfigPath }, `Successfully loaded Ashby positive filter configuration`);
+            currentLogger.info({ configPath: positiveConfigPath }, `Successfully loaded Ashby positive filter configuration`);
+
         } catch (error: any) {
-            logger.error({ err: error, configPath: path.resolve(__dirname, '../../config/ashby-filter-config.json') }, `❌ Failed to load or parse Ashby positive filter configuration.`);
-            this.ashbyPositiveConfig = null; // Ensure it's null if loading fails
+            currentLogger.error({ err: error, configPath: path.resolve(__dirname, '../../config/ashby-filter-config.json') }, `❌ Failed to load or parse Ashby positive filter configuration.`);
+            this.ashbyPositiveConfig = null;
         }
 
         try {
@@ -131,80 +116,54 @@ export class AshbyFetcher implements JobFetcher {
             const greenhouseConfigFile = fs.readFileSync(greenhouseConfigPath, 'utf-8');
             const greenhouseConfig = JSON.parse(greenhouseConfigFile) as GreenhouseFilterConfig;
 
-            // Combine negative keywords from Greenhouse config
             const combinedNegative = [
                 ...(greenhouseConfig.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || []),
                 ...(greenhouseConfig.CONTENT_KEYWORDS?.STRONG_NEGATIVE_REGION || [])
             ];
-            this.negativeConfig = { keywords: [...new Set(combinedNegative.map(k => k.toLowerCase()))] }; // Deduplicate and lower-case
-            logger.info({ configPath: greenhouseConfigPath, count: this.negativeConfig.keywords.length }, `Successfully loaded and combined negative filter keywords from Greenhouse config`);
+            this.negativeConfig = { keywords: [...new Set(combinedNegative.map(k => k.toLowerCase()))] };
+            currentLogger.info({ configPath: greenhouseConfigPath, count: this.negativeConfig.keywords.length }, `Successfully loaded and combined negative filter keywords from Greenhouse config`);
 
         } catch (error: any) {
-            logger.error({ err: error, configPath: path.resolve(__dirname, '../../config/greenhouse-filter-config.json') }, `❌ Failed to load or parse Greenhouse filter configuration for negative keywords.`);
-            this.negativeConfig = null; // Ensure it's null if loading fails
+            currentLogger.error({ err: error, configPath: path.resolve(__dirname, '../../config/greenhouse-filter-config.json') }, `❌ Failed to load or parse Greenhouse filter configuration for negative keywords.`);
+            this.negativeConfig = null;
         }
     }
 
-    // --- Filtering Helper Functions ---
-
+    // --- Filtering Helper Functions --- (Keep these as before)
     private _stripHtml(html: string | undefined | null): string {
+        // ... (implementation remains the same using sanitizeHtml)
         if (!html) return '';
         try {
-            // Use sanitize-html for safety and basic tag removal
-            const sanitized = sanitizeHtml(html, {
-                allowedTags: [], // Remove all tags
-                allowedAttributes: {}, // Remove all attributes
-            });
-            // Decode entities and normalize whitespace
-            return decode(sanitized)
-                .replace(/\s+/g, ' ')
-                .trim();
-        } catch (e) {
-             logger.warn({ error: e }, "Error stripping HTML, returning empty string.");
-             return '';
-        }
+            const sanitized = sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} });
+            return decode(sanitized).replace(/\s+/g, ' ').trim();
+        } catch (e) { baseLogger.warn({ error: e }, "Error stripping HTML."); return ''; }
     }
-
     private _includesSubstringKeyword(text: string | undefined | null, keywords: string[] | undefined): { match: boolean, keyword: string | undefined } {
-        if (!text || !keywords || keywords.length === 0) return { match: false, keyword: undefined };
-        const lowerText = text.toLowerCase();
-        const foundKeyword = keywords.find(keyword => lowerText.includes(keyword.toLowerCase()));
-        return { match: !!foundKeyword, keyword: foundKeyword };
+         // ... (implementation remains the same)
+         if (!text || !keywords || keywords.length === 0) return { match: false, keyword: undefined };
+         const lowerText = text.toLowerCase();
+         const foundKeyword = keywords.find(keyword => lowerText.includes(keyword.toLowerCase()));
+         return { match: !!foundKeyword, keyword: foundKeyword };
     }
-
     private _matchesKeywordRegex(text: string | undefined | null, keywords: string[] | undefined): { match: boolean, keyword: string | undefined } {
-        if (!text || !keywords || keywords.length === 0) return { match: false, keyword: undefined };
-        const lowerText = text.toLowerCase();
-        try {
-            // Escape special regex characters in keywords and join with '|'
-            // Use word boundaries (\b) to match whole words
-            const pattern = new RegExp(`\\b(${keywords.map(kw =>
-                kw.toLowerCase().replace(/[-\\/\\^$*+?.()|[\\]{}]/g, '\\$&') // Escape regex chars
-            ).join('|')})\\b`, 'i');
-            const match = pattern.exec(lowerText);
-            return { match: !!match, keyword: match ? match[1] : undefined }; // Return the matched keyword part
-        } catch (e) {
-            logger.error({ error: e, keywordsUsed: keywords.slice(0, 10) }, "Error compiling or executing keyword regex");
-            return { match: false, keyword: undefined };
-        }
+         // ... (implementation remains the same)
+         if (!text || !keywords || keywords.length === 0) return { match: false, keyword: undefined };
+         const lowerText = text.toLowerCase();
+         try {
+             const pattern = new RegExp(`\\b(${keywords.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\\b`, 'i');
+             const match = pattern.exec(lowerText);
+             return { match: !!match, keyword: match ? match[1] : undefined };
+         } catch (e) { baseLogger.error({ error: e, keywordsUsed: keywords.slice(0, 10) }, "Error compiling/executing keyword regex"); return { match: false, keyword: undefined }; }
     }
-
     private _processJobContent(job: AshbyApiJob): string {
-        const title = job.title || '';
-        let description = '';
-
-        if (job.descriptionPlain) {
-            description = job.descriptionPlain;
-        } else if (job.descriptionHtml) {
-            description = this._stripHtml(job.descriptionHtml);
-        }
-
-        // Combine and normalize
-        const fullText = `${title.toLowerCase()}\n${description.toLowerCase()}`;
-        return fullText.replace(/\s+/g, ' ').trim();
+         // ... (implementation remains the same)
+         const title = job.title || '';
+         let description = job.descriptionPlain || this._stripHtml(job.descriptionHtml) || '';
+         const fullText = `${title.toLowerCase()}\n${description.toLowerCase()}`;
+         return fullText.replace(/\s+/g, ' ').trim();
     }
+    // --- End Helper Functions ---
 
-    // --- Main Filtering Logic (_isJobRelevant) ---
     /** Determines if a job is relevant based on loaded configs and job data */
     private _isJobRelevant(
         job: AshbyApiJob,
@@ -212,183 +171,195 @@ export class AshbyFetcher implements JobFetcher {
         negativeConfig: NegativeFilterConfig | null,
         logger: pino.Logger
     ): FilterResult {
-        const jobLogger = logger.child({ fn: '_isJobRelevant' }); // Add function name to logger context
+        const jobLogger = logger.child({ fn: '_isJobRelevant' });
 
-        // --- Pre-checks ---
         if (!positiveConfig || !negativeConfig) {
-            jobLogger.warn("Filter configurations not loaded. Cannot determine relevance.");
+            jobLogger.warn("Filter configurations not loaded.");
             return { relevant: false, reason: "Missing filter configurations" };
         }
-        jobLogger.trace({ isRemote: job.isRemote }, "Initial check: isRemote flag.");
-        if (job.isRemote !== true) {
-            jobLogger.debug("Rejecting: isRemote flag is not true.");
-            return { relevant: false, reason: "Not marked as remote in ATS" };
+
+        // --- Step 0: Check isRemote (Handle null/undefined properly) ---
+        let isExplicitlyRemote = job.isRemote === true;
+        let isExplicitlyNotRemote = job.isRemote === false;
+
+        if (isExplicitlyNotRemote) {
+            jobLogger.debug("Rejecting: isRemote flag is explicitly false.");
+            return { relevant: false, reason: "Marked as non-remote in ATS (isRemote: false)" };
+        }
+        if (!isExplicitlyRemote) {
+            jobLogger.warn({ isRemoteValue: job.isRemote }, "job.isRemote is not explicitly true from API. Relying on location/content checks.");
+            // Continue analysis even if null/undefined
+        } else {
+             jobLogger.trace("isRemote flag is true."); // Log if explicitly true
         }
 
-        // --- Data Extraction ---
+        // --- Step 1: Data Extraction (Corrected) ---
         const titleLower = job.title?.toLowerCase() || '';
         const allLocationNames: string[] = [];
         const allCountryCodes: string[] = [];
         const allCountries: string[] = [];
-        const latamCountryCodes = ['br', 'ar', 'cl', 'co', 'mx', 'pe', 'uy', 'ec', 'bo', 'py', 've', /* Add more common LATAM codes */ ];
+        const latamCountryCodes = ['br', 'ar', 'cl', 'co', 'mx', 'pe', 'uy', 'ec', 'bo', 'py', 've'];
 
-        job.locations?.forEach(loc => {
-            if (loc.name) allLocationNames.push(loc.name.toLowerCase());
-            if (loc.address?.countryCode) allCountryCodes.push(loc.address.countryCode.toLowerCase());
-            if (loc.address?.country) allCountries.push(loc.address.country.toLowerCase());
-            if (loc.address?.city) allLocationNames.push(loc.address.city.toLowerCase());
-            if (loc.address?.state) allLocationNames.push(loc.address.state.toLowerCase());
-             if (loc.address?.rawAddress) allLocationNames.push(loc.address.rawAddress.toLowerCase());
+        // <<< Combine primary and secondary locations BEFORE iterating >>>
+        const combinedLocations = [...(job.locations || []), ...(job.secondaryLocations || [])];
+
+        jobLogger.trace({ locationCount: combinedLocations.length }, "Processing combined locations array.");
+
+        combinedLocations.forEach((loc, index) => {
+            if (!loc) return;
+            jobLogger.trace({ index, locationEntry: loc }, "Extracting details from location entry."); // Log each entry being processed
+
+            // Extract details safely
+            const name = loc.name?.toLowerCase();
+            const countryCode = loc.address?.countryCode?.toLowerCase();
+            const country = loc.address?.country?.toLowerCase();
+            const city = loc.address?.city?.toLowerCase();
+            const state = loc.address?.state?.toLowerCase();
+            const rawAddress = loc.address?.rawAddress?.toLowerCase();
+
+            if (name) allLocationNames.push(name);
+            if (countryCode) allCountryCodes.push(countryCode);
+            if (country) allCountries.push(country);
+            if (city) allLocationNames.push(city); // Add city to names for keyword check
+            if (state) allLocationNames.push(state); // Add state to names for keyword check
+            if (rawAddress) allLocationNames.push(rawAddress); // Add raw address if available
         });
-        const uniqueLocationNames = [...new Set(allLocationNames)];
-        const uniqueCountries = [...new Set(allCountries)];
-        const uniqueCountryCodes = [...new Set(allCountryCodes)];
-        jobLogger.trace({ titleLower, uniqueLocationNames, uniqueCountries, uniqueCountryCodes }, "Extracted job identifiers.");
 
-        const jobContentText = this._processJobContent(job); // Cleaned title + description
-        jobLogger.trace({ contentPreview: jobContentText.substring(0, 200) + '...' }, "Processed job content.");
+        // Include title in the list of identifiers to check
+        const uniqueLocationIdentifiers = [...new Set([...allLocationNames, ...allCountries, ...allCountryCodes, titleLower])];
+        jobLogger.debug({ uniqueLocationIdentifiers }, "DEBUG: Final unique location identifiers BEFORE analysis."); 
 
         const negativeKeywords = negativeConfig.keywords;
         const latamPositiveKeywords = [...positiveConfig.latamKeywords, ...positiveConfig.brazilKeywords];
         const globalPositiveKeywords = positiveConfig.remoteKeywords;
+        let locationDecision = 'unknown';
+        let negativeLocationKeyword: string | undefined = undefined;
+        let hasLatamLocationSignal = false;
+        let hasAmericasLocationSignal = false;
+        let hasGlobalLocationSignal = false;
+        let hasNegativeLocationSignal = false;
 
-        // --- Step 1: Rejection Checks (Location & Title) ---
-        jobLogger.trace("Starting Step 1: Rejection Checks (Location & Title)");
-        // Check Title first
-        const titleMatchNegative = this._matchesKeywordRegex(titleLower, negativeKeywords);
-        jobLogger.trace({ titleMatchNegative }, "Title negative keyword check.");
-        if (titleMatchNegative.match) {
-            jobLogger.debug({ matchedKeyword: titleMatchNegative.keyword }, 'Rejecting (Step 1): Title contains negative keyword.');
-            return { relevant: false, reason: `Title restriction: ${titleMatchNegative.keyword}` };
-        }
-        // Check all collected location names/countries/codes
-        for (const locName of [...uniqueLocationNames, ...uniqueCountries, ...uniqueCountryCodes]) {
-            const locMatchNegative = this._matchesKeywordRegex(locName, negativeKeywords);
-            jobLogger.trace({ locationIdentifier: locName, locMatchNegative }, "Location negative keyword check.");
-            if (locMatchNegative.match && !latamCountryCodes.includes(locMatchNegative.keyword || '')) { // Don't reject if negative match is a LATAM code itself
-                jobLogger.debug({ locationIdentifier: locName, matchedKeyword: locMatchNegative.keyword }, 'Rejecting (Step 1): Location identifier contains negative keyword.');
-                return { relevant: false, reason: `Location restriction: ${locMatchNegative.keyword} in ${locName}` };
+        for (const identifier of uniqueLocationIdentifiers) {
+            // Check LATAM
+            if (!hasLatamLocationSignal) {
+                if (latamCountryCodes.includes(identifier) || this._includesSubstringKeyword(identifier, latamPositiveKeywords).match) {
+                    hasLatamLocationSignal = true;
+                    jobLogger.trace({ identifier }, "Found LATAM signal in location/title.");
+                }
+            }
+            // Check Americas
+            if (!hasAmericasLocationSignal && identifier.includes('americas')) {
+                hasAmericasLocationSignal = true;
+                jobLogger.trace({ identifier }, "Found Americas signal in location/title.");
+            }
+            // Check Global (if not already LATAM/Americas)
+            if (!hasLatamLocationSignal && !hasAmericasLocationSignal && !hasGlobalLocationSignal) {
+                if (this._includesSubstringKeyword(identifier, globalPositiveKeywords).match) {
+                    hasGlobalLocationSignal = true;
+                    jobLogger.trace({ identifier }, "Found Global signal in location/title.");
+                }
+            }
+            // Check Negative
+            if (!hasNegativeLocationSignal) {
+                const match = this._matchesKeywordRegex(identifier, negativeKeywords);
+                if (match.match && match.keyword !== 'americas') {
+                    hasNegativeLocationSignal = true;
+                    negativeLocationKeyword = match.keyword;
+                    jobLogger.trace({ identifier, keyword: match.keyword }, "Found Negative signal in location/title.");
+                }
             }
         }
 
-        // --- Step 2: Acceptance Checks (LATAM Priority) ---
-        jobLogger.trace("Starting Step 2: Acceptance Checks (LATAM Priority)");
-        let potentialType: 'global' | 'latam' | 'unknown' = 'unknown';
-        let acceptanceReason = '';
-
-        // Check LATAM Country Codes
-        const latamCodeMatch = uniqueCountryCodes.find(code => latamCountryCodes.includes(code));
-        jobLogger.trace({ latamCodeMatch }, "LATAM country code check.");
-        if (latamCodeMatch) {
-            jobLogger.debug({ matchedCode: latamCodeMatch }, 'Accepting LATAM (Step 2): Country code is LATAM.');
-            potentialType = 'latam';
-            acceptanceReason = `Location(LATAM Country Code: ${latamCodeMatch})`;
+        // **PRIORITY MÁXIMA: LATAM EXPLÍCITO**
+        if (hasLatamLocationSignal) {
+            jobLogger.info("Accepting LATAM (Priority 1): Explicit LATAM signal found in location/title. OVERRIDING other signals.");
+            return { relevant: true, reason: "Location/Title(LATAM Signal)", type: 'latam' };
         }
-        // Check LATAM/Brazil Keywords in Location Names/Countries
-        if (potentialType !== 'latam') {
-            for (const locName of [...uniqueLocationNames, ...uniqueCountries]) {
-                 const locMatchLatam = this._includesSubstringKeyword(locName, latamPositiveKeywords); // Use includes for broader match
-                 jobLogger.trace({ locationIdentifier: locName, locMatchLatam }, "Location LATAM/Brazil keyword check.");
-                 if (locMatchLatam.match) {
-                      jobLogger.debug({ locationIdentifier: locName, matchedKeyword: locMatchLatam.keyword }, 'Accepting LATAM (Step 2): Location identifier contains positive LATAM/Brazil keyword.');
-                      potentialType = 'latam';
-                      acceptanceReason = `Location(LATAM Keyword: ${locMatchLatam.keyword} in ${locName})`;
-                      break; // Found LATAM signal, stop checking locations
-                 }
-            }
+        // **PRIORIDADE 2: AMERICAS (sem outras negativas fortes)**
+        if (hasAmericasLocationSignal && !hasNegativeLocationSignal) {
+            jobLogger.info("Accepting LATAM (Priority 2): Americas signal found without other negative restrictions.");
+            return { relevant: true, reason: "Location/Title(Americas Signal)", type: 'latam' };
         }
-        // Check for "Americas" explicitly in locations (often includes LATAM)
-         if (potentialType !== 'latam') {
-             const includesAmericas = uniqueLocationNames.some(name => name.includes('americas'));
-             jobLogger.trace({ includesAmericas }, "Location 'americas' keyword check.");
-             if (includesAmericas) {
-                 jobLogger.debug('Accepting LATAM (Step 2): Location name includes "Americas".');
-                 potentialType = 'latam';
-                 acceptanceReason = `Location(Keyword: americas)`;
-             }
-         }
-
-
-        // --- Step 3: Acceptance Checks (Global) ---
-        jobLogger.trace({ currentPotentialType: potentialType }, "Starting Step 3: Acceptance Checks (Global)");
-        if (potentialType === 'unknown') {
-            // Check Global Keywords in Location Names
-            for (const locName of uniqueLocationNames) {
-                 const locMatchGlobal = this._includesSubstringKeyword(locName, globalPositiveKeywords);
-                 jobLogger.trace({ locationIdentifier: locName, locMatchGlobal }, "Location Global keyword check.");
-                 if (locMatchGlobal.match) {
-                      jobLogger.debug({ locationIdentifier: locName, matchedKeyword: locMatchGlobal.keyword }, 'Accepting GLOBAL (Step 3): Location name contains positive Global keyword.');
-                      potentialType = 'global';
-                      acceptanceReason = `Location(Global Keyword: ${locMatchGlobal.keyword} in ${locName})`;
-                      break; // Found Global signal
-                 }
-            }
+        // **PRIORIDADE 3: GLOBAL (sem negativas fortes)**
+        if (hasGlobalLocationSignal && !hasNegativeLocationSignal) {
+            jobLogger.trace("Location indicates Global without negatives. Proceeding to content check.");
+            locationDecision = 'global';
+        }
+        // **PRIORIDADE 4: NEGATIVA (sem sinais positivos fortes para sobrepor)**
+        else if (hasNegativeLocationSignal) {
+            jobLogger.debug({ keyword: negativeLocationKeyword }, "Rejecting: Negative signal found in location/title without strong positive override.");
+            return { relevant: false, reason: `Location/Title Restriction: ${negativeLocationKeyword}` };
+        }
+        // **SENÃO (Ambíguo/Sem Sinal):**
+        else {
+            jobLogger.trace("No clear or conflicting location/title signal. Proceeding to content check.");
+            locationDecision = 'unknown';
         }
 
-        // --- Step 4: Content Check (Fallback / Confirmation) ---
-        jobLogger.trace({ currentPotentialType: potentialType }, "Starting Step 4: Content Check");
+        // --- Step 4: Content Check & Final Decision --- 
+        if (locationDecision === 'global' || locationDecision === 'unknown') {
+             jobLogger.trace("Performing content check...");
+             const jobContentText = this._processJobContent(job);
+             jobLogger.debug({ jobContentTextPreview: jobContentText.substring(0, 500) + '...' }, 'DEBUG: Job content text being analyzed');
 
-        // Reject based on content if not already accepted
-        if (potentialType === 'unknown') {
+             // --- Check Content Keywords (Positive and Negative using FULL list) ---
              const contentMatchNegative = this._matchesKeywordRegex(jobContentText, negativeKeywords);
-             jobLogger.trace({ contentMatchNegative }, "Content negative keyword check.");
-             if (contentMatchNegative.match) {
-                  jobLogger.debug({ matchedKeyword: contentMatchNegative.keyword }, 'Rejecting (Step 4): Content contains negative keyword.');
-                  return { relevant: false, reason: `Content restriction: ${contentMatchNegative.keyword}` };
-             }
-        }
+             jobLogger.trace({ contentMatchNegative }, "Content negative keyword check (using FULL list).");
 
-        // Try to accept based on content if still unknown
-        if (potentialType === 'unknown') {
-             // Check LATAM in content
              const contentMatchLatam = this._includesSubstringKeyword(jobContentText, latamPositiveKeywords);
-             jobLogger.trace({ contentMatchLatam }, "Content LATAM keyword check.");
+             jobLogger.trace({ contentMatchLatam }, "Content LATAM check.");
+
+             const contentMatchGlobal = this._includesSubstringKeyword(jobContentText, globalPositiveKeywords);
+             jobLogger.trace({ contentMatchGlobal }, "Content Global check.");
+
+             // --- Make decision based on content signals ---
+
+             // **PRIORITY: Positive LATAM content signal overrides negative content signal**
              if (contentMatchLatam.match) {
-                  jobLogger.debug({ matchedKeyword: contentMatchLatam.keyword }, 'Accepting LATAM (Step 4) based on content keyword.');
-                  potentialType = 'latam';
-                  acceptanceReason = `Content(LATAM Keyword: ${contentMatchLatam.keyword})`;
-             } else {
-                  // Check Global in content if not LATAM
-                  const contentMatchGlobal = this._includesSubstringKeyword(jobContentText, globalPositiveKeywords);
-                  jobLogger.trace({ contentMatchGlobal }, "Content Global keyword check.");
-                  if (contentMatchGlobal.match) {
-                       jobLogger.debug({ matchedKeyword: contentMatchGlobal.keyword }, 'Accepting GLOBAL (Step 4) based on content keyword.');
-                       potentialType = 'global';
-                       acceptanceReason = `Content(Global Keyword: ${contentMatchGlobal.keyword})`;
-                  }
+                 jobLogger.info({ matchedKeyword: contentMatchLatam.keyword }, 'Accepting LATAM (Content): Positive LATAM keyword found in content.');
+                 return { relevant: true, reason: `Content(LATAM Keyword: ${contentMatchLatam.keyword})`, type: 'latam' };
+             }
+
+             // **Negative content signal (from FULL list) blocks Global acceptance** 
+             if (contentMatchNegative.match /* && contentMatchNegative.keyword !== 'americas' */) {
+                 jobLogger.debug({ matchedKeyword: contentMatchNegative.keyword }, 'Rejecting (Content): Negative keyword (from FULL list) found in content, and no overriding LATAM signal.');
+                 return { relevant: false, reason: `Content restriction keyword: ${contentMatchNegative.keyword}` };
+             }
+
+             // **Positive Global content signal (only if no negative content signal was found)**
+             if (contentMatchGlobal.match) {
+                 jobLogger.info({ matchedKeyword: contentMatchGlobal.keyword }, 'Accepting GLOBAL (Content): Positive Global keyword found and no negative content keyword (from FULL list).');
+                 return { relevant: true, reason: `Content(Global Keyword: ${contentMatchGlobal.keyword})`, type: 'global' };
+             }
+             
+             // **Handle case where location check indicated Global, but content check was inconclusive**
+             if (locationDecision === 'global') {
+                  jobLogger.info('Accepting GLOBAL (Location Confirmation): Location indicated Global and content checks were inconclusive/non-blocking.');
+                  return { relevant: true, reason: 'Location(Global Signal) + Content Inconclusive', type: 'global' };
              }
         }
 
-        // --- Step 5: Final Decision ---
-        jobLogger.trace({ finalPotentialType: potentialType }, "Starting Step 5: Final Decision");
-        if (potentialType === 'latam' || potentialType === 'global') {
-            // Log acceptance at INFO level only here, after all checks passed
-            jobLogger.info({ type: potentialType, reason: acceptanceReason }, '➡️ Relevant job found');
-            return { relevant: true, reason: acceptanceReason, type: potentialType };
-        } else {
-            jobLogger.debug("Rejecting (Step 5): Inconclusive - No clear LATAM/Global signal found after all checks.");
-            return { relevant: false, reason: "Inconclusive: No LATAM/Global signal found" };
-        }
+        // --- Final Fallback Decision --- (if no signals found anywhere)
+        jobLogger.debug("Rejecting (Final): Inconclusive - No clear signal found after all location and content checks.");
+        return { relevant: false, reason: "Inconclusive: No LATAM/Global signal found" };
     }
 
 
     // --- Main Fetcher Method ---
     async processSource(source: JobSource, parentLogger: pino.Logger): Promise<FetcherResult> {
         const sourceLogger = parentLogger.child({ fetcher: 'Ashby', sourceName: source.name, sourceId: source.id });
-
-        const stats: SourceStats = { found: 0, relevant: 0, processed: 0, errors: 0, deactivated: 0 }; // Initialize all required fields
-        const foundSourceIds = new Set<string>(); // Collect jobUrl for ALL jobs
+        const stats: SourceStats = { found: 0, relevant: 0, processed: 0, errors: 0, deactivated: 0 };
+        const foundSourceIds = new Set<string>();
         let boardName: string | undefined;
+        let listedJobCount = 0; // Initialize counter for listed jobs
 
-        // --- Check Configs Loaded ---
         if (!this.ashbyPositiveConfig || !this.negativeConfig) {
-            sourceLogger.error("Filter configurations not loaded. Aborting processing for this source.");
+            sourceLogger.error("Filter configurations not loaded during constructor. Aborting processing.");
             stats.errors++;
-            return { stats, foundSourceIds }; // Return empty set and error count
+            return { stats, foundSourceIds };
         }
 
         try {
-            // --- Get Config & API URL ---
             const config = getAshbyConfig(source.config);
             if (!config || !config.jobBoardName) {
                 sourceLogger.error('❌ Missing or invalid jobBoardName in source config');
@@ -396,130 +367,116 @@ export class AshbyFetcher implements JobFetcher {
                 return { stats, foundSourceIds };
             }
             boardName = config.jobBoardName;
-            const apiUrl = `https://api.ashbyhq.com/posting-api/job-board/${boardName}`; // CORRECT API Endpoint
+            const apiUrl = `https://api.ashbyhq.com/posting-api/job-board/${boardName}`;
             sourceLogger.info({ jobBoardName: boardName, apiUrl }, `-> Starting processing...`);
 
-
-            // --- Fetch Data ---
             let apiJobs: AshbyApiJob[] = [];
             try {
                 sourceLogger.debug("Attempting to fetch jobs from API...");
                 const response = await axios.get<AshbyApiResponse>(apiUrl, {
                     headers: { 'Accept': 'application/json' },
-                    timeout: 30000 // 30 seconds timeout
+                    timeout: 45000 // Increased timeout slightly
                 });
                 sourceLogger.info({ status: response.status }, "Received response from API.");
 
                 if (response.status !== 200) {
-                    sourceLogger.error({ status: response.status, statusText: response.statusText }, "API request failed with non-200 status.");
+                     sourceLogger.error({ status: response.status, statusText: response.statusText }, "API request failed with non-200 status.");
                     stats.errors++;
-                    // Don't return yet, let finally block run if needed
-                } else if (!response.data || !Array.isArray(response.data.jobs)) { // CORRECTED: Check 'jobs' field
-                     sourceLogger.warn({ responseDataPreview: JSON.stringify(response.data)?.substring(0, 100) + '...' }, "API response data is missing 'jobs' array or is not an array.");
-                     // Continue, maybe empty response is valid
-                     apiJobs = [];
-                 } else {
-                     apiJobs = response.data.jobs; // CORRECTED: Use 'jobs' field
-                     sourceLogger.info({ jobCount: apiJobs.length }, `+ ${apiJobs.length} total jobs found in API response.`);
-                 }
+                 } else if (!response.data || !Array.isArray(response.data.jobs)) {
+                      sourceLogger.warn({ responseDataPreview: JSON.stringify(response.data)?.substring(0, 100) + '...' }, "API response data is missing 'jobs' array or is not an array.");
+                      apiJobs = [];
+                  } else {
+                      apiJobs = response.data.jobs;
+                      sourceLogger.info({ jobCount: apiJobs.length }, `+ ${apiJobs.length} total jobs found in API response.`);
+                  }
 
             } catch (error) {
                 stats.errors++;
-                if (axios.isAxiosError(error)) {
-                    sourceLogger.error(
-                        { status: error.response?.status, code: error.code, message: error.message, url: apiUrl, data: error.response?.data },
-                        `❌ Axios error fetching jobs`
-                    );
-                     // If 404, the board name might be wrong
-                     if (error.response?.status === 404) {
-                          sourceLogger.error(`Received 404. Check if jobBoardName '${boardName}' is correct for ${source.name}.`);
-                     }
-                } else {
-                    const genericError = error as Error;
-                    sourceLogger.error({ error: { message: genericError.message, name: genericError.name } }, '❌ General error fetching jobs');
-                }
-                // Abort processing for this source if fetch fails
-                return { stats, foundSourceIds };
+                 if (axios.isAxiosError(error)) {
+                     sourceLogger.error(
+                         { status: error.response?.status, code: error.code, message: error.message, url: apiUrl, data: error.response?.data },
+                         `❌ Axios error fetching jobs`
+                     );
+                      if (error.response?.status === 404) {
+                           sourceLogger.error(`Received 404. Check if jobBoardName '${boardName}' is correct for ${source.name}.`);
+                      } else if (error.response?.status === 401 || error.response?.status === 403) {
+                           sourceLogger.error(`Received ${error.response.status}. API endpoint might require different access or format changed.`);
+                      }
+                 } else {
+                     const genericError = error as Error;
+                     sourceLogger.error({ error: { message: genericError.message, name: genericError.name } }, '❌ General error fetching jobs');
+                 }
+                return { stats, foundSourceIds }; // Abort on fetch error
             }
 
-            // --- Process Fetched Jobs ---
-            stats.found = apiJobs.length;
+            stats.found = apiJobs.length; // Found = Total jobs returned by API
 
-            // Collect *all* jobUrls for deactivation check
             apiJobs.forEach(job => {
-                if (job.jobUrl) {
+                if (job.jobUrl) { // Use jobUrl as the primary unique ID from the source
                     foundSourceIds.add(job.jobUrl);
                 } else {
-                    // Fallback if jobUrl is missing - less ideal but necessary
-                     sourceLogger.warn({ jobId: job.id, title: job.title }, "Job is missing jobUrl, using internal ID for potential deactivation tracking (less reliable).");
-                     foundSourceIds.add(job.id); // Use internal ID as fallback
+                     sourceLogger.warn({ internalId: job.id, title: job.title }, "Job missing jobUrl, using internal ID as fallback for tracking.");
+                     foundSourceIds.add(job.id); // Less reliable fallback
                 }
             });
 
             const listedJobs = apiJobs.filter(job => job.isListed === true);
-            const listedJobCount = listedJobs.length; // Calculate locally
-            sourceLogger.info(`Processing ${listedJobCount} listed jobs for relevance...`);
+            listedJobCount = listedJobs.length; // Correctly assign listed job count
+            sourceLogger.info(`Processing ${listedJobCount} listed jobs for relevance (Total found: ${stats.found})...`);
+
+            if (listedJobCount > 0) {
+                 sourceLogger.trace({ sampleListedJob: listedJobs[0] }, "Sample listed job data.");
+            }
 
             await pMap(listedJobs, async (job) => {
-                // Ensure job has a URL before proceeding (should be guaranteed by collection logic, but double-check)
-                 if (!job.jobUrl) {
-                      sourceLogger.warn({ jobId: job.id, title: job.title }, "Skipping listed job because jobUrl is missing.");
-                      stats.errors++; // Count as an error for processing stage
-                      return;
+                 if (!job.jobUrl && !job.id) { // Need at least one ID
+                     sourceLogger.error({ jobTitle: job.title }, "Job missing both jobUrl and internal ID. Cannot process.");
+                     stats.errors++;
+                     return;
                  }
+                 // Use jobUrl if available, otherwise fallback to internal ID for logging context
+                 const jobContextId = job.jobUrl || `internalId:${job.id}`;
+                 const jobLogger = sourceLogger.child({ jobId: jobContextId, jobTitle: job.title });
 
-                const jobLogger = sourceLogger.child({ jobId: job.jobUrl, jobTitle: job.title });
-                try {
-                    // Determine relevance
-                    const relevanceResult = this._isJobRelevant(job, this.ashbyPositiveConfig, this.negativeConfig, jobLogger);
+                 try {
+                     jobLogger.trace("Starting relevance check for listed job.");
+                     const relevanceResult = this._isJobRelevant(job, this.ashbyPositiveConfig, this.negativeConfig, jobLogger);
 
-                    if (relevanceResult.relevant) {
-                        stats.relevant++;
+                     if (relevanceResult.relevant) {
+                         stats.relevant++;
 
-                        // Enhance job object with determined type for the processor
-                        const enhancedJob = {
-                            ...job,
-                            _determinedHiringRegionType: relevanceResult.type
-                        };
+                         const enhancedJob = { ...job, _determinedHiringRegionType: relevanceResult.type };
 
-                        // Process via adapter
-                        const saved = await this.jobProcessor.processRawJob('ashby', enhancedJob, source);
+                         const saved = await this.jobProcessor.processRawJob('ashby', enhancedJob, source);
 
-                        if (saved) {
-                            stats.processed++;
-                            jobLogger.trace('Job processed/saved via adapter.');
-                        } else {
-                            jobLogger.warn('Adapter reported job not saved (processor failure, duplicate, or save issue).');
-                            // Should we count this as an error? Maybe not, adapter handles its own logging.
-                        }
-                    } else {
-                        jobLogger.trace({ reason: relevanceResult.reason }, `Job skipped as irrelevant`);
-                    }
-                } catch (jobError: any) {
-                    stats.errors++;
-                     const errorDetails = { message: jobError?.message, stack: jobError?.stack?.split('\n').slice(0, 3).join('\n') };
-                    jobLogger.error({ error: errorDetails }, '❌ Error during relevance check or adapter call for job');
-                }
-            }, { concurrency: 5, stopOnError: false }); // Process jobs concurrently
+                         if (saved) {
+                             stats.processed++;
+                             jobLogger.trace('Job processed/saved via adapter.');
+                         } else {
+                             jobLogger.warn('Adapter reported job not saved (processor failure, duplicate, or save issue).');
+                         }
+                     } else {
+                         jobLogger.trace({ reason: relevanceResult.reason }, `Job skipped as irrelevant`);
+                     }
+                 } catch (jobError: any) {
+                     stats.errors++;
+                      const errorDetails = { message: jobError?.message, stack: jobError?.stack?.split('\n').slice(0, 3).join('\n') };
+                     jobLogger.error({ error: errorDetails }, '❌ Error during relevance check or adapter call for job');
+                 }
+            }, { concurrency: 5, stopOnError: false });
 
             sourceLogger.info(`✓ Processing completed.`);
 
         } catch (error) {
-            // Catch errors during setup (e.g., config loading) or unexpected issues
             stats.errors++;
             const genericError = error as Error;
             sourceLogger.error({ error: { message: genericError.message, name: genericError.name } }, '❌ Fatal error during processSource execution');
         }
 
-        // --- Return Final Result ---
         sourceLogger.info(
-             // Log listed count here, but don't return it in stats
-             { found: stats.found, /*listed: listedJobCount,*/ relevant: stats.relevant, processed: stats.processed, errors: stats.errors }, 
+             { found: stats.found, listed: listedJobCount, relevant: stats.relevant, processed: stats.processed, errors: stats.errors },
              'Finished processing source.'
         );
         return { stats, foundSourceIds };
     }
-
-    // --- Remove the unused fetchJobs method ---
-    // async *fetchJobs(source: JobSource): AsyncGenerator<any, void, undefined> { ... } // REMOVED
 }

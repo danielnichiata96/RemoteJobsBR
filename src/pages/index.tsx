@@ -31,7 +31,7 @@ const sortOptions = [
   { value: 'relevance', label: 'Relevância' },
 ];
 
-export default function Home() {
+export default function Home(props) {
   const router = useRouter();
 
   // State variables (copied from jobs/index.tsx)
@@ -76,7 +76,7 @@ export default function Home() {
   }, [router.query]); // Dependency array includes router.query
 
   // Fetch data using the hook
-  const { jobs, pagination, isLoading, isError, error, aggregations } = useJobsSearch({
+  const { jobs, pagination, isLoading, isError, error, aggregations, mutate } = useJobsSearch({
     search: currentFilters.searchTerm,
     company: currentFilters.companyName,
     page: currentPage,
@@ -87,6 +87,12 @@ export default function Home() {
     hiringRegion: currentFilters.hiringRegion,
     sortBy: sortBy,
   });
+
+  // Force SWR revalidation on component mount
+  useEffect(() => {
+    console.log("Forcing SWR revalidation via mutate...");
+    mutate(); // Call mutate without arguments to refetch with the current key
+  }, [mutate]); // Add mutate to dependency array as per ESLint rules
 
   // Filter options (copied from jobs/index.tsx)
   const jobTypeOptions = [

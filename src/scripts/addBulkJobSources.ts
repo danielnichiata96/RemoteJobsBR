@@ -7,22 +7,12 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 // Defina tipos específicos para cada entrada
-type GreenhouseSourceInput = { name: string; type: 'greenhouse'; boardToken: string; website: string; logoUrl?: string | null };
-type AshbySourceInput = { name: string; type: 'ashby'; config: { jobBoardName: string }; companyWebsite: string; logoUrl?: string | null };
+type GreenhouseSourceInput = { name: string; type: 'greenhouse'; boardToken: string; website?: string | null; logoUrl?: string | null };
+type AshbySourceInput = { name: string; type: 'ashby'; config: { jobBoardName: string }; companyWebsite?: string | null; logoUrl?: string | null };
 
 // Use um tipo de união
 const sourcesToAddOrUpdate: (GreenhouseSourceInput | AshbySourceInput)[] = [
-    // Exemplos Greenhouse (adapte se necessário)
-    // { name: 'Company A', type: 'greenhouse', boardToken: 'companya', website: 'https://companya.com' },
-
-    // Fontes Ashby
-    {
-        name: 'Omniscient',
-        type: 'ashby',
-        config: { jobBoardName: 'omniscient' },
-        companyWebsite: 'https://www.omniscient.com/', // Website estimado
-        logoUrl: null
-    },
+    // --- Ashby Sources ---
     {
         name: 'Zapier',
         type: 'ashby',
@@ -30,13 +20,33 @@ const sourcesToAddOrUpdate: (GreenhouseSourceInput | AshbySourceInput)[] = [
         companyWebsite: 'https://zapier.com/',
         logoUrl: null
     },
-    {
-        name: 'Deel',
-        type: 'ashby',
-        config: { jobBoardName: 'Deel' },
-        companyWebsite: 'https://www.deel.com/',
-        logoUrl: null
-    },
+    // --- Greenhouse Sources ---
+    { name: 'Affirm', type: 'greenhouse', boardToken: 'affirm' },
+    { name: 'Auth0', type: 'greenhouse', boardToken: 'auth0' },
+    { name: 'Automattic', type: 'greenhouse', boardToken: 'automattic' },
+    { name: 'Brave', type: 'greenhouse', boardToken: 'brave' },
+    { name: 'Buffer', type: 'greenhouse', boardToken: 'buffer' },
+    { name: 'Canonical', type: 'greenhouse', boardToken: 'canonical' },
+    { name: 'CircleCI', type: 'greenhouse', boardToken: 'circleci' },
+    { name: 'Cloudflare', type: 'greenhouse', boardToken: 'cloudflare' },
+    { name: 'Coinbase', type: 'greenhouse', boardToken: 'coinbase' },
+    { name: 'Datadog', type: 'greenhouse', boardToken: 'datadog' },
+    { name: 'Dropbox', type: 'greenhouse', boardToken: 'dropbox' },
+    { name: 'DuckDuckGo', type: 'greenhouse', boardToken: 'duckduckgo' },
+    { name: 'Elastic', type: 'greenhouse', boardToken: 'elastic' },
+    { name: 'Figma', type: 'greenhouse', boardToken: 'figma' },
+    { name: 'GitLab', type: 'greenhouse', boardToken: 'gitlab' },
+    { name: 'Grafana Labs', type: 'greenhouse', boardToken: 'grafanalabs' },
+    { name: 'HashiCorp', type: 'greenhouse', boardToken: 'hashicorp' },
+    { name: 'HubSpot', type: 'greenhouse', boardToken: 'hubspot' },
+    { name: 'Mozilla', type: 'greenhouse', boardToken: 'mozilla' },
+    { name: 'Reddit', type: 'greenhouse', boardToken: 'reddit' },
+    { name: 'Remote', type: 'greenhouse', boardToken: 'remotecom' },
+    { name: 'Stripe', type: 'greenhouse', boardToken: 'stripe' },
+    { name: 'Twilio', type: 'greenhouse', boardToken: 'twilio' },
+    { name: 'Valtech', type: 'greenhouse', boardToken: 'valtechgreenhouse' },
+    { name: 'Vercel', type: 'greenhouse', boardToken: 'vercel' },
+    { name: 'Wikimedia Foundation', type: 'greenhouse', boardToken: 'wikimedia' },
 ];
 
 async function main() {
@@ -49,69 +59,66 @@ async function main() {
     try {
         for (const sourceInput of sourcesToAddOrUpdate) {
             let existingSource;
+            let sourceConfig: any;
 
-            // Encontra a fonte existente baseado no tipo
+            // Encontra a fonte existente baseado no tipo e prepara a config
             if (sourceInput.type === 'greenhouse') {
+                sourceConfig = { boardToken: sourceInput.boardToken };
                 existingSource = await prisma.jobSource.findFirst({
                     where: {
                         type: 'greenhouse',
-                        config: { path: ['boardToken'], equals: sourceInput.boardToken }, 
+                        config: { equals: sourceConfig },
                     },
                 });
-                // Fallback: Try finding by name and type if config lookup fails
                 if (!existingSource) {
                     existingSource = await prisma.jobSource.findUnique({
                         where: { name_type: { name: sourceInput.name, type: sourceInput.type } },
                     });
                 }
             } else if (sourceInput.type === 'ashby') {
+                sourceConfig = sourceInput.config;
                 existingSource = await prisma.jobSource.findFirst({
                     where: {
                         type: 'ashby',
-                        config: { path: ['jobBoardName'], equals: sourceInput.config.jobBoardName }, 
+                        config: { equals: sourceConfig },
                     },
                 });
-                // Fallback: Try finding by name and type if config lookup fails
                 if (!existingSource) {
                     existingSource = await prisma.jobSource.findUnique({
                          where: { name_type: { name: sourceInput.name, type: sourceInput.type } },
                     });
                 }
             } else {
-                // Explicitly cast to any to access properties, or handle the 'never' case differently
                 const unknownSource = sourceInput as any;
                 console.warn(`⚠️ Tipo de fonte desconhecido: ${unknownSource?.type}. Pulando ${unknownSource?.name ?? '(nome indisponível)'}`);
-                continue; // Pula tipos não reconhecidos
+                continue;
             }
 
 
             // Dados comuns para criar/atualizar
-            // Ajuste para pegar a propriedade correta de website/config dependendo do tipo
             const commonData = {
                 name: sourceInput.name,
                 type: sourceInput.type,
                 companyWebsite: sourceInput.type === 'greenhouse' ? sourceInput.website : sourceInput.companyWebsite,
                 logoUrl: sourceInput.logoUrl,
                 isEnabled: true,
-                config: sourceInput.type === 'greenhouse' ? { boardToken: sourceInput.boardToken } : sourceInput.config,
+                config: sourceConfig, // Use the prepared config
             };
 
             if (existingSource) {
-                // Atualizar se existente (apenas campos relevantes)
                 await prisma.jobSource.update({
                     where: { id: existingSource.id },
                     data: {
                         name: commonData.name,
                         companyWebsite: commonData.companyWebsite,
                         logoUrl: commonData.logoUrl,
-                        config: commonData.config, // Atualiza config caso jobBoardName/boardToken mude
-                        isEnabled: true // Garante que está ativa
+                        config: commonData.config, 
+                        isEnabled: true 
                     }
                 });
                 console.log(`🔄 Fonte "${sourceInput.name}" (${sourceInput.type}) atualizada.`);
                 updatedCount++;
             } else {
-                // Criar nova fonte
                 await prisma.jobSource.create({
                     data: commonData,
                 });
@@ -139,4 +146,4 @@ main()
     .catch((error) => {
         console.error('Erro fatal:', error);
         process.exit(1);
-    }); 
+    });

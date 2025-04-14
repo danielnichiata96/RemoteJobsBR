@@ -6,6 +6,7 @@ import { JobProcessingService } from '../lib/services/jobProcessingService';
 import { GreenhouseFetcher } from '../lib/fetchers/GreenhouseFetcher';
 import { JobFetcher, FetcherResult } from '../lib/fetchers/types';
 import { AshbyFetcher } from '../lib/fetchers/AshbyFetcher';
+import { searchCache } from '../lib/cache/searchCache';
 
 // --- Configuração Inicial ---
 const prisma = new PrismaClient();
@@ -161,6 +162,16 @@ async function main() {
     // Ensure the database connection is closed
     await prisma.$disconnect();
     logger.info('Database connection closed.');
+
+    // Clear the search API cache AFTER all processing and DB disconnect
+    try {
+        logger.info('Attempting to clear search API cache...');
+        searchCache.flushAll();
+        logger.info('Search API cache cleared successfully.');
+    } catch (cacheError) {
+        logger.error({ error: cacheError }, 'Failed to clear search API cache.');
+        // Do not increment totalErrors here, as fetching might have been successful
+    }
   }
 
   // 4. Log final summary statistics

@@ -1,7 +1,7 @@
 import { prisma } from '../prisma';
 import { StandardizedJob } from '../../types/StandardizedJob';
 import pino from 'pino';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient, HiringRegion } from '@prisma/client';
 import { UserRole, JobType, ExperienceLevel, JobStatus } from '@prisma/client';
 
 const logger = pino({
@@ -14,6 +14,16 @@ const logger = pino({
     }
   }
 });
+
+// Helper function to map jobType2 string to HiringRegion enum
+function mapJobType2ToHiringRegion(jobType2?: 'global' | 'latam'): HiringRegion | null {
+  switch (jobType2) {
+    case 'global': return HiringRegion.WORLDWIDE;
+    case 'latam': return HiringRegion.LATAM;
+    // case 'brazil': return HiringRegion.BRAZIL; // If needed later
+    default: return null; // Default to null if undefined/unexpected
+  }
+}
 
 export class JobProcessingService {
   private prisma: PrismaClient;
@@ -107,6 +117,8 @@ export class JobProcessingService {
       }
 
       // --- 2. Prepare Job Data (with Defaults) ---
+      const mappedHiringRegion = mapJobType2ToHiringRegion(job.jobType2); // Map the value
+
       const jobDataForDb = {
         title: job.title,
         description: job.description || '',
@@ -120,36 +132,49 @@ export class JobProcessingService {
         country: job.country || 'Worldwide', // Default required
         workplaceType: job.workplaceType || 'REMOTE', // Default required
         applicationUrl: job.applicationUrl, 
-        minSalary: job.minSalary, // Usar o campo correto da interface StandardizedJob
-        maxSalary: job.maxSalary, // Usar o campo correto da interface StandardizedJob
-        currency: job.currency, // Usar o campo correto da interface StandardizedJob
-        salaryCycle: job.salaryCycle, // Usar o campo correto da interface StandardizedJob
-        showSalary: !!(job.minSalary && job.maxSalary), // Verificar se os valores de salário estão presentes
+        minSalary: job.minSalary, // Use the correct field from StandardizedJob
+        maxSalary: job.maxSalary, // Use the correct field from StandardizedJob
+        currency: job.currency, // Use the correct field from StandardizedJob
+        salaryCycle: job.salaryCycle, // Use the correct field from StandardizedJob
+        showSalary: !!(job.minSalary && job.maxSalary), // Check if salary values are present
         publishedAt: job.publishedAt || new Date(), // Default to now if not provided
         updatedAt: new Date(), // Always set updatedAt
-        status: JobStatus.ACTIVE, // Sempre define como ACTIVE ao salvar uma nova vaga
+        status: JobStatus.ACTIVE, // Always set as ACTIVE when saving a new job
         companyId: company.id, // Link to the found/created company
         source: job.source,
         sourceId: job.sourceId,
         visas: [], // Default empty
         languages: [], // Default empty
-        hiringRegion: job.hiringRegion, // Save the hiringRegion
+        hiringRegion: mappedHiringRegion, // Corrected: Use the mapped enum value or null
       };
 
       // --- 3. Upsert Job ---
+      this.logger.trace({ jobDataForDb }, 'Attempting to upsert job...'); // Log data before upsert
       const upsertResult = await this.prisma.job.upsert({
         where: { source_sourceId: { source: job.source, sourceId: job.sourceId } }, // Use unique constraint
-        update: jobDataForDb, // Update with new data
+        update: jobDataForDb, // Reverted: Update with new data (original behavior)
         create: jobDataForDb, // Create if not exists
       });
+      this.logger.trace({ upsertResult }, 'Upsert operation completed.');
 
       this.logger.info({ jobId: upsertResult.id, source: job.source, sourceId: job.sourceId }, 'Job processed and saved/updated successfully.');
       return true;
 
     } catch (error) {
-      this.logger.error({ source: job.source, sourceId: job.sourceId, error }, 'Error processing job in service');
-      // Log specific Prisma errors if helpful
-      // if (error instanceof Prisma.PrismaClientKnownRequestError) { ... }
+      // Improved Error Logging
+      const logPayload: any = { 
+          source: job.source, 
+          sourceId: job.sourceId, 
+          title: job.title,
+          errorName: error instanceof Error ? error.name : 'UnknownErrorType',
+          errorMessage: error instanceof Error ? error.message : String(error),
+      };
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        logPayload.prismaCode = error.code;
+        logPayload.prismaMeta = error.meta;
+        logPayload.prismaStack = error.stack?.substring(0, 500) + '...'; // Limit stack trace length
+      }
+      this.logger.error(logPayload, 'Error processing job in service');
       return false;
     }
   }

@@ -38,7 +38,7 @@ LLM should update this file based on conversational progress.
     *   [x] Implementar `_isJobRelevant` no `AshbyProcessor` (priorizar `isRemote`, `location`, `address`, `secondaryLocations`).
     *   [x] Mapear dados JSON do Ashby para `StandardizedJob` no `AshbyProcessor`.
     *   [x] Filtrar vagas com `isListed: false` no `AshbyProcessor`.
-    *   [x] **Debugging:** Investigar por que as fontes Ashby não estão processando jobs (verificar URL da API, formato da resposta, etc). *(New - 2025-04-16) -> Fixed - URL API & Processor Logic Corrected*
+    *   [x] **Debugging:** Investigar por que as fontes Ashby não estão processando jobs (verificar URL da API, formato da resposta, etc). *(New - 2025-04-16) -> Fixed - URL API & Processor Logic Corrected - 2025-04-16*
     *   [ ] **Refinement:** Implementar funções `parseDate` e `cleanHtml` ausentes (usadas temporariamente com `new Date()` e HTML bruto). *(New - 2025-04-16)*
     *   [x] **Refinement:** Refatorar `AshbyProcessor` para usar config externa para keywords de localização (como Greenhouse). *(New - 2025-04-16)* *(Completed - 2025-04-16)*
 *   ~~[ ] **Integrations/Lever:** Testar `LeverFetcher` com fontes reais e identificar falhas/pontos de melhoria. (New - 2025-04-15)~~ (Removed LeverFetcher - 2025-04-15)
@@ -110,6 +110,10 @@ LLM should update this file based on conversational progress.
 *   [ ] **i18n:** Prepare codebase for proper internationalization (currently has i18n config but might need structure)
 *   [x] **Bug Fix:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields and invalid dates. (Completed)
 *   [x] **Bug Fix:** Fix company logos not displaying correctly on job cards. (Completed 2025-04-12)
+*   [ ] **Database Maintenance:** Implement automated cleanup of jobs from removed sources *(New - 2025-04-14)*
+     *   [ ] Integrate `cleanupRemovedSourceJobs.ts` as a scheduled task to run monthly
+     *   [ ] Add logging for cleanup operations
+     *   [ ] Consider implementing soft delete for job sources instead of hard delete to prevent orphaned jobs
 
 ## Milestones
 
@@ -139,4 +143,6 @@ LLM should update this file based on conversational progress.
 *   **2025-04-11:** Adicionar testes para componente de Paginação.
 *   **2025-04-11:** Implementar testes unitários para lógica de autenticação (NextAuth).
 *   **2025-04-11:** Add tests for SaveJobButton, saved-jobs page, and saved jobs API endpoints.
+    *   `SaveJobButton.test.tsx`, `saved-jobs.test.tsx`, `
+*   **2025-04-16:** Debugged Ashby integration (API URL, Processor logic) and refactored `AshbyProcessor` to use external location config.
     *   `SaveJobButton.test.tsx`, `saved-jobs.test.tsx`, `

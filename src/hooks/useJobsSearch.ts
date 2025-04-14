@@ -87,6 +87,9 @@ export function useJobsSearch({
     keepPreviousData: true, // Keep previous data while loading new data for pagination/filtering
   });
 
+  // Log the data received from SWR
+  console.log('SWR Data:', data); 
+
   return {
     jobs: data?.jobs,
     pagination: data?.pagination,
