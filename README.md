@@ -38,6 +38,12 @@ Site de vagas remotas internacionais para aplicantes brasileiros.
    cp .env.example .env
    ```
    Edite o arquivo `.env` com suas configurações.
+   **Variáveis importantes:**
+   - `DATABASE_URL`: String de conexão do PostgreSQL.
+   - `NEXTAUTH_URL`: URL base da aplicação (ex: http://localhost:3000).
+   - `NEXTAUTH_SECRET`: Chave secreta para NextAuth (gere uma aleatória).
+   - `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`: Configurações do Sentry (opcional).
+   - `FETCH_CONCURRENCY`: (Opcional) Número de fontes de vagas a processar em paralelo pelo script `fetch-jobs`. Default: 5.
 
 4. Configure o Sentry (opcional, mas recomendado para produção):
    - Crie uma conta no [Sentry](https://sentry.io)
@@ -71,7 +77,16 @@ Site de vagas remotas internacionais para aplicantes brasileiros.
 - `npm run build` - Gera a versão de produção
 - `npm start` - Inicia o servidor de produção
 - `npm run lint` - Executa o linter
-- `npm run prisma:studio` - Abre o Prisma Studio para gerenciar o banco de dados
+
+### Scripts de Banco de Dados e Manutenção
+
+- `npm run prisma:studio` - Abre o Prisma Studio para gerenciar o banco de dados.
+- `npm run fetch-jobs` - Executa o script `src/scripts/fetchJobSources.ts` para buscar novas vagas das fontes configuradas. A concorrência pode ser definida pela variável de ambiente `FETCH_CONCURRENCY` (default: 5).
+- `npm run deactivate-stale-jobs` - Executa `scripts/deactivateStaleJobs.ts` para marcar vagas antigas como inativas (CLOSED).
+- `npm run add-bulk-sources` - Executa `src/scripts/addBulkJobSources.ts` para adicionar/atualizar múltiplas fontes Greenhouse definidas no script.
+- `npm run list-sources` - Executa `src/scripts/listJobSources.ts` para listar as fontes de vagas configuradas no banco de dados.
+- `npm run clean-db` - Executa `src/scripts/cleanDatabase.ts` (Propósito exato a confirmar - limpeza geral do DB).
+- `npm run fix-jobs` - Executa `src/scripts/fixJobSources.ts` (Propósito exato a confirmar - correção de dados de fontes).
 
 ## Estrutura do Projeto
 

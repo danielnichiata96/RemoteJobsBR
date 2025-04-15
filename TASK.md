@@ -8,20 +8,13 @@ LLM should update this file based on conversational progress.
 
 ## Current Focus / Active Tasks (What I'm working on NOW)
 
-*   [x] **Phase 1 Complete!** Todas as tarefas da Phase 1: Core UX & Stability foram concluídas.
-*   [x] Preparando para Phase 2 - Selecionar próximas prioridades.
-*   [x] **Phase 2: Job Integration Focus** - Melhorar sistema de integração de vagas.
-*   [x] **Integrations:** Refatorar `fetchGreenhouseJobs.ts` - Mover config. hardcoded para arquivo de configuração. (Completed - Now uses DB)
-*   [x] **Integrations:** Melhorar tratamento de erros nos scripts de fetch de vagas. (Basic improvements done)
-*   [x] **Integrations:** Desenvolver framework de scraping para novas fontes de vagas. (Foundation Complete - Fetcher/Processor/Adapter pattern established)
-*   [x] **Integrations:** Implementar integração com nova plataforma de vagas. (On Hold - Pending Framework Refinement & Approval)
-*   [x] **Testing:** Fix `Pagination` test.
-*   [x] **Testing:** Criar testes unitários para lógica de filtragem do `GreenhouseFetcher`. *(Completed - 2025-04-16)*
-*   [x] **Testing:** Criar testes unitários para lógica de `AshbyProcessor._mapToStandardizedJob`. *(Completed - 2025-04-16)*
-*   [x] **Refinement:** Implementar funções utilitárias `parseDate` e `_stripHtml` (ou `cleanHtml`) e aplicá-las nos Processors (Ashby, Greenhouse). *(Completed - 2025-04-16)*
-*   [x] **Optimization:** Implementar camada de cache para listagens de vagas frequentemente acessadas (API Cache Implemented and Tested)
-*   [x] **Integrations:** Refinar lógica de filtragem de vagas remotas/LATAM no `GreenhouseFetcher`. (Completed - 2025-04-15)
-*   [x] **Integrations:** Investigar e corrigir erros de fetch para fontes Greenhouse (Plaid, Revolut, Wise, 1Password, Articulate, etc.). (Completed - 2025-04-15)
+*   [x] **Performance:** Paralelizar Execução de Múltiplas Fontes no `fetch-jobs`. (Completed - Made concurrency configurable via `FETCH_CONCURRENCY`, default 5) - 2025-04-21
+*   [x] **Documentation:** Documentar Lógica de Filtro (Greenhouse & Ashby). (Completed - Created docs/filtering-logic.md) - 2025-04-21
+*   [x] **Filtering:** Análise Contextual de Localização Avançada (ex: "Remote (US Only)"). (Completed - Added pattern detection util and integrated into fetchers) - 2025-04-21
+
+## Next Tasks To Consider
+*   [ ] **Integrations/Deduplication:** Implementar Lógica Básica de Desduplicação de Vagas.
+*   [ ] **Admin/Monitoring:** Criar Painel de Saúde das Fontes (`JobSource Health Dashboard`).
 
 ## Phase 2: Growth & Enhanced Features (Current)
 
@@ -43,6 +36,7 @@ LLM should update this file based on conversational progress.
     *   [x] **Debugging:** Investigar por que as fontes Ashby não estão processando jobs (verificar URL da API, formato da resposta, etc). *(Fixed - URL API & Processor Logic Corrected - 2025-04-16)*
     *   [x] **Refinement:** Implementar funções utilitárias `parseDate` e `_stripHtml` (ou `cleanHtml`) e aplicá-las nos Processors (Ashby, Greenhouse). *(Completed - 2025-04-16)*
     *   [x] **Refinement:** Refatorar `AshbyProcessor` para usar config externa para keywords de localização (como Greenhouse). *(Completed - 2025-04-16)*
+    *   [x] **Testing:** Fix bugs in `AshbyProcessor` tests (location handling, _isJobRelevant tests). *(Completed - 2025-04-19)*
 *   ~~[ ] **Integrations/Lever:** Testar `LeverFetcher` com fontes reais e identificar falhas/pontos de melhoria.~~ (Removed LeverFetcher - 2025-04-15)
 *   [x] **Testing:** Fix `Pagination` test.
 *   [x] **Testing:** Criar testes unitários para lógica de filtragem do `GreenhouseFetcher`. *(Completed - 2025-04-16)*
@@ -54,39 +48,72 @@ LLM should update this file based on conversational progress.
 
 ## Future Ideas / Full Backlog (Phase 2 & Beyond)
 
+### User Experience & Feedback
 *   [ ] Feature: Custom Job Alerts System (Filters, Notifications).
 *   [ ] Feature: Job Application History (Extend ClickTracking with user view).
-*   [ ] Tech: Implement Progressive Web App (PWA) configuration.
 *   [ ] Feature: User Onboarding Flow.
 *   [ ] Feature: Social Sharing for job listings.
 *   [ ] Feature: Implement "Jobs You Might Like" recommendation section.
-*   [ ] Revenue: Explore Premium Candidate Features (Subscription).
-*   [ ] Feature: Enhance Recruiter/Company Analytics Dashboard.
-*   [ ] Revenue: Implement Featured Company Profiles.
-*   [ ] Growth: Implement Affiliate Partnership System.
-*   [ ] Tech: Implement Automated Job Quality Scoring.
 *   [ ] UX: Implement Dark Mode Support.
+*   [ ] UX: Enhance mobile responsiveness thoroughly.
+*   [ ] UX: Implementar estatísticas de cliques para usuários (histórico de vagas visitadas).
+*   [ ] **UX/Feedback:** Implement a simple "Report Job" button on job detail pages for users to flag incorrect, expired, or non-remote jobs. (Helps with data quality).
+*   [ ] **UX:** Improve accessibility (a11y) compliance based on WCAG guidelines. (Important for broader reach and usability).
+
+### Data Quality & Enrichment
+*   [ ] **Data Quality:** Define and implement stricter validation rules for incoming job data during processing (e.g., mandatory fields, date formats).
+*   [ ] **Data Enrichment:** Explore adding estimated salary ranges based on title/location/experience if not provided by the source (clearly mark as estimate).
+*   [ ] **Integrations/Deduplication:** Implementar Lógica Básica de Desduplicação de Vagas.
+*   [ ] **Integrations/Deduplication:** Refine Deduplication Logic (Consider semantic similarity beyond exact title/company match).
+
+### Admin & Monitoring
+*   [ ] **Admin/Monitoring:** Criar Painel de Saúde das Fontes (`JobSource Health Dashboard`).
+*   [ ] **Admin/Monitoring:** Add performance metrics to the JobSource Health Dashboard (e.g., avg. fetch time, success rate, number of jobs processed/rejected per source).
+*   [ ] **Admin:** Create basic admin interface/scripts for manually managing JobSource entries (enable/disable, edit config).
 *   [ ] Admin: Create Performance Metrics Dashboard.
+
+### Technical & Infrastructure
+*   [ ] Tech: Implement Progressive Web App (PWA) configuration.
+*   [ ] Tech: Implement Automated Job Quality Scoring.
+*   [ ] Tech: Add Integration Tests.
+*   [ ] Tech: Add End-to-End Tests (Playwright/Cypress).
+*   [ ] Tech: Optimize database queries & add indexes.
+*   [ ] Tech: Implement data analytics tracking for user behavior.
+*   [ ] **Tech:** Set up automated dependency vulnerability scanning (e.g., npm audit, Snyk, Dependabot).
+*   [ ] **Tech:** Review and document environment variable configuration and secrets management strategy.
+*   [ ] **Tech:** Implement structured logging across the application (fetchers, API) for easier debugging and analysis.
+*   [ ] **Tech Debt:** Implement proper error handling for API routes
+*   [ ] **Performance:** Investigar/Implementar Fetch Incremental (se suportado pelas APIs).
+*   [ ] **Security:** Add rate limiting for authentication endpoints
+*   [ ] **Security:** Implement CSRF protection for sensitive operations
+*   [ ] **Security:** Implement rate limiting for job search API endpoints
+*   [ ] **i18n:** Prepare codebase for proper internationalization (currently has i18n config but might need structure)
+
+### Features & Content
+*   [ ] Feature: Enhance Recruiter/Company Analytics Dashboard.
 *   [ ] Feature: Enhance job filtering (Skills/Technology).
 *   [ ] Feature: Implement Saved Searches for Candidates.
 *   [x] ~~Feature: Job Detail Page - Add interactive elements (e.g., save job).~~
 *   [x] Feature: Job Detail Page - Melhorar UX para redirecionamento ao site de origem da vaga. (Verified Already Implemented)
 *   [ ] Feature: Company Profile Pages.
 *   [ ] Feature: Curated Job Recommendations system.
-*   [ ] UX: Enhance mobile responsiveness thoroughly.
-*   [ ] UX: Implementar estatísticas de cliques para usuários (histórico de vagas visitadas).
-*   [ ] Tech: Add Integration Tests.
-*   [ ] Tech: Add End-to-End Tests (Playwright/Cypress).
-*   [ ] Tech: Optimize database queries & add indexes.
-*   [ ] Tech: Implement data analytics tracking for user behavior.
 *   [ ] Content: Develop Blog section.
 *   [ ] Content: Add resources/guides for remote work from Brazil.
-*   [ ] Growth: Implement SEO optimizations.
-*   [ ] Growth: Create Referral System.
+
+### Revenue & Growth
+*   [ ] Revenue: Explore Premium Candidate Features (Subscription).
+*   [ ] Revenue: Implement Featured Company Profiles.
 *   [ ] Revenue: Implement paid job posting plans.
 *   [ ] Revenue: Implement featured job listings.
 *   [ ] Revenue: Develop partnership features (schools/bootcamps).
+*   [ ] Growth: Implement Affiliate Partnership System.
+*   [ ] Growth: Implement SEO optimizations.
+*   [ ] Growth: Create Referral System.
+
+### Mobile
 *   [ ] Mobile: Consider mobile app development.
+
+### Filters
 *   [x] **Filters:** Add Salary Range filter.
 *   [x] **Filters:** Add Company filter. (Completed)
 *   [ ] **Filters:** Add Geographic restrictions filter (e.g., states in Brazil).
@@ -94,6 +121,9 @@ LLM should update this file based on conversational progress.
 *   [ ] **Filters:** Implement text search for job listings with result highlighting.
 *   [ ] **Filters:** Implement infinite scroll/lazy loading for job list pagination.
 *   [ ] **Filters:** Show popular filter tags based on usage.
+*   [x] **Filtering:** Análise Contextual de Localização Avançada (ex: "Remote (US Only)").
+
+### Integrations
 *   [ ] **Integrations:** Add more job board integrations (LinkedIn API, Indeed API, etc.).
 *   [ ] **Integrations:** Implement job scraping framework for other aggregators (requires careful legal review).
 *   [ ] **Integrations:** Implement standard API for companies to post jobs directly.
@@ -102,25 +132,24 @@ LLM should update this file based on conversational progress.
 *   [x] **Integrations:** Improve content section extraction logic in `fetchGreenhouseJobs.ts`. (Completed - 2025-04-15)
 *   [ ] **Integrations/Error Handling:** Rastreamento Detalhado de Erros por Fonte (Contagem, Tipos).
 *   [ ] **Integrations/Error Handling:** Desativação Automática Temporária de Fontes com Falha.
+
+### Testing
 *   [ ] **Testing Gap:** Create E2E test setup for critical user flows (job search, job click tracking)
 *   [x] **Testing Gap:** Add Unit Tests for `GreenhouseFetcher.ts` filtering logic *(Completed - 2025-04-16)*
 *   [x] **Testing Gap:** Add Unit Tests for `AshbyProcessor.ts` mapping logic (after implementation) *(Completed - 2025-04-16)*
 *   [x] **Testing Gap:** Add Unit Tests for `GreenhouseFetcher.processSource` (including `_fetchJobs` and logger usage). *(Completed - 2025-04-17)*
 *   [x] **Testing Gap:** Revisar e Testar `jobUtils` (`detectExperienceLevel`, `detectJobType`, `extractSkills`). *(Completed - 2025-04-17)*
-*   [ ] **Filtering:** Análise Contextual de Localização Avançada (ex: "Remote (US Only)").
-*   [ ] **Integrations/Deduplication:** Implementar Lógica Básica de Desduplicação de Vagas.
-*   [ ] **Tech Debt:** Implement proper error handling for API routes
+
+### Legal & Compliance
+*   [ ] **Legal:** Draft/Review Privacy Policy and Terms of Service.
+*   [ ] **Legal:** Implement Cookie Consent banner/mechanism if targeting users in regions with regulations like GDPR/LGPD.
+
+### Completed / Deprecated Backlog Items
 *   [x] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components (Completed)
 *   [x] **Optimization:** Add caching layer for frequently accessed job listings (Completed - API Cache)
-*   [ ] **Performance:** Paralelizar Execução de Múltiplas Fontes no `fetch-jobs`.
-*   [ ] **Performance:** Investigar/Implementar Fetch Incremental (se suportado pelas APIs).
-*   [ ] **Security:** Add rate limiting for authentication endpoints
-*   [ ] **Security:** Implement CSRF protection for sensitive operations
-*   [ ] **Security:** Implement rate limiting for job search API endpoints
-*   [ ] **Admin/Monitoring:** Criar Painel de Saúde das Fontes (`JobSource Health Dashboard`).
-*   [ ] **Documentation:** Create API documentation for endpoints
-*   [ ] **Documentation:** Documentar Lógica de Filtro (Greenhouse & Ashby).
-*   [ ] **i18n:** Prepare codebase for proper internationalization (currently has i18n config but might need structure)
+*   [x] **Performance:** Paralelizar Execução de Múltiplas Fontes no `fetch-jobs`. (Completed - Made concurrency configurable via `FETCH_CONCURRENCY`, default 5) - 2025-04-21
+*   [x] **Documentation:** Documentar Lógica de Filtro (Greenhouse & Ashby). (Completed - Created docs/filtering-logic.md) - 2025-04-21
+*   [x] **Documentation:** Create API documentation for endpoints (Moved to general Documentation)
 *   [x] **Bug Fix:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields and invalid dates. (Completed)
 *   [x] **Bug Fix:** Fix company logos not displaying correctly on job cards. (Completed 2025-04-12)
 *   ~~[ ] **Database Maintenance:** Implement automated cleanup of jobs from removed sources~~ *(Substituído por Detecção de Vagas Órfãs/Stale e script manual já criado)*

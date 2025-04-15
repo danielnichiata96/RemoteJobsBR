@@ -1,11 +1,11 @@
 import {
     extractSkills,
-    cleanHtml,
     detectJobType,
     detectExperienceLevel,
     parseSections,
     isRemoteJob,
 } from '../../../src/lib/utils/jobUtils';
+import { stripHtml } from '../../../src/lib/utils/textUtils';
 import { JobType, ExperienceLevel } from '@prisma/client';
 
 describe('jobUtils', () => {
@@ -27,27 +27,34 @@ describe('jobUtils', () => {
         it('should handle empty content', () => {
             expect(extractSkills('')).toEqual([]);
         });
+
+        it('should not match partial words', () => {
+            const content = 'Experience with javascripting and pythonese.';
+            expect(extractSkills(content)).toEqual([]);
+            const content2 = 'Requires scripting knowledge.';
+            expect(extractSkills(content2)).toEqual([]); // Should not match 'script' in javascript etc.
+        });
     });
 
-    // --- cleanHtml Tests ---
-    describe('cleanHtml', () => {
+    // --- stripHtml Tests ---
+    describe('stripHtml', () => {
         it('should remove HTML tags', () => {
             const html = '<p>Hello <b>World</b>!</p>';
-            expect(cleanHtml(html)).toBe('Hello World!');
+            expect(stripHtml(html)).toBe('Hello World!');
         });
 
         it('should decode common HTML entities', () => {
             const html = 'Less than &lt; Greater than &gt; Ampersand &amp; Quote &quot; Apostrophe &#39; Space &nbsp; Here';
-            expect(cleanHtml(html)).toBe('Less than < Greater than > Ampersand & Quote " Apostrophe \' Space Here');
+            expect(stripHtml(html)).toBe('Less than < Greater than > Ampersand & Quote " Apostrophe ' Space   Here');
         });
 
         it('should normalize whitespace', () => {
             const html = '  Multiple   spaces\n\nand\n  line breaks.  ';
-            expect(cleanHtml(html)).toBe('Multiple spaces\n\nand line breaks.');
+            expect(stripHtml(html)).toBe('Multiple spaces and line breaks.');
         });
 
         it('should handle empty string', () => {
-            expect(cleanHtml('')).toBe('');
+            expect(stripHtml('')).toBe('');
         });
     });
 
@@ -116,6 +123,7 @@ describe('jobUtils', () => {
         it('should prioritize LEAD over SENIOR or ENTRY', () => {
             expect(detectExperienceLevel('Senior Engineering Manager')).toBe(ExperienceLevel.LEAD);
             expect(detectExperienceLevel('Lead Junior Developer')).toBe(ExperienceLevel.LEAD);
+            expect(detectExperienceLevel('Senior Lead Engineer')).toBe(ExperienceLevel.LEAD);
         });
 
         it('should prioritize SENIOR over ENTRY (except specific cases)', () => {

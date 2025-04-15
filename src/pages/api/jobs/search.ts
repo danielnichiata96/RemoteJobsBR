@@ -85,12 +85,14 @@ export default async function handler(
     // Build the main whereClause (including status: ACTIVE)
     const whereClause: Prisma.JobWhereInput = {
       status: JobStatus.ACTIVE,
+      // Default to LATAM, WORLDWIDE, or NULL hiring region
       OR: [
         { hiringRegion: HiringRegion.LATAM },
         { hiringRegion: HiringRegion.WORLDWIDE },
         { hiringRegion: null }
       ]
     };
+    // Initialize array for additional AND conditions
     const andConditions: Prisma.JobWhereInput[] = [];
     
     // Filtro de texto (busca em título, descrição, requisitos)
@@ -161,50 +163,21 @@ export default async function handler(
       andConditions.push({ languages: { hasSome: filters.languages } });
     }
     
-    // Hiring Region Filter (Handles explicit override, though default is LATAM)
-    // Note: Currently, the only hiringRegion handled besides the default LATAM is WORLDWIDE,
-    // but the core goal is LATAM, so overriding might not be desired.
-    if (filters.hiringRegion && filters.hiringRegion !== HiringRegion.LATAM) {
-      // If an explicit, non-LATAM region is requested, find whereClause.AND or initialize it
-      let currentAnd = whereClause.AND ? (Array.isArray(whereClause.AND) ? whereClause.AND : [whereClause.AND]) : [];
-      
-      // Remove the default LATAM filter if present in the base whereClause
-      delete whereClause.hiringRegion;
-
-      // Add the explicitly requested region filter
-      if (filters.hiringRegion === HiringRegion.WORLDWIDE) {
-        currentAnd.push({ 
-          OR: [
-            { hiringRegion: HiringRegion.WORLDWIDE },
-            { hiringRegion: null } // Include jobs where region couldn't be determined
-          ]
-        });
-      } else {
-        // If other regions were supported, they'd go here
-        // For now, only WORLDWIDE override is considered
-        // currentAnd.push({ hiringRegion: filters.hiringRegion });
-         console.warn(`Requested hiringRegion ${filters.hiringRegion} is not explicitly handled beyond LATAM/WORLDWIDE.`);
-      }
-      
-      // Re-assign the AND conditions
-      if (currentAnd.length > 0) {
-           whereClause.AND = currentAnd;
-      } else {
-           delete whereClause.AND; // Remove AND if it became empty
-      }      
+    // --- Corrected Hiring Region Filter --- 
+    // If a specific hiringRegion is requested, add it as an AND condition.
+    // This works *in addition* to the base OR condition (LATAM/WORLDWIDE/null)
+    // meaning if hiringRegion=BRAZIL is passed, it finds jobs that are
+    // (LATAM or WORLDWIDE or null) AND (BRAZIL).
+    // If the goal is to *only* find BRAZIL, the base OR would need modification.
+    // Assuming current goal is to filter *within* the generally allowed regions.
+    if (filters.hiringRegion) {
+        andConditions.push({ hiringRegion: filters.hiringRegion });
     }
+    // --- End Corrected Hiring Region Filter ---
 
-    // Combine *other* filters using AND
+    // Combine all additional filters using AND
     if (andConditions.length > 0) {
-      // If whereClause.AND already exists (from hiringRegion override), merge;
-      // otherwise, assign andConditions.
-      if (whereClause.AND) {
-         // Ensure it's an array and merge
-         const existingAnd = Array.isArray(whereClause.AND) ? whereClause.AND : [whereClause.AND];
-         whereClause.AND = [...existingAnd, ...andConditions];
-      } else {
-         whereClause.AND = andConditions;
-      }
+      whereClause.AND = andConditions;
     }
 
     // Determinar ordenação

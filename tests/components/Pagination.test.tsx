@@ -14,7 +14,21 @@ jest.mock('next/router', () => ({
 // Mock SWR hook
 jest.mock('swr', () => ({
   __esModule: true,
-  default: jest.fn(),
+  default: jest.fn(() => ({
+    data: { jobs: [], totalPages: 1, totalJobs: 0 },
+    error: undefined,
+    isLoading: false,
+    isValidating: false,
+    mutate: jest.fn(),
+  })),
+  useSWRConfig: jest.fn(() => ({
+    mutate: jest.fn(),
+    cache: {
+      get: jest.fn(),
+      set: jest.fn(),
+      delete: jest.fn(),
+    }
+  }))
 }));
 
 // Mock the custom hooks and components used in the Home page

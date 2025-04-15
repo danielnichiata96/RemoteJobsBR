@@ -29,6 +29,14 @@ const logger = pino({
 const jobProcessorAdapter = new JobProcessingAdapter(); // Adapter handles processor selection
 const jobProcessingService = new JobProcessingService(); // Service handles saving and deactivation
 
+// --- Concurrency Configuration ---
+const DEFAULT_CONCURRENCY = 5;
+const fetchConcurrency = parseInt(process.env.FETCH_CONCURRENCY || '', 10);
+const concurrencyLevel = 
+    !isNaN(fetchConcurrency) && fetchConcurrency > 0 
+    ? fetchConcurrency 
+    : DEFAULT_CONCURRENCY;
+
 // --- Fetcher Mapping ---
 // Maps source type string to the corresponding fetcher class instance
 const fetcherMap = new Map<string, JobFetcher>();
@@ -130,7 +138,7 @@ async function main() {
           );
         }
       },
-      { concurrency: 3, stopOnError: false } // Limit concurrency to avoid overwhelming sources/DB
+      { concurrency: concurrencyLevel, stopOnError: false } // Use configurable concurrency level
     );
 
     // 3. Deactivate jobs that are no longer found in the active sources

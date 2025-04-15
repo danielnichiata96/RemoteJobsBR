@@ -189,32 +189,35 @@ describe('JobProcessingService', () => {
     });
     
     it('should return false and log error if job data is missing required fields', async () => {
-        const incompleteJob = { ...mockStandardizedJob, title: null } as any; // Missing title
-        const result = await jobProcessingService.saveOrUpdateJob(incompleteJob);
-        expect(result).toBe(false);
-        expect(mockPrisma.job.upsert).not.toHaveBeenCalled();
-        expect(loggerMock.error).toHaveBeenCalledWith(
-            expect.objectContaining({ jobData: incompleteJob }),
-            expect.stringContaining('Job data is missing required fields')
-        );
+      const incompleteJob = { ...mockStandardizedJob, title: null }; // Missing title
+
+      const result = await jobProcessingService.saveOrUpdateJob(incompleteJob as any);
+
+      expect(result).toBe(false);
+      expect(mockPrisma.job.upsert).not.toHaveBeenCalled();
+      expect(loggerMock.error).toHaveBeenCalledWith(
+        expect.objectContaining({ jobData: incompleteJob }),
+        expect.stringContaining('Job data is missing essential fields (source, sourceId, title, applicationUrl). Skipping save.') 
+      );
     });
 
     it('should return false and log error if saving job fails (db error)', async () => {
-        // Arrange: Existing company, job upsert FAILURE
-        const dbError = new Error('Database connection failed');
-        mockPrisma.user.findFirst.mockResolvedValue(mockCompany); 
+        const dbError = new Error('Database connection lost');
+        // Mock Prisma upsert to throw an error
         mockPrisma.job.upsert.mockRejectedValue(dbError);
 
-        // Act
         const result = await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
 
-        // Assert
         expect(result).toBe(false);
         expect(mockPrisma.job.upsert).toHaveBeenCalledTimes(1);
-        expect(loggerMock.error).toHaveBeenCalledWith(
-           expect.objectContaining({ source: mockStandardizedJob.source, sourceId: mockStandardizedJob.sourceId, error: dbError }), 
-           'Error processing job in service'
-        );
+         expect(loggerMock.error).toHaveBeenCalledWith(
+             expect.objectContaining({
+                 errorMessage: 'Database connection lost',
+                 jobSourceId: mockStandardizedJob.sourceId,
+                 jobTitle: mockStandardizedJob.title
+             }),
+             'Error saving or updating job in database'
+         );
     });
 
      it('should return false and log error if creating company fails and company still not found', async () => {

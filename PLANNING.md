@@ -29,7 +29,12 @@
     ├── src/
     │   ├── components/      # Reusable React components
     │   ├── pages/           # Next.js pages and API routes
-    │   ├── lib/             # Utility functions, configurations, Prisma client
+    │   ├── lib/
+    │   │   ├── adapters/        # Adapters (e.g., JobProcessingAdapter)
+    │   │   ├── fetchers/        # Job fetcher implementations (Greenhouse, Ashby)
+    │   │   ├── jobProcessors/   # Job processor implementations (Greenhouse, Ashby)
+    │   │   ├── utils/           # Shared utility functions (job, date, text, logo)
+    │   │   └── prisma.ts        # Prisma client instance
     │   ├── styles/          # Global CSS, Tailwind config
     │   ├── hooks/           # Custom React hooks
     │   └── types/           # TypeScript type definitions
@@ -37,9 +42,10 @@
     ├── public/              # Static assets (images, fonts)
     ├── tests/               # Unit and integration tests (mirroring src/)
     ├── scripts/             # Standalone scripts (e.g., data fetching, DB maintenance)
+    ├── config/              # Configuration files (e.g., filter configs)
     └── node_modules/        # Project dependencies
     └── .next/               # Next.js build output
-    └── ...                  # Config files (.env, next.config.js, tsconfig.json, etc.)
+    └── ...                  # Root config files (.env, next.config.js, tsconfig.json, etc.)
     ```
 
 ## 3. Tech Stack & Tools
@@ -53,7 +59,18 @@
 *   **Package Manager:** npm (or yarn)
 *   **Linting:** ESLint (configured for Next.js)
 *   **Deployment:** Vercel
-*   **Other Libraries:** `axios`, `date-fns`, `react-hook-form`, `zod`, `swr`, `bcryptjs`, `@sendgrid/mail` / `nodemailer` (for email), `cheerio` (for HTML parsing)
+*   **Other Libraries:** 
+    *   `axios` (HTTP requests)
+    *   `p-map` (Parallel async operations)
+    *   `pino` (Logging)
+    *   `sanitize-html`, `html-entities` (HTML cleaning/processing)
+    *   `date-fns` (Date utilities - *Consider replacing with built-in Date or dedicated lightweight lib if only basic parsing is needed*)
+    *   `react-hook-form`, `zod` (Form handling/validation)
+    *   `swr` (Client-side data fetching/caching)
+    *   `bcryptjs` (Password hashing)
+    *   `@sendgrid/mail` / `nodemailer` (Email sending)
+    *   `cheerio` (*Review if still actively used for scraping/HTML parsing*)
+    *   `node-cache` (Server-side API caching)
 
 ## 4. Development Guidelines & Constraints
 
@@ -70,10 +87,20 @@
     *   Update `README.md` for significant changes (setup, features, dependencies). Keep `PLANNING.md` and `TASK.md` up-to-date.
 *   **Environment:** Requires a PostgreSQL database and properly configured `.env` file (based on `.env.example`).
 
+### 4.3 Maintenance & Utility Scripts
+    *   `npm run fetch-jobs`: Executes `src/scripts/fetchJobSources.ts` to fetch new jobs from all enabled sources. Concurrency is configurable via `FETCH_CONCURRENCY` env var.
+    *   `npm run deactivate-stale-jobs`: Executes `scripts/deactivateStaleJobs.ts` to mark old job postings as inactive (CLOSED).
+    *   `npm run add-bulk-sources`: Executes `src/scripts/addBulkJobSources.ts` to add/update multiple Greenhouse sources defined in the script.
+    *   `npm run list-sources`: Executes `src/scripts/listJobSources.ts` to display currently configured job sources in the database.
+    *   `npm run clean-db`: Executes `src/scripts/cleanDatabase.ts`. *Purpose: General database cleanup (specific actions TBC).*
+    *   `npm run fix-jobs`: Executes `src/scripts/fixJobSources.ts`. *Purpose: Fixes potential issues with job sources (specific actions TBC).*
+    *   `npm run prisma:studio`: Opens Prisma Studio for direct database inspection/modification.
+
 ## 5. Key Data Models
 
 *   **User:** Supports multiple roles (Candidate, Recruiter/Company) with role-specific fields
 *   **Job:** Contains job details, required skills, location info, and external application URLs
+*   **JobSource:** Defines a source of job listings (e.g., Greenhouse board, Ashby feed), including URL, type, and configuration.
 *   **SavedJob:** Tracks jobs saved/favorited by candidates
 *   **ClickTracking:** Records when users click on external job links (for analytics)
 *   **Newsletter:** Manages user email preferences for job notifications

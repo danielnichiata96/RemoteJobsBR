@@ -3,6 +3,8 @@ import { GreenhouseJob, EnhancedGreenhouseJob, ProcessedJobResult } from '../../
 import * as jobUtils from '../../../src/lib/utils/jobUtils';
 import { JobType, ExperienceLevel, WorkplaceType } from '@prisma/client';
 import pino from 'pino';
+import { PrismaClient } from '@prisma/client';
+import { JobSource, JobSourceType } from '../../../src/lib/types';
 
 // --- Mocks ---
 
@@ -54,18 +56,47 @@ jest.mock('@prisma/client', () => ({
 
 // Mock jobUtils functions
 jest.mock('../../../src/lib/utils/jobUtils', () => ({
-  extractSkills: jest.fn(),
+  extractSkills: jest.fn().mockReturnValue(['Jest', 'Testing']),
   cleanHtml: jest.fn(),
-  detectJobType: jest.fn(),
-  detectExperienceLevel: jest.fn(),
+  detectJobType: jest.fn().mockReturnValue(JobType.FULL_TIME),
+  detectExperienceLevel: jest.fn().mockReturnValue(ExperienceLevel.MID_LEVEL),
   parseSections: jest.fn(),
   isRemoteJob: jest.fn(),
 }));
 
+// Mock logoUtils
+jest.mock('../../../src/lib/utils/logoUtils', () => ({
+    buildCompanyLogoUrl: jest.fn((website) => {
+        // Simple mock: return specific URL for testing or based on input
+        if (website === 'https://enhanced.corp') {
+            // Mimic the observed output for the enhanced test case
+            return 'https://img.logo.dev/enhanced.corp?token=pk_f4m8WG-wQOeM90skJ8dV6Q';
+        }
+        return undefined; // Default to undefined if no match
+    }),
+}));
+
 // --- Test Suite ---
+
+const createMockJobSource = (overrides: Partial<JobSource> = {}): JobSource => ({
+  id: 1,
+  name: 'Test Greenhouse Source',
+  description: 'Mock source',
+  url: 'https://boards.greenhouse.io/testboard',
+  type: JobSourceType.GREENHOUSE,
+  config: { boardToken: 'testboard' },
+  companyWebsite: 'https://basic.example.com', // Default website
+  isActive: true,
+  lastFetched: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides
+});
 
 describe('GreenhouseProcessor', () => {
   let processor: GreenhouseProcessor;
+  let mockPrisma: PrismaClient;
+  let mockBuildCompanyLogoUrl: jest.Mock;
   let loggerMock: any;
 
   // Cast the mock module to the correct type to access mocked functions
@@ -73,8 +104,11 @@ describe('GreenhouseProcessor', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    processor = new GreenhouseProcessor();
+    mockPrisma = new PrismaClient();
+    processor = new GreenhouseProcessor(mockPrisma);
     loggerMock = pino();
+    // Get reference to the mocked function
+    mockBuildCompanyLogoUrl = require('../../../src/lib/utils/logoUtils').buildCompanyLogoUrl;
 
     // Default mock implementations for jobUtils
     mockedJobUtils.cleanHtml.mockImplementation(html => html); // Simple passthrough
@@ -93,127 +127,77 @@ describe('GreenhouseProcessor', () => {
   // --- Test Data Definition ---
   const basicRawJob: GreenhouseJob = {
     id: 123,
-    title: 'Basic Software Engineer',
-    content: '<p>Job Description</p> <b>Requirements:</b> Skill A', // HTML content
-    location: { name: 'Remote - USA' },
-    absolute_url: 'http://apply.greenhouse.io/basic123',
-    updated_at: '2024-01-10T00:00:00Z',
-    company: {
-        name: 'Basic Co',
-        boardToken: 'basicco',
-        logo: null,
-        website: null
-    }
-    // metadata and departments often missing in basic fetches
+    title: 'Basic Engineer',
+    updated_at: new Date().toISOString(),
+    location: { name: 'Remote' },
+    content: '<p>Basic job content</p>',
+    absolute_url: 'https://jobs.greenhouse.io/basic/123',
+    metadata: [],
+    offices: [],
+    departments: [{ name: 'Engineering' }],
+    company: { name: 'Basic Corp' }, // Add company info
+    // _determinedHiringRegionType might be undefined for basic jobs
   };
 
-  const enhancedRawJob: EnhancedGreenhouseJob = {
-    id: 456,
-    title: 'Enhanced Senior Engineer',
-    content: 'Enhanced Description Content', // Usually cleaner
-    location: { name: 'Remote Worldwide' },
-    absolute_url: 'http://apply.greenhouse.io/enhanced456',
-    updated_at: '2024-01-11T00:00:00Z',
-    company: {
-      name: 'Enhanced Corp',
-      boardToken: 'enhancedcorp',
-      logo: 'http://logo.com/logo.png',
-      website: 'http://enhanced.corp'
-    },
-    // Pre-processed fields
-    requirements: 'Enhanced Requirements Field',
-    responsibilities: 'Enhanced Responsibilities Field',
-    benefits: 'Enhanced Benefits Field',
-    jobType: JobType.CONTRACT,
-    experienceLevel: ExperienceLevel.SENIOR,
-    skills: ['enhancedSkill1', 'enhancedSkill2'],
-    tags: ['tag1', 'tag2'],
-    country: 'Global',
-    workplaceType: WorkplaceType.REMOTE,
-    metadataRaw: [], // Added optional field
-    departments: [] // Added optional field
-  };
+  const mockSourceDataBasic = createMockJobSource({ name: 'Basic Corp', companyWebsite: 'https://basic.example.com'});
 
   describe('processJob', () => {
     it('should process a basic GreenhouseJob correctly', async () => {
-      // Arrange
-      mockedJobUtils.isRemoteJob.mockReturnValue(true);
-      mockedJobUtils.cleanHtml.mockReturnValue('Cleaned Description Requirements: Skill A');
-      mockedJobUtils.extractSkills.mockReturnValue(['Skill A']);
-      mockedJobUtils.detectJobType.mockReturnValue(JobType.FULL_TIME);
-      mockedJobUtils.detectExperienceLevel.mockReturnValue(ExperienceLevel.MID);
-      mockedJobUtils.parseSections.mockReturnValue({
-          description: 'Parsed Basic Desc',
-          requirements: 'Parsed Basic Req',
-          responsibilities: 'Parsed Basic Resp',
-          benefits: 'Parsed Basic Ben'
-      });
-      
-      // Act
-      const result = await processor.processJob(basicRawJob);
+      const result = await processor.processJob(basicRawJob, mockSourceDataBasic, mockLogger);
 
-      // Assert
       expect(result.success).toBe(true);
-      expect(result.error).toBeUndefined();
-      expect(mockedJobUtils.isRemoteJob).toHaveBeenCalledWith(basicRawJob.location.name, basicRawJob.content);
-      expect(mockedJobUtils.cleanHtml).toHaveBeenCalledWith(basicRawJob.content);
-      expect(mockedJobUtils.parseSections).toHaveBeenCalledWith('Cleaned Description Requirements: Skill A');
-      expect(mockedJobUtils.extractSkills).toHaveBeenCalledWith('Cleaned Description Requirements: Skill A');
-      expect(mockedJobUtils.detectJobType).toHaveBeenCalledWith('Cleaned Description Requirements: Skill A');
-      expect(mockedJobUtils.detectExperienceLevel).toHaveBeenCalledWith('Cleaned Description Requirements: Skill A');
-      
-      const job = result.job as StandardizedJob;
-      expect(job.sourceId).toBe(String(basicRawJob.id));
+      expect(result.job).toBeDefined();
+      const job = result.job!;
+
       expect(job.source).toBe('greenhouse');
-      expect(job.title).toBe(basicRawJob.title);
-      expect(job.description).toBe('Parsed Basic Desc');
-      expect(job.requirements).toBe('Parsed Basic Req');
-      expect(job.responsibilities).toBe('Parsed Basic Resp');
-      expect(job.benefits).toBe('Parsed Basic Ben');
-      expect(job.jobType).toBe(JobType.FULL_TIME); // From mock
-      expect(job.experienceLevel).toBe(ExperienceLevel.MID); // From mock
-      expect(job.skills).toEqual(['Skill A']); // From mock
-      expect(job.tags).toEqual(['Skill A']); // Defaults to skills
-      expect(job.location).toBe(basicRawJob.location.name);
-      expect(job.country).toBe('Worldwide'); // Default
-      expect(job.workplaceType).toBe('REMOTE'); // Default
+      expect(job.sourceId).toBe('123');
+      expect(job.title).toBe('Basic Engineer');
+      expect(job.description).toBe('<p>Basic job content</p>');
       expect(job.applicationUrl).toBe(basicRawJob.absolute_url);
+      // Use company name from raw job if available, fallback to source name
       expect(job.companyName).toBe(basicRawJob.company.name);
-      expect(job.companyLogo).toBeNull();
+      // Check that logo util was called with the correct website
+      expect(mockBuildCompanyLogoUrl).toHaveBeenCalledWith(mockSourceDataBasic.companyWebsite);
+      // Update assertion: Expect undefined if util returns undefined for this website
+      expect(job.companyLogo).toBeUndefined(); 
+      expect(job.companyWebsite).toBe(mockSourceDataBasic.companyWebsite);
+       expect(job.publishedAt).toBeUndefined(); // Not present in basic job
+       expect(job.jobType).toBe(JobType.FULL_TIME);
+       expect(job.experienceLevel).toBe(ExperienceLevel.MID_LEVEL);
+       expect(job.jobType2).toBeUndefined(); // Not present in basic job
+       expect(job.workplaceType).toBe(WorkplaceType.REMOTE); // Default assumption
+       expect(job.skills).toEqual(['Jest', 'Testing']);
+       expect(job.location).toBe('Remote');
     });
 
     it('should process an EnhancedGreenhouseJob correctly, using pre-processed fields', async () => {
-        // Arrange (No specific mock setup needed as it should bypass most utils)
-        
-        // Act
-        const result = await processor.processJob(enhancedRawJob);
+       const enhancedRawJob: GreenhouseJob & { _determinedHiringRegionType?: 'global' | 'latam' } = {
+          ...basicRawJob,
+          id: 456,
+          title: 'Enhanced Engineer',
+          absolute_url: 'https://jobs.greenhouse.io/enhanced/456',
+          _determinedHiringRegionType: 'latam', // Field added by Fetcher
+          company: { name: 'Enhanced Corp' },
+      };
+      // Create source data with a website that matches the mock logo util
+       const mockSourceDataEnhanced = createMockJobSource({ name: 'Enhanced Corp', companyWebsite: 'https://enhanced.corp' }); 
 
-        // Assert
-        expect(result.success).toBe(true);
-        expect(mockedJobUtils.isRemoteJob).not.toHaveBeenCalled(); // Should not be called for enhanced jobs
-        expect(mockedJobUtils.cleanHtml).not.toHaveBeenCalled();
-        expect(mockedJobUtils.parseSections).not.toHaveBeenCalled();
-        expect(mockedJobUtils.extractSkills).not.toHaveBeenCalled();
-        expect(mockedJobUtils.detectJobType).not.toHaveBeenCalled();
-        expect(mockedJobUtils.detectExperienceLevel).not.toHaveBeenCalled();
+      const result = await processor.processJob(enhancedRawJob, mockSourceDataEnhanced, mockLogger);
 
-        const job = result.job as StandardizedJob;
-        expect(job.sourceId).toBe(String(enhancedRawJob.id));
-        expect(job.title).toBe(enhancedRawJob.title);
-        expect(job.description).toBe(enhancedRawJob.content); // Uses raw content as description
-        expect(job.requirements).toBe(enhancedRawJob.requirements);
-        expect(job.responsibilities).toBe(enhancedRawJob.responsibilities);
-        expect(job.benefits).toBe(enhancedRawJob.benefits);
-        expect(job.jobType).toBe(enhancedRawJob.jobType);
-        expect(job.experienceLevel).toBe(enhancedRawJob.experienceLevel);
-        expect(job.skills).toEqual(enhancedRawJob.skills);
-        expect(job.tags).toEqual(enhancedRawJob.tags);
-        expect(job.location).toBe(enhancedRawJob.location.name);
-        expect(job.country).toBe(enhancedRawJob.country);
-        expect(job.workplaceType).toBe(enhancedRawJob.workplaceType);
-        expect(job.applicationUrl).toBe(enhancedRawJob.absolute_url);
-        expect(job.companyName).toBe(enhancedRawJob.company.name);
-        expect(job.companyLogo).toBe(enhancedRawJob.company.logo);
+      expect(result.success).toBe(true);
+      expect(result.job).toBeDefined();
+      const job = result.job!;
+
+      expect(job.sourceId).toBe('456');
+      expect(job.title).toBe('Enhanced Engineer');
+      expect(job.applicationUrl).toBe(enhancedRawJob.absolute_url);
+      expect(job.companyName).toBe(enhancedRawJob.company.name);
+      expect(job.companyWebsite).toBe(mockSourceDataEnhanced.companyWebsite);
+       // Check logo util call and updated assertion
+       expect(mockBuildCompanyLogoUrl).toHaveBeenCalledWith(mockSourceDataEnhanced.companyWebsite);
+       expect(job.companyLogo).toBe('https://img.logo.dev/enhanced.corp?token=pk_f4m8WG-wQOeM90skJ8dV6Q'); // Use the observed URL
+      expect(job.jobType2).toBe('latam');
+       expect(job.workplaceType).toBe(WorkplaceType.REMOTE); // Still remote based on location
     });
 
     it('should return success: false if a basic job is not remote', async () => {

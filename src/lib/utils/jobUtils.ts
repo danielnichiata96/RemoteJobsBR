@@ -21,36 +21,6 @@ export function extractSkills(content: string): string[] {
   );
 }
 
-export function cleanHtml(html: string): string {
-  // Remove HTML tags
-  let text = html.replace(/<[^>]*>/g, '');
-  
-  // Decode HTML entities
-  text = text.replace(/&nbsp;/g, ' ')
-             .replace(/&amp;/g, '&')
-             .replace(/&lt;/g, '<')
-             .replace(/&gt;/g, '>')
-             .replace(/&quot;/g, '"')
-             .replace(/&#39;/g, "'");
-  
-  // Normalize line endings
-  text = text.replace(/\r\n|\r/g, '\n');
-  
-  // Temporarily replace double newlines to preserve them
-  const placeholder = '__DOUBLE_NEWLINE__';
-  text = text.replace(/\n\n/g, placeholder);
-  
-  // Collapse all other whitespace (including single newlines) to single spaces
-  text = text.replace(/\s+/g, ' ');
-  
-  // Restore double newlines
-  text = text.replace(new RegExp(placeholder, 'g'), '\n\n');
-  
-  text = text.trim();
-  
-  return text;
-}
-
 export function detectJobType(content: string): JobType {
   const contentLower = content.toLowerCase();
   
