@@ -53,7 +53,21 @@ export function parseDate(dateString: string | undefined | null): Date | undefin
   }
 }
 
-// Placeholder for parseDate if needed later - not found in jobUtils.ts
-// export function parseDate(dateString: string | null | undefined): Date | undefined {
-//   // Implementation here
-// } 
+/**
+ * Normalizes a string for deduplication comparison.
+ * Converts to lowercase, removes basic punctuation, and collapses whitespace.
+ *
+ * @param text The string to normalize.
+ * @returns The normalized string, or an empty string if the input is null/undefined.
+ */
+export function normalizeForDeduplication(text: string | null | undefined): string {
+  if (!text) return '';
+
+  let normalized = text.toLowerCase();
+  // Replace basic punctuation with a space: .,/#!$%^&*;:{}=-_`~()[]?+
+  normalized = normalized.replace(/[.,\/#!$%^&*;:{}=\-_`~()\[\]?+]/g, ' '); // Replace with space
+  // Collapse multiple whitespace characters (including spaces, tabs, newlines) into a single space
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+
+  return normalized;
+}

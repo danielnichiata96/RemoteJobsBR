@@ -7,9 +7,12 @@ import { AshbyApiJob, AshbyLocation } from '../../../src/lib/fetchers/types'; //
 import * as jobUtils from '../../../src/lib/utils/jobUtils';
 
 // --- Mocks ---
+/* jest.mock('@prisma/client', () => ({ ... OLD MOCK ... })); */ // Remove old mock
+
+// Corrected @prisma/client Mock:
 jest.mock('@prisma/client', () => ({
     PrismaClient: jest.fn().mockImplementation(() => ({})),
-    // Mock necessary enums
+    // Mock necessary enums used in this file
     JobType: {
         FULL_TIME: 'FULL_TIME',
         PART_TIME: 'PART_TIME',
@@ -18,15 +21,13 @@ jest.mock('@prisma/client', () => ({
         UNKNOWN: 'UNKNOWN'
     },
     ExperienceLevel: {
-        JUNIOR: 'JUNIOR',
-        MID_LEVEL: 'MID_LEVEL',
+        ENTRY: 'ENTRY',
+        MID: 'MID',
         SENIOR: 'SENIOR',
-        MANAGER: 'MANAGER',
-        DIRECTOR: 'DIRECTOR',
-        EXECUTIVE: 'EXECUTIVE',
-        UNKNOWN: 'UNKNOWN'
+        UNKNOWN: 'UNKNOWN' // Simplified
     },
-    WorkplaceType: {
+    // WorkplaceType is used implicitly via StandardizedJob mapping
+    WorkplaceType: { 
         REMOTE: 'REMOTE',
         HYBRID: 'HYBRID',
         ON_SITE: 'ON_SITE',
@@ -37,10 +38,7 @@ jest.mock('@prisma/client', () => ({
         LATAM: 'LATAM',
         BRAZIL: 'BRAZIL'
     },
-    JobSourceType: { // Include if needed by JobSource mock
-        GREENHOUSE: 'GREENHOUSE',
-        ASHBY: 'ASHBY'
-    }
+    // JobSourceType is not an enum in schema.prisma
 }));
 
 jest.mock('../../../src/lib/utils/jobUtils', () => ({
@@ -68,47 +66,90 @@ const mockLogger = pino({ level: 'silent' });
 
 // --- Test Data Helpers ---
 
-const createMockAshbyLocation = (overrides: Partial<AshbyLocation>): AshbyLocation => ({
-    id: `loc-${Math.random().toString(36).substring(7)}`,
-    name: 'Default Location',
-    type: 'office',
-    address: null,
-    isRemote: false,
-    ...overrides,
-});
+/* // Remove old helper
+const createMockAshbyLocation = (overrides: Partial<AshbyLocation>): AshbyLocation => {
+    // ... old incorrect logic ...
+};
+*/
+
+// Corrected createMockAshbyLocation:
+const createMockAshbyLocation = (overrides: Partial<AshbyLocation>): AshbyLocation => {
+    // Base defaults for the address object
+    const defaultAddress: AshbyLocation['address'] = {
+        rawAddress: null, streetAddress1: null, streetAddress2: null,
+        city: null, state: null, postalCode: null, country: null, countryCode: null,
+    };
+
+    // Determine the final address object based on overrides
+    let finalAddress: AshbyLocation['address'] = null; // Default to null if no address override
+    if (overrides.hasOwnProperty('address')) { // Check if 'address' property itself is overridden
+        if (overrides.address === null) {
+            finalAddress = null; // Handle explicit null override
+        } else if (typeof overrides.address === 'object') {
+             // Merge default address with provided overrides.address object
+            finalAddress = { ...defaultAddress, ...overrides.address };
+        }
+        // If overrides.address is something else (e.g., undefined), finalAddress remains null
+    }
+
+    // Base defaults for the location
+    const baseLocation: Omit<AshbyLocation, 'address'> = {
+        id: `loc-${Math.random().toString(36).substring(7)}`,
+        name: 'Default Location',
+        type: 'office',
+        isRemote: false,
+    };
+
+    // Create the final location object by merging overrides and setting the final address
+    const finalLocation: AshbyLocation = {
+        ...baseLocation, // Apply base defaults
+        ...overrides,   // Apply all overrides (potentially overwriting name, type, isRemote)
+        address: finalAddress, // Explicitly set the calculated address last
+    };
+
+    return finalLocation;
+};
 
 const createMockAshbyJob = (overrides: Partial<AshbyApiJob> = {}): AshbyApiJob => {
     const id = overrides.id || `job-${Math.random().toString(36).substring(7)}`;
     return {
+        // Required fields with defaults
         id,
         title: 'Software Engineer',
-        locations: [createMockAshbyLocation({ name: 'Remote', isRemote: true })], // Default to one remote location
-        secondaryLocations: [],
-        isRemote: true, // Default to job being remote
-        descriptionHtml: '<p>Job description</p>',
-        descriptionPlain: 'Job description',
+        locations: [createMockAshbyLocation({ name: 'Remote', isRemote: true })],
         publishedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         isListed: true,
         jobUrl: `https://jobs.example.com/${id}`,
         applyUrl: `https://jobs.example.com/${id}/apply`,
+        // Optional fields with explicit defaults (mostly null/undefined)
+        secondaryLocations: [],
+        department: null,
+        team: null,
+        isRemote: true, // Keep default as true, but allow null override
+        descriptionHtml: '<p>Job description</p>',
+        descriptionPlain: 'Job description',
+        employmentType: null,
+        compensationTier: null,
+        compensationRange: null,
+        _determinedHiringRegionType: undefined, 
+        // Spread overrides last to allow changing defaults
         ...overrides,
     };
 };
 
 const createMockJobSource = (overrides: Partial<JobSource> = {}): JobSource => ({
-    id: 1,
+    id: overrides.id || 'mock-source-id-1',
     name: 'Test Ashby Source',
-    description: 'Mock source',
-    url: 'https://api.ashbyhq.com/jobs?source=test',
-    type: JobSourceType.ASHBY,
+    type: 'ASHBY', // Use string literal consistent with mock
     config: { jobBoardName: 'test' }, // Example config
     companyWebsite: 'https://test.example.com',
-    isActive: true,
+    isEnabled: true, // Using isEnabled based on linter type hint
+    logoUrl: null,   // Added based on linter type hint
     lastFetched: null,
     createdAt: new Date(),
     updatedAt: new Date(),
-    ...overrides
+    ...overrides // Apply any remaining overrides
 });
 
 // --- Test Suite ---
@@ -137,15 +178,17 @@ describe('AshbyProcessor Logic', () => {
 
         // Reset other mocks 
         (jobUtils.extractSkills as jest.Mock).mockReturnValue(['React', 'Node.js']);
-        (jobUtils.detectExperienceLevel as jest.Mock).mockReturnValue(ExperienceLevel.MID_LEVEL);
+        (jobUtils.detectExperienceLevel as jest.Mock).mockReturnValue(ExperienceLevel.MID);
     });
 
     // --- Tests for _mapToStandardizedJob ---
     describe('_mapToStandardizedJob', () => {
-        it.skip('should correctly map a standard Ashby job', () => {
+        it('should correctly map a standard Ashby job', () => {
             const rawJob = createMockAshbyJob({ 
                 _determinedHiringRegionType: 'global',
-                descriptionHtml: "<p>Join our <strong>awesome</strong> team!</p> <p>Skills: React, Node.js</p>"
+                descriptionHtml: "<p>Join our <strong>awesome</strong> team!</p> <p>Skills: React, Node.js</p>",
+                descriptionPlain: null,
+                employmentType: 'FullTime'
             });
             const source = createMockJobSource();
             const expectedPublishedDate = new Date(rawJob.publishedAt);
@@ -166,7 +209,7 @@ describe('AshbyProcessor Logic', () => {
             expect(result.companyName).toBe(source.name);
             expect(result.companyWebsite).toBe(source.companyWebsite);
             expect(result.jobType).toBe(JobType.FULL_TIME);
-            expect(result.experienceLevel).toBe(ExperienceLevel.MID_LEVEL);
+            expect(result.experienceLevel).toBe(ExperienceLevel.MID);
             expect(result.jobType2).toBe('global');
             expect(result.workplaceType).toBe(WorkplaceType.REMOTE);
             expect(result.skills).toEqual(['React', 'Node.js']);
@@ -186,7 +229,14 @@ describe('AshbyProcessor Logic', () => {
 
         it('should build location string correctly (Single City/Country)', () => {
             const rawJob = createMockAshbyJob({
-                locations: [createMockAshbyLocation({ name: 'Office', address: { city: 'Sao Paulo', state: 'SP', countryCode: 'BR' } })],
+                locations: [createMockAshbyLocation({
+                    name: 'Office',
+                    address: { 
+                        // Provide all fields, even if null
+                        rawAddress: null, streetAddress1: null, streetAddress2: null, 
+                        city: 'Sao Paulo', state: 'SP', postalCode: null, country: null, countryCode: 'BR' 
+                    }
+                })],
                 isRemote: false
             });
             const source = createMockJobSource();
@@ -199,12 +249,26 @@ describe('AshbyProcessor Logic', () => {
         it('should build location string correctly (Multiple locations, unique parts)', () => {
             const rawJob = createMockAshbyJob({
                 locations: [
-                    createMockAshbyLocation({ name: 'Remote' }),
-                    createMockAshbyLocation({ name: 'Office', address: { city: 'London', countryCode: 'GB' } }),
+                    createMockAshbyLocation({ name: 'Remote', isRemote: true }), // Remote doesn't need full address
+                    createMockAshbyLocation({
+                        name: 'Office',
+                        address: { 
+                             // Provide all fields, even if null
+                             rawAddress: null, streetAddress1: null, streetAddress2: null, 
+                             city: 'London', state: null, postalCode: null, country: null, countryCode: 'GB'
+                         }
+                    }),
                 ],
                 secondaryLocations: [
-                   createMockAshbyLocation({ name: 'Hub', address: { city: 'London', countryCode: 'GB' } }),
-                   createMockAshbyLocation({ name: 'Paris Hub' })
+                   createMockAshbyLocation({
+                       name: 'Hub',
+                       address: { 
+                            // Provide all fields, even if null
+                            rawAddress: null, streetAddress1: null, streetAddress2: null, 
+                            city: 'London', state: null, postalCode: null, country: null, countryCode: 'GB'
+                        }
+                    }),
+                   createMockAshbyLocation({ name: 'Paris Hub' }) // No address needed here
                 ],
                 isRemote: true
             });
@@ -310,13 +374,13 @@ describe('AshbyProcessor Logic', () => {
              const source = createMockJobSource();
              const beforeMapping = new Date();
               // @ts-ignore
-              const result = processor._mapToStandardizedJob(rawJob, source, rawJob.jobUrl, mockLogger);
+              const result = processor._mapToStandardizedJob(rawJob, source, rawJob.jobUrl!, mockLogger);
               const afterMapping = new Date();
 
               // Check that publishedAt is roughly the current time
-              expect(result.publishedAt).toBeDefined();
-              expect(result.publishedAt.getTime()).toBeGreaterThanOrEqual(beforeMapping.getTime());
-              expect(result.publishedAt.getTime()).toBeLessThanOrEqual(afterMapping.getTime());
+              expect(result.publishedAt!).toBeDefined();
+              expect(result.publishedAt!.getTime()).toBeGreaterThanOrEqual(beforeMapping.getTime());
+              expect(result.publishedAt!.getTime()).toBeLessThanOrEqual(afterMapping.getTime());
 
              // updatedAt field is not part of the output of _mapToStandardizedJob
          });
@@ -339,12 +403,9 @@ describe('AshbyProcessor Logic', () => {
     // --- Tests for processJob ---
     describe('processJob', () => {
         it('should return success:false if essential fields are missing (jobUrl/id)', async () => {
-            const testJob = createMockAshbyJob();
-            // Delete the properties after creation to avoid the error in the factory function
-            delete testJob.jobUrl;
-            delete testJob.id;
+            const testJob = createMockAshbyJob({ jobUrl: undefined, id: undefined });
             
-            const result = await processor.processJob(testJob, createMockJobSource(), mockLogger);
+            const result = await processor.processJob(testJob as AshbyApiJob, createMockJobSource(), mockLogger);
             expect(result.success).toBe(false);
             // Correct the expected error message based on implementation
             expect(result.error).toBe('Missing jobUrl to use as sourceId'); 

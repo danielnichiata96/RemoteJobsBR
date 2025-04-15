@@ -11,6 +11,7 @@ model User {
   id                 String               @id @default(cuid())
   email              String               @unique
   name               String
+  normalizedCompanyName String?           @db.Text
   password           String?
   image              String?
   role               UserRole
@@ -53,6 +54,7 @@ model User {
   resetTokens        PasswordResetToken[]
   savedJobs          SavedJob[]
   sessions           Session[]
+  @@index([normalizedCompanyName])
 }
 
 model Account {
@@ -97,6 +99,7 @@ model Job {
   sourceUrl        String?         // Original job URL
   companyId        String
   title            String
+  normalizedTitle  String?         @db.Text
   description      String?         @db.Text
   requirements     String?         @db.Text
   responsibilities String?
@@ -133,6 +136,7 @@ model Job {
   @@unique([source, sourceId])
   @@index([publishedAt])
   @@index([companyId])
+  @@index([companyId, normalizedTitle, status])
 }
 
 model SavedJob {
@@ -187,6 +191,7 @@ model JobSource {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   lastFetched   DateTime?
+  runStats      JobSourceRunStats[] // Add relation to run stats
 
   @@unique([name, type])
 }
@@ -199,6 +204,24 @@ model Technology {
   jobs  Job[]
 
   @@index([name]) // Index for faster lookups by name
+}
+
+model JobSourceRunStats {
+  id            String   @id @default(cuid())
+  jobSourceId   String
+  runStartedAt  DateTime @default(now())
+  runEndedAt    DateTime @updatedAt // Or set manually at end of run
+  status        String   // e.g., "SUCCESS", "FAILURE", "PARTIAL_SUCCESS"
+  jobsFound     Int      @default(0) // Total jobs returned by source API
+  jobsRelevant  Int      @default(0) // Jobs passing initial filter (_isJobRelevant)
+  jobsProcessed Int      @default(0) // Jobs successfully saved/updated
+  jobsErrored   Int      @default(0) // Jobs that failed during processing/saving
+  errorMessage  String?  @db.Text // Store first/last error message if status is FAILURE (use Text for potentially long messages)
+  durationMs    Int?     // Duration of the fetch + process cycle in milliseconds
+
+  jobSource     JobSource @relation(fields: [jobSourceId], references: [id], onDelete: Cascade) // Link back to JobSource
+
+  @@index([jobSourceId, runStartedAt])
 }
 
 // --- Enums ---

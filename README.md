@@ -88,6 +88,19 @@ Site de vagas remotas internacionais para aplicantes brasileiros.
 - `npm run clean-db` - Executa `src/scripts/cleanDatabase.ts` (Propósito exato a confirmar - limpeza geral do DB).
 - `npm run fix-jobs` - Executa `src/scripts/fixJobSources.ts` (Propósito exato a confirmar - correção de dados de fontes).
 
+## Utility Scripts
+
+Detailed information on available utility scripts:
+
+*   `npm run fetch-jobs`: Executes `src/scripts/fetchJobSources.ts` to fetch new jobs from all enabled sources. Concurrency is configurable via the `FETCH_CONCURRENCY` environment variable (defaults to 5).
+*   `npm run deactivate-stale-jobs`: Executes `scripts/deactivateStaleJobs.ts` to mark old job postings (defaulting to those not updated in the last 30 days) as inactive (`CLOSED`). The threshold can be adjusted via the `STALE_JOB_THRESHOLD_DAYS` environment variable.
+*   `npm run add-bulk-sources`: Executes `src/scripts/addBulkJobSources.ts` to add or update multiple Greenhouse job sources defined within the script file.
+*   `npm run list-sources`: Executes `src/scripts/listJobSources.ts` to display currently configured job sources in the database.
+*   `npm run backfill-normalized`: Executes `scripts/backfillNormalizedFields.ts` to populate the `normalizedCompanyName` field for existing Company users and the `normalizedTitle` field for existing Jobs where these fields are currently `null`. This is useful after initial setup or schema changes.
+*   `npm run prisma:studio`: Opens Prisma Studio, a GUI tool for direct database inspection and modification.
+*   `npm run clean-db`: *Purpose needs clarification/implementation.* Executes `src/scripts/cleanDatabase.ts`.
+*   `npm run fix-jobs`: *Purpose needs clarification/implementation.* Executes `src/scripts/fixJobSources.ts`.
+
 ## Estrutura do Projeto
 
 ```

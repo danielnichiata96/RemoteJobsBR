@@ -23,6 +23,9 @@ export class GreenhouseFetcher implements JobFetcher {
     }
 
     async processSource(source: JobSource, parentLogger: pino.Logger): Promise<FetcherResult> {
+        const startTime = Date.now(); // Record start time
+        let errorMessage: string | undefined = undefined;
+
         const sourceLogger = parentLogger.child({ fetcher: 'Greenhouse', sourceName: source.name, sourceId: source.id });
         const stats: SourceStats = { found: 0, relevant: 0, processed: 0, deactivated: 0, errors: 0 };
         const foundSourceIds = new Set<string>();
@@ -32,11 +35,15 @@ export class GreenhouseFetcher implements JobFetcher {
 
         try {
             // --- Load Configuration ---
+            sourceLogger.trace('Loading configuration...');
             const greenhouseConfig = getGreenhouseConfig(source.config);
             if (!greenhouseConfig || !greenhouseConfig.boardToken) {
                 sourceLogger.error('❌ Missing or invalid boardToken in source config');
                 stats.errors++;
-                return { stats, foundSourceIds };
+                errorMessage = 'Invalid boardToken in source config';
+                // Calculate duration before early return
+                const durationMs = Date.now() - startTime;
+                return { stats, foundSourceIds, durationMs, errorMessage };
             }
             boardToken = String(greenhouseConfig.boardToken);
             apiUrl = `https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs?content=true`;
@@ -50,17 +57,23 @@ export class GreenhouseFetcher implements JobFetcher {
             } catch (error: any) {
                 sourceLogger.error({ err: error, configPath: path.resolve(__dirname, '../../config/greenhouse-filter-config.json') }, `❌ Failed to load or parse filter configuration. Aborting.`);
                 stats.errors++;
-                return { stats, foundSourceIds };
+                errorMessage = `Failed to load filter config: ${error?.message || 'Unknown error'}`;
+                 // Calculate duration before early return
+                const durationMs = Date.now() - startTime;
+                return { stats, foundSourceIds, durationMs, errorMessage };
             }
 
             // --- Fetch Jobs ---
-            sourceLogger.debug({ apiUrl }, 'Fetching jobs from Greenhouse API...');
+            sourceLogger.trace({ apiUrl }, 'Fetching jobs from Greenhouse API...');
             const response = await axios.get(apiUrl, { timeout: 45000 });
 
             if (!response.data || !Array.isArray(response.data.jobs)) {
                 sourceLogger.error({ responseStatus: response.status, responseData: response.data }, '❌ Invalid response structure from Greenhouse API');
                 stats.errors++;
-                return { stats, foundSourceIds };
+                errorMessage = 'Invalid response structure from Greenhouse API';
+                 // Calculate duration before early return
+                const durationMs = Date.now() - startTime;
+                return { stats, foundSourceIds, durationMs, errorMessage };
             }
             const apiJobs: GreenhouseJob[] = response.data.jobs;
             stats.found = apiJobs.length;
@@ -69,19 +82,24 @@ export class GreenhouseFetcher implements JobFetcher {
 
             if (apiJobs.length === 0) {
                  sourceLogger.info('No jobs found for this source.');
-                 return { stats, foundSourceIds };
+                  // Calculate duration before early return
+                 const durationMs = Date.now() - startTime;
+                 return { stats, foundSourceIds, durationMs, errorMessage }; // errorMessage is undefined here
             }
              sourceLogger.trace({ sampleJobId: apiJobs[0]?.id, sampleJobTitle: apiJobs[0]?.title }, 'Sample job structure check');
 
             // --- Process Jobs ---
-            sourceLogger.debug(`Processing ${apiJobs.length} jobs for relevance...`);
+            sourceLogger.trace(`Processing ${apiJobs.length} jobs for relevance...`);
+            // Store the first significant error encountered during job processing
+            let firstJobProcessingError: string | undefined = undefined; 
+            
             await pMap(apiJobs, async (job) => {
                  const jobLogger = sourceLogger.child({ jobId: job.id, jobTitle: job.title });
                 try {
                     const relevanceResult = this._isJobRelevant(job, filterConfig!, jobLogger);
                     if (relevanceResult.relevant) {
                         stats.relevant++;
-                        jobLogger.info(
+                        jobLogger.trace(
                             { reason: relevanceResult.reason, type: relevanceResult.type },
                             `➡️ Relevant job found`
                         );
@@ -95,15 +113,20 @@ export class GreenhouseFetcher implements JobFetcher {
 
                         if (saved) {
                             stats.processed++;
-                            jobLogger.debug('Job processed/saved via adapter.');
+                            jobLogger.trace('Job processed/saved via adapter.');
                         } else {
-                            jobLogger.warn('Adapter reported job not saved (processor failure, duplicate, irrelevant post-processing, or save issue).');
+                            // Note: Adapter failures (like duplicates) might not be counted as errors here
+                            // but could be inferred later if processed < relevant.
+                            jobLogger.trace('Adapter reported job not saved (processor failure, duplicate, irrelevant post-processing, or save issue).');
                         }
                     } else {
-                        jobLogger.debug({ reason: relevanceResult.reason }, `Job skipped as irrelevant`);
+                        jobLogger.trace({ reason: relevanceResult.reason }, `Job skipped as irrelevant`);
                     }
                 } catch (jobError: any) {
                     stats.errors++;
+                    if (!firstJobProcessingError) { // Capture the first error
+                        firstJobProcessingError = `Job ${job.id} (${job.title}): ${jobError?.message || 'Unknown processing error'}`;
+                    }
                     const errorDetails = {
                         message: jobError?.message,
                         stack: jobError?.stack?.split('\n').slice(0, 5).join('\n'),
@@ -114,15 +137,22 @@ export class GreenhouseFetcher implements JobFetcher {
             }, { concurrency: 5, stopOnError: false });
 
             sourceLogger.info(`✓ Processing completed.`);
+            // Assign the first job processing error if one occurred
+            if (firstJobProcessingError) {
+                errorMessage = firstJobProcessingError;
+            }
 
         } catch (error) {
             stats.errors++;
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            errorMessage = `General processing error: ${errorMsg}`;
             if (axios.isAxiosError(error)) {
                 const axiosError = error as AxiosError;
                 sourceLogger.error(
                     { status: axiosError.response?.status, code: axiosError.code, message: axiosError.message, url: apiUrl },
                     `❌ Axios error fetching jobs for source`
                 );
+                errorMessage = `Axios error (${axiosError.code || 'N/A'}): ${axiosError.message}`;
             } else {
                  const genericError = error as Error;
                  sourceLogger.error({ 
@@ -130,10 +160,13 @@ export class GreenhouseFetcher implements JobFetcher {
                      boardToken, 
                      apiUrl 
                  }, '❌ General error processing source');
+                  errorMessage = `General error: ${genericError.message}`;
             }
         }
-
-        return { stats, foundSourceIds };
+        
+        const durationMs = Date.now() - startTime; // Calculate final duration
+        sourceLogger.info({ durationMs, stats }, 'Fetcher finished execution.');
+        return { stats, foundSourceIds, durationMs, errorMessage }; // Return updated result object
     }
 
     // --- Private Helper Methods ---
@@ -471,12 +504,15 @@ export class GreenhouseFetcher implements JobFetcher {
         const jobLogger = logger.child({ jobId: job.id, jobTitle: job.title, fn: '_isJobRelevant' });
         jobLogger.debug("--- Starting Relevance Check ---");
 
-        // 1. Metadata Check (Highest Priority)
+        // --- Check Order: Metadata -> Location -> Content --- 
+
+        // 1. Metadata Check
         const metadataResult = this._checkMetadataForRemoteness(job.metadata || [], filterConfig, jobLogger);
         jobLogger.debug({ metadataResult }, "Metadata Check Result");
         if (metadataResult === 'REJECT') {
             return { relevant: false, reason: 'Metadata indicates Restriction' };
         }
+        // Accept LATAM immediately if found in metadata
         if (metadataResult === 'ACCEPT_LATAM') {
             return { relevant: true, reason: 'Metadata(LATAM)', type: 'latam' };
         }
@@ -487,6 +523,7 @@ export class GreenhouseFetcher implements JobFetcher {
         if (locationCheck.decision === 'REJECT') {
             return { relevant: false, reason: locationCheck.reason || 'Location/Office indicates Restriction' };
         }
+        // Accept LATAM immediately if found in location
         if (locationCheck.decision === 'ACCEPT_LATAM') {
             return { relevant: true, reason: locationCheck.reason || 'Location/Office(LATAM)', type: 'latam' };
         }
@@ -497,17 +534,21 @@ export class GreenhouseFetcher implements JobFetcher {
         if (contentCheck.decision === 'REJECT') {
             return { relevant: false, reason: contentCheck.reason || 'Content indicates Restriction' };
         }
+        // Accept LATAM immediately if found in content
         if (contentCheck.decision === 'ACCEPT_LATAM') {
             return { relevant: true, reason: contentCheck.reason || 'Content(LATAM)', type: 'latam' };
         }
 
-        // 4. Final Decision Logic (Considering Global signals and fallbacks)
+        // --- Final Decision Logic (GLOBAL or UNKNOWN/REJECT) --- 
+        // If we reach here, no stage has definitively REJECTED or ACCEPTED_LATAM.
+        // We now check if any stage indicated GLOBAL acceptance.
         const isGlobalFromMetadata = metadataResult === 'ACCEPT_GLOBAL';
         const isGlobalFromLocation = locationCheck.decision === 'ACCEPT_GLOBAL';
         const isGlobalFromContent = contentCheck.decision === 'ACCEPT_GLOBAL';
 
         if (isGlobalFromMetadata || isGlobalFromLocation || isGlobalFromContent) {
              let globalReason = 'Unknown Global Signal';
+             // Prioritize the reason from the first GLOBAL signal found
              if (isGlobalFromMetadata) globalReason = 'Metadata(Global)';
              else if (isGlobalFromLocation) globalReason = locationCheck.reason || 'Location/Office(Global)';
              else if (isGlobalFromContent) globalReason = contentCheck.reason || 'Content(Global)';
@@ -516,7 +557,8 @@ export class GreenhouseFetcher implements JobFetcher {
              return { relevant: true, reason: globalReason, type: 'global' };
         }
 
-        jobLogger.debug("Final Decision: Job is not relevant (UNKNOWN outcome).");
+        // If no REJECT, no ACCEPT_LATAM, and no ACCEPT_GLOBAL signal was found, treat as irrelevant.
+        jobLogger.debug("Final Decision: Job is not relevant (Ambiguous or No Remote Signal).");
         return { relevant: false, reason: 'Ambiguous or No Remote Signal' };
     }
 }

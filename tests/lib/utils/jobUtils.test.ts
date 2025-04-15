@@ -44,8 +44,8 @@ describe('jobUtils', () => {
         });
 
         it('should decode common HTML entities', () => {
-            const html = 'Less than &lt; Greater than &gt; Ampersand &amp; Quote &quot; Apostrophe &#39; Space &nbsp; Here';
-            expect(stripHtml(html)).toBe('Less than < Greater than > Ampersand & Quote " Apostrophe ' Space   Here');
+            const html = "Less than &lt; Greater than &gt; Ampersand &amp; Quote &quot; Apostrophe &#39; Space &nbsp; Here";
+            expect(stripHtml(html)).toBe('Less than < Greater than > Ampersand & Quote " Apostrophe \' Space   Here');
         });
 
         it('should normalize whitespace', () => {

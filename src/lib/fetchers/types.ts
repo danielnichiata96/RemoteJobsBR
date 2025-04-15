@@ -18,6 +18,8 @@ export interface SourceStats {
 export interface FetcherResult {
     stats: SourceStats;
     foundSourceIds: Set<string>; // Set of job sourceIds found during this fetch
+    durationMs: number;          // Duration of the processSource execution
+    errorMessage?: string;       // Optional error message if the process failed significantly
 }
 
 /**

@@ -4,7 +4,7 @@ import pino from 'pino';
 import { JobProcessingAdapter } from '../lib/adapters/JobProcessingAdapter';
 import { JobProcessingService } from '../lib/services/jobProcessingService';
 import { GreenhouseFetcher } from '../lib/fetchers/GreenhouseFetcher';
-import { JobFetcher, FetcherResult } from '../lib/fetchers/types';
+import { JobFetcher, FetcherResult, SourceStats } from '../lib/fetchers/types';
 import { AshbyFetcher } from '../lib/fetchers/AshbyFetcher';
 import { searchCache } from '../lib/cache/searchCache';
 
@@ -76,8 +76,6 @@ async function main() {
     await pMap(
       sources,
       async (source: JobSource) => {
-        const startTime = Date.now();
-        // Create a logger specific to this source for better context
         const sourceLogger = logger.child({
           sourceId: source.id,
           sourceName: source.name,
@@ -85,60 +83,102 @@ async function main() {
         });
         sourceLogger.info(`Processing source...`);
 
-        // Find the correct fetcher based on the source type
         const fetcher = fetcherMap.get(source.type.toLowerCase());
 
+        let runStatus = 'FAILURE'; // Default to failure
+        let fetcherResult: FetcherResult | null = null;
+
         if (!fetcher) {
-          sourceLogger.warn(
-            `No fetcher registered for source type '${source.type}'. Skipping.`
-          );
-          totalErrors++; // Count as an error for the summary
-          return; // Skip to the next source
-        }
-
-        try {
-          // Execute the fetcher's processSource method
-          const result: FetcherResult = await fetcher.processSource(
-            source,
-            sourceLogger
-          );
-          const duration = (Date.now() - startTime) / 1000;
-
-          // Aggregate statistics
-          totalJobsFound += result.stats.found;
-          totalJobsRelevant += result.stats.relevant;
-          totalJobsProcessed += result.stats.processed;
-          totalErrors += result.stats.errors;
-
-          // Store the set of job source IDs found for this source, grouped by type
-          const sourceTypeName = source.type.toLowerCase();
-          if (!allActiveSourceIdsByType.has(sourceTypeName)) {
-            allActiveSourceIdsByType.set(sourceTypeName, new Set<string>());
-          }
-          const activeIdsForType = allActiveSourceIdsByType.get(sourceTypeName)!; // Assert non-null as we just set it
-          result.foundSourceIds.forEach((id) => activeIdsForType.add(id));
-
-          sourceLogger.info(
-            {
-              duration: `${duration.toFixed(2)}s`,
-              found: result.stats.found,
-              relevant: result.stats.relevant,
-              processed: result.stats.processed,
-              errors: result.stats.errors,
-            },
-            `Finished processing source.`
-          );
-          totalSourcesProcessed++;
-        } catch (fetcherError) {
-          // Catch errors specifically from the fetcher.processSource call
+          sourceLogger.warn(`No fetcher registered for source type '${source.type}'. Skipping.`);
           totalErrors++;
-          sourceLogger.error(
-            { error: fetcherError },
-            `Unhandled error during fetcher.processSource for source.`
-          );
+          fetcherResult = { 
+            stats: { found: 0, relevant: 0, processed: 0, deactivated: 0, errors: 1 }, 
+            foundSourceIds: new Set(), 
+            durationMs: 0, 
+            errorMessage: `No fetcher registered for type '${source.type}'` 
+          };
+        } else {
+          try {
+            fetcherResult = await fetcher.processSource(source, sourceLogger);
+            
+            // Determine status based on errors
+            if (fetcherResult.stats.errors === 0 && !fetcherResult.errorMessage) {
+              runStatus = 'SUCCESS';
+            } else if (fetcherResult.stats.processed > 0 || fetcherResult.stats.relevant > 0) {
+              runStatus = 'PARTIAL_SUCCESS'; // Some jobs processed despite errors
+            } else {
+              runStatus = 'FAILURE';
+            }
+
+            // Aggregate statistics
+            totalJobsFound += fetcherResult.stats.found;
+            totalJobsRelevant += fetcherResult.stats.relevant;
+            totalJobsProcessed += fetcherResult.stats.processed;
+            totalErrors += fetcherResult.stats.errors;
+
+            // Store active IDs
+            const sourceTypeName = source.type.toLowerCase();
+            if (!allActiveSourceIdsByType.has(sourceTypeName)) {
+              allActiveSourceIdsByType.set(sourceTypeName, new Set<string>());
+            }
+            const activeIdsForType = allActiveSourceIdsByType.get(sourceTypeName)!;
+            fetcherResult.foundSourceIds.forEach((id) => activeIdsForType.add(id));
+
+            sourceLogger.info(
+              {
+                duration: `${(fetcherResult.durationMs / 1000).toFixed(2)}s`,
+                found: fetcherResult.stats.found,
+                relevant: fetcherResult.stats.relevant,
+                processed: fetcherResult.stats.processed,
+                errors: fetcherResult.stats.errors,
+                status: runStatus,
+              },
+              `Finished processing source.`
+            );
+            totalSourcesProcessed++;
+
+          } catch (fetcherError) {
+            totalErrors++;
+            const errorMsg = fetcherError instanceof Error ? fetcherError.message : String(fetcherError);
+            runStatus = 'FAILURE';
+            fetcherResult = { 
+              stats: { found: 0, relevant: 0, processed: 0, deactivated: 0, errors: 1 }, 
+              foundSourceIds: new Set(), 
+              durationMs: 0, // Or calculate duration until error if possible?
+              errorMessage: `Unhandled error: ${errorMsg}` 
+            };
+            sourceLogger.error(
+              { error: fetcherError },
+              `Unhandled error during fetcher.processSource for source.`
+            );
+          }
+        }
+        
+        // *** Save Run Statistics ***
+        if (fetcherResult) {
+          try {
+            await prisma.jobSourceRunStats.create({
+              data: {
+                jobSourceId: source.id,
+                runStartedAt: new Date(Date.now() - fetcherResult.durationMs), // Approximate start time
+                // runEndedAt will be set by @updatedAt (or set explicitly)
+                status: runStatus,
+                jobsFound: fetcherResult.stats.found,
+                jobsRelevant: fetcherResult.stats.relevant,
+                jobsProcessed: fetcherResult.stats.processed,
+                jobsErrored: fetcherResult.stats.errors,
+                errorMessage: fetcherResult.errorMessage?.substring(0, 1000), // Truncate long messages
+                durationMs: fetcherResult.durationMs,
+              }
+            });
+            sourceLogger.trace('Saved run statistics to database.');
+          } catch (statsError) {
+            sourceLogger.error({ error: statsError }, 'Failed to save run statistics to database.');
+            // Don't increment totalErrors here to avoid double counting
+          }
         }
       },
-      { concurrency: concurrencyLevel, stopOnError: false } // Use configurable concurrency level
+      { concurrency: concurrencyLevel, stopOnError: false }
     );
 
     // 3. Deactivate jobs that are no longer found in the active sources

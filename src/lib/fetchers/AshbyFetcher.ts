@@ -386,76 +386,83 @@ export class AshbyFetcher implements JobFetcher {
 
     // --- Main Fetcher Method ---
     async processSource(source: JobSource, parentLogger: pino.Logger): Promise<FetcherResult> {
+        const startTime = Date.now(); // Record start time
+        let errorMessage: string | undefined = undefined;
+
         const sourceLogger = parentLogger.child({ fetcher: 'Ashby', sourceName: source.name, sourceId: source.id });
         const stats: SourceStats = { found: 0, relevant: 0, processed: 0, deactivated: 0, errors: 0 };
         const foundSourceIds = new Set<string>();
         let jobBoardName: string | null = null;
         let apiUrl: string | null = null;
 
-        if (!this.ashbyPositiveConfig || !this.negativeConfig) {
-            sourceLogger.error("❌ Filter configurations failed to load. Cannot process source.");
-            stats.errors++;
-            return { stats, foundSourceIds };
-        }
-
         try {
-            // --- Load Configuration ---
+            // Ensure configs are loaded
+            if (!this.ashbyPositiveConfig || !this.negativeConfig) {
+                errorMessage = "Filter configurations not loaded. Cannot process source.";
+                sourceLogger.error(errorMessage);
+                stats.errors++;
+                const durationMs = Date.now() - startTime;
+                return { stats, foundSourceIds, durationMs, errorMessage };
+            }
+            
+            // --- Load Configuration from source.config ---
+            sourceLogger.trace('Loading Ashby configuration from source...');
             const ashbyConfig = getAshbyConfig(source.config);
             if (!ashbyConfig || !ashbyConfig.jobBoardName) {
-                sourceLogger.error('❌ Missing or invalid jobBoardName in source config');
+                errorMessage = 'Missing or invalid jobBoardName in source config';
+                sourceLogger.error('❌ ' + errorMessage);
                 stats.errors++;
-                return { stats, foundSourceIds };
+                const durationMs = Date.now() - startTime;
+                return { stats, foundSourceIds, durationMs, errorMessage };
             }
             jobBoardName = String(ashbyConfig.jobBoardName);
-            apiUrl = `https://api.ashbyhq.com/posting-api/job-board/${jobBoardName}`; // Correct API endpoint
+            // Construct the API URL (ensure leading/trailing slashes are handled)
+            apiUrl = `https://api.ashbyhq.com/posting-api/job-board/${jobBoardName.trim().replace(/^\/+|\/$/g, '')}`;
             sourceLogger.info({ jobBoardName }, `-> Starting processing...`);
 
             // --- Fetch Jobs ---
-            sourceLogger.debug({ apiUrl }, 'Fetching jobs from Ashby API...');
-            const response = await axios.get<{ results: AshbyApiJob[] }>(apiUrl, {
-                timeout: 45000,
-                headers: {
-                    'Accept': 'application/json' // Ensure we accept JSON
-                }
-            });
+            sourceLogger.trace({ apiUrl }, 'Fetching jobs from Ashby API...');
+            const response = await axios.get(apiUrl, { timeout: 45000 });
 
             if (!response.data || !Array.isArray(response.data.results)) {
-                sourceLogger.error({ responseStatus: response.status, responseData: response.data }, '❌ Invalid response structure from Ashby API');
+                errorMessage = 'Invalid response structure from Ashby API (expected data.results array)';
+                sourceLogger.error({ responseStatus: response.status, responseDataPreview: JSON.stringify(response.data)?.substring(0, 200) + '...' }, '❌ ' + errorMessage);
                 stats.errors++;
-                return { stats, foundSourceIds };
+                const durationMs = Date.now() - startTime;
+                return { stats, foundSourceIds, durationMs, errorMessage };
             }
+
             const apiJobs: AshbyApiJob[] = response.data.results;
             stats.found = apiJobs.length;
-            apiJobs.forEach(job => {
-                 if (job.id) foundSourceIds.add(String(job.id)) // Check if id exists
-                 else sourceLogger.warn({ jobTitle: job.title, jobUrl: job.jobUrl }, 'Job found without an ID');
-            });
+            // Use jobUrl or id as the sourceId
+            apiJobs.forEach(job => foundSourceIds.add(job.jobUrl || job.id));
             sourceLogger.info(`+ ${stats.found} jobs found in API response.`);
 
             if (apiJobs.length === 0) {
-                sourceLogger.info('No jobs found for this source.');
-                return { stats, foundSourceIds };
+                 sourceLogger.info('No jobs found for this source.');
+                 const durationMs = Date.now() - startTime;
+                 return { stats, foundSourceIds, durationMs, errorMessage }; // errorMessage is undefined
             }
-            sourceLogger.trace({ sampleJobId: apiJobs[0]?.id, sampleJobTitle: apiJobs[0]?.title }, 'Sample job structure check');
+             sourceLogger.trace({ sampleJobId: apiJobs[0]?.id, sampleJobTitle: apiJobs[0]?.title }, 'Sample job structure check');
 
             // --- Process Jobs ---
-            sourceLogger.debug(`Processing ${apiJobs.length} jobs for relevance...`);
+            sourceLogger.trace(`Processing ${apiJobs.length} jobs for relevance...`);
+            let firstJobProcessingError: string | undefined = undefined;
+            
             await pMap(apiJobs, async (job) => {
-                const jobLogger = sourceLogger.child({ jobId: job.id || job.jobUrl, jobTitle: job.title });
+                 const jobLogger = sourceLogger.child({ jobId: job.jobUrl || job.id, jobTitle: job.title });
                 try {
-                     if (job.isListed === false) {
-                         jobLogger.debug("Job skipped: isListed is false.");
-                         return;
-                     }
-                    // Use the refined _isJobRelevant with proximity checks
+                    // Determine hiring region type *before* calling processRawJob
                     const relevanceResult = this._isJobRelevant(job, this.ashbyPositiveConfig, this.negativeConfig, jobLogger);
+                    
                     if (relevanceResult.relevant) {
                         stats.relevant++;
-                        jobLogger.info(
+                        jobLogger.trace(
                             { reason: relevanceResult.reason, type: relevanceResult.type },
                             `➡️ Relevant job found`
                         );
 
+                        // Add the determined type to the job object for the processor
                         const enhancedJob = {
                             ...job,
                             _determinedHiringRegionType: relevanceResult.type
@@ -465,34 +472,43 @@ export class AshbyFetcher implements JobFetcher {
 
                         if (saved) {
                             stats.processed++;
-                            jobLogger.debug('Job processed/saved via adapter.');
+                            jobLogger.trace('Job processed/saved via adapter.');
                         } else {
-                            jobLogger.warn('Adapter reported job not saved (processor failure, duplicate, irrelevant post-processing, or save issue).');
+                            jobLogger.trace('Adapter reported job not saved (processor failure, duplicate, irrelevant post-processing, or save issue).');
                         }
                     } else {
-                        jobLogger.debug({ reason: relevanceResult.reason }, `Job skipped as irrelevant`);
+                        jobLogger.trace({ reason: relevanceResult.reason }, `Job skipped as irrelevant`);
                     }
                 } catch (jobError: any) {
                     stats.errors++;
+                     if (!firstJobProcessingError) {
+                        firstJobProcessingError = `Job ${job.id} (${job.title}): ${jobError?.message || 'Unknown processing error'}`;
+                    }
                     const errorDetails = {
                         message: jobError?.message,
                         stack: jobError?.stack?.split('\n').slice(0, 5).join('\n'),
                         name: jobError?.name,
                     };
-                    jobLogger.error({ error: errorDetails }, '❌ Error processing individual job or calling adapter');
+                     jobLogger.error({ error: errorDetails }, '❌ Error processing individual job or calling adapter');
                 }
             }, { concurrency: 5, stopOnError: false });
 
             sourceLogger.info(`✓ Processing completed.`);
+             if (firstJobProcessingError) {
+                errorMessage = firstJobProcessingError;
+            }
 
         } catch (error) {
             stats.errors++;
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            errorMessage = `General processing error: ${errorMsg}`;
             if (axios.isAxiosError(error)) {
                 const axiosError = error as AxiosError;
-                sourceLogger.error(
+                 sourceLogger.error(
                     { status: axiosError.response?.status, code: axiosError.code, message: axiosError.message, url: apiUrl },
                     `❌ Axios error fetching jobs for source`
                 );
+                 errorMessage = `Axios error (${axiosError.code || 'N/A'}): ${axiosError.message}`;
             } else {
                  const genericError = error as Error;
                  sourceLogger.error({ 
@@ -500,9 +516,12 @@ export class AshbyFetcher implements JobFetcher {
                      jobBoardName, 
                      apiUrl 
                  }, '❌ General error processing source');
+                  errorMessage = `General error: ${genericError.message}`;
             }
         }
 
-        return { stats, foundSourceIds };
+         const durationMs = Date.now() - startTime; // Calculate final duration
+         sourceLogger.info({ durationMs, stats }, 'Fetcher finished execution.');
+         return { stats, foundSourceIds, durationMs, errorMessage }; // Return updated result object
     }
 }

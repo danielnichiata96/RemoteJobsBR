@@ -10,12 +10,13 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "prisma:studio": "prisma studio",
-    "fetch-jobs": "ts-node -r tsconfig-paths/register src/scripts/fetchJobSources.ts",
-    "add-bulk-sources": "ts-node --transpile-only src/scripts/addBulkJobSources.ts",
-    "list-sources": "ts-node --transpile-only src/scripts/listJobSources.ts",
-    "clean-db": "ts-node --transpile-only src/scripts/cleanDatabase.ts",
-    "fix-jobs": "ts-node --transpile-only src/scripts/fixJobSources.ts",
-    "deactivate-stale-jobs": "ts-node scripts/deactivateStaleJobs.ts"
+    "fetch-jobs": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/fetchJobSources.ts",
+    "add-bulk-sources": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/addBulkJobSources.ts",
+    "list-sources": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/listJobSources.ts",
+    "clean-db": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/cleanDatabase.ts",
+    "fix-jobs": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/fixJobSources.ts",
+    "deactivate-stale-jobs": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} scripts/deactivateStaleJobs.ts",
+    "backfill-normalized": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} scripts/backfillNormalizedFields.ts"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.1",

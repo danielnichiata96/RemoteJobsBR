@@ -1,15 +1,15 @@
 import { JobProcessor, StandardizedJob, ProcessedJobResult, EnhancedGreenhouseJob, GreenhouseJob } from './types';
 import { 
   extractSkills, 
-  cleanHtml, 
   detectJobType, 
   detectExperienceLevel,
   parseSections,
   isRemoteJob 
 } from '../utils/jobUtils';
+import { stripHtml } from '../utils/textUtils';
 import pino from 'pino';
 import { JobType, ExperienceLevel, HiringRegion, JobSource, Prisma } from '@prisma/client';
-import { extractDomain } from '../utils/logoUtils';
+import { extractDomain, buildCompanyLogoUrl } from '../utils/logoUtils';
 
 const logger = pino({
   name: 'greenhouseProcessor',
@@ -20,15 +20,38 @@ export class GreenhouseProcessor implements JobProcessor {
   source = 'greenhouse';
 
   async processJob(rawJob: GreenhouseJob | EnhancedGreenhouseJob, sourceData?: JobSource): Promise<ProcessedJobResult> {
+    // *** REMOVE TEMP DEBUGGING ***
+    // console.log(`[DEBUG ${rawJob.id}] processJob start`);
+    // let isRemoteResult: boolean | null = null;
+    // let remoteCheckSkipped = false;
+    // ***************************
     try {
       // Check if job is remote - skip if we already pre-verified (by having additional fields)
       const isEnhancedJob = 'requirements' in rawJob && 'responsibilities' in rawJob;
       
-      if (!isEnhancedJob && !isRemoteJob(rawJob.location.name, rawJob.content)) {
-        return {
-          success: false,
-          error: 'Job is not remote or has location restrictions'
-        };
+      // *** REMOVE TEMP DEBUGGING ***
+      // console.log(`[DEBUG ${rawJob.id}] isEnhancedJob: ${isEnhancedJob}`);
+      // ***************************
+
+      if (!isEnhancedJob) {
+        const isRemoteResult = isRemoteJob(rawJob.location.name, rawJob.content);
+        // *** REMOVE TEMP DEBUGGING ***
+        // console.log(`[DEBUG ${rawJob.id}] isRemoteJob called, result: ${isRemoteResult}`);
+        // ***************************
+        if (!isRemoteResult) {
+            // *** REMOVE TEMP DEBUGGING ***
+            // console.log(`[DEBUG ${rawJob.id}] Returning success: false due to isRemoteJob`);
+            // ***************************
+            return {
+                success: false,
+                error: 'Job is not remote or has location restrictions'
+            };
+        }
+      } else {
+          // *** REMOVE TEMP DEBUGGING ***
+          // remoteCheckSkipped = true;
+          // console.log(`[DEBUG ${rawJob.id}] isRemoteJob check skipped (enhanced job)`);
+          // ***************************
       }
 
       // For logging
@@ -56,7 +79,7 @@ export class GreenhouseProcessor implements JobProcessor {
         cleanContent = rawJob.content;
       } else {
         // Process the data normally
-        cleanContent = cleanHtml(rawJob.content);
+        cleanContent = stripHtml(rawJob.content);
         sections = parseSections(cleanContent);
         skills = extractSkills(cleanContent);
       }
@@ -112,18 +135,12 @@ export class GreenhouseProcessor implements JobProcessor {
 
       // --- Logo Fetching (using logo.dev) ---
       try {
-        // Use website from sourceData first, then from rawJob if available
-        const websiteForLogo = standardizedJob.companyWebsite; // Use the value already assigned
+        const websiteForLogo = standardizedJob.companyWebsite; 
         if (websiteForLogo) { 
-          const domain = extractDomain(websiteForLogo);
-          if (domain) {
-            const apiToken = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN || '';
-            const tokenParam = apiToken ? `?token=${apiToken}` : '';
-            standardizedJob.companyLogo = `https://img.logo.dev/${domain}${tokenParam}`;
-            logger.trace({ jobId: rawJob.id, domain, websiteUsed: websiteForLogo, logoUrl: standardizedJob.companyLogo }, 'Generated logo URL.');
-          } else {
-             logger.trace({ jobId: rawJob.id, website: websiteForLogo }, 'Could not extract domain for logo.');
-          }
+          // *** Use the buildCompanyLogoUrl utility function ***
+          standardizedJob.companyLogo = buildCompanyLogoUrl(websiteForLogo);
+          logger.trace({ jobId: rawJob.id, websiteUsed: websiteForLogo, logoUrl: standardizedJob.companyLogo }, 'Called buildCompanyLogoUrl.');
+          // ***************************************************
         } else {
              logger.trace({ jobId: rawJob.id }, 'Company website not available for logo fetching.');
         }
@@ -140,11 +157,18 @@ export class GreenhouseProcessor implements JobProcessor {
           finalCompanyLogo: standardizedJob.companyLogo 
       }, 'Final standardizedJob details before returning from processor');
 
+      // *** REMOVE TEMP DEBUGGING ***
+      // console.log(`[DEBUG ${rawJob.id}] Reached end, returning success: true`);
+      // ***************************
+
       return {
         success: true,
         job: standardizedJob
       };
     } catch (error) {
+      // *** REMOVE TEMP DEBUGGING ***
+      // console.log(`[DEBUG ${rawJob.id}] Caught error: ${error instanceof Error ? error.message : error}`);
+      // ***************************
       logger.error({ 
         error, 
         jobId: rawJob.id,
