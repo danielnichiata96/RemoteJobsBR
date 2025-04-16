@@ -317,9 +317,15 @@ export class GreenhouseFetcher implements JobFetcher {
             return { decision: 'UNKNOWN' };
         }
 
-        // **NEW**: Check for explicit restrictive patterns first
-        if (detectRestrictivePattern(combinedLocationText, logger)) {
-            const reason = `Location/Office indicates Specific Restriction via pattern`;
+        // Combine ALL relevant negative keywords for this check
+        const allNegativeKeywords = [
+            ...(filterConfig.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || []),
+            // Add content keywords here too if they should apply to location string analysis
+            ...(filterConfig.CONTENT_KEYWORDS?.STRONG_NEGATIVE_REGION || []),
+            ...(filterConfig.CONTENT_KEYWORDS?.STRONG_NEGATIVE_TIMEZONE || [])
+        ];
+        if (detectRestrictivePattern(combinedLocationText, allNegativeKeywords, logger)) {
+            const reason = `Location/Office indicates Specific Restriction via keyword/pattern`;
             logger.debug({ location: combinedLocationText }, reason);
             return { decision: 'REJECT', reason };
         }
@@ -411,9 +417,15 @@ export class GreenhouseFetcher implements JobFetcher {
 
         const fullContentLower = ((title || '') + ' ' + (content || '')).toLowerCase();
 
-        // **NEW**: Check for explicit restrictive patterns first
-        if (detectRestrictivePattern(fullContentLower, logger)) {
-             const reason = `Content indicates Specific Restriction via pattern`;
+        // Combine ALL relevant negative keywords for this check
+        const allNegativeKeywords = [
+             // Location keywords can also appear in content
+            ...(filterConfig.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || []),
+            ...(filterConfig.CONTENT_KEYWORDS?.STRONG_NEGATIVE_REGION || []),
+            ...(filterConfig.CONTENT_KEYWORDS?.STRONG_NEGATIVE_TIMEZONE || [])
+        ];
+        if (detectRestrictivePattern(fullContentLower, allNegativeKeywords, logger)) {
+             const reason = `Content indicates Specific Restriction via keyword/pattern`;
              logger.debug(reason);
             return { decision: 'REJECT', reason };
         }

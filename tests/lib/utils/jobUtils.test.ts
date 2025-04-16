@@ -43,14 +43,16 @@ describe('jobUtils', () => {
             expect(stripHtml(html)).toBe('Hello World!');
         });
 
-        it('should decode common HTML entities', () => {
+        it('should decode common HTML entities and normalize space', () => {
             const html = "Less than &lt; Greater than &gt; Ampersand &amp; Quote &quot; Apostrophe &#39; Space &nbsp; Here";
-            expect(stripHtml(html)).toBe('Less than < Greater than > Ampersand & Quote " Apostrophe \' Space   Here');
+            // &nbsp; decodes to a space, then whitespace normalization collapses it to a single space
+            expect(stripHtml(html)).toBe('Less than < Greater than > Ampersand & Quote " Apostrophe \' Space Here');
         });
 
-        it('should normalize whitespace', () => {
-            const html = '  Multiple   spaces\n\nand\n  line breaks.  ';
-            expect(stripHtml(html)).toBe('Multiple spaces and line breaks.');
+        it('should normalize various whitespace characters', () => {
+            const html = '  Multiple\tspaces\n\nand\n  line breaks.  ';
+            // Expect double newline preserved, others collapsed to single space
+            expect(stripHtml(html)).toBe('Multiple spaces\n\nand line breaks.');
         });
 
         it('should handle empty string', () => {

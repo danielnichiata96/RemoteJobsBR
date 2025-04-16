@@ -7,6 +7,7 @@ import { JobSource, UserRole, JobSourceRunStats } from '@prisma/client'; // Impo
 import pino from 'pino';
 import { formatDistanceToNow } from 'date-fns'; // Import date-fns function
 import { ptBR } from 'date-fns/locale'; // Optional: Import locale for formatting
+import { toast } from 'react-toastify'; // Assuming react-toastify is installed
 // Import a toast library if you have one, e.g.:
 // import { toast } from 'react-toastify';
 
@@ -75,13 +76,16 @@ const AdminSourceHealth: NextPage = () => { // Removed unused props
     const [isLoadingPage, setIsLoadingPage] = useState(true);
     // State to track loading status for each toggle button
     const [isToggling, setIsToggling] = useState<{ [key: string]: boolean }>({});
+    // State to track loading status for each re-run button
+    const [isReRunning, setIsReRunning] = useState<{ [key: string]: boolean }>({});
 
     const SWR_KEY = status === 'authenticated' && session?.user?.role === UserRole.ADMIN ? '/api/admin/sources/health' : null;
 
     // Fetch data using SWR
     const { data: sources, error: fetchError, mutate } = useSWR<SourceHealthData[]>(
         SWR_KEY,
-        fetcher
+        fetcher,
+        { refreshInterval: 30000 } // Optional: Auto-refresh data every 30 seconds
     );
 
     // --- Toggle Enable/Disable Handler ---
@@ -95,34 +99,56 @@ const AdminSourceHealth: NextPage = () => { // Removed unused props
             });
 
             if (!res.ok) {
-                const errorData = await res.json().catch(() => ({})); // Try to get error details
+                const errorData = await res.json().catch(() => ({}));
                 const errorMsg = errorData.message || `Failed to toggle status (${res.status})`;
                 throw new Error(errorMsg);
             }
 
-            // Optimistic UI update (optional but good UX)
-            mutate( SWR_KEY ? async (currentData) => {
-                if (!currentData) return [];
-                return currentData.map(source =>
-                    source.id === sourceId ? { ...source, isEnabled: !currentState } : source
-                );
-            } : undefined, false); // false means don't revalidate immediately
+            // Don't use optimistic update for toggle, rely on mutate
+            await mutate(SWR_KEY); // Revalidate to get definitive state
 
-            // Revalidate to get the definitive state from the server
-            await mutate(SWR_KEY); 
+            const newState = !currentState;
+            logger.info({ sourceId, newState }, 'Source status toggled successfully.');
+            toast.success(`Source ${newState ? 'enabled' : 'disabled'} successfully.`);
 
-            logger.info({ sourceId, newState: !currentState }, 'Source status toggled successfully.');
-            // Optional: Show success toast
-            // toast.success(`Source ${!currentState ? 'enabled' : 'disabled'} successfully.`);
-
-        } catch (error: any) { // Catch any error during fetch or revalidation
+        } catch (error: any) {
             logger.error({ error, sourceId }, 'Error toggling source status');
-            // Optional: Show error toast
-            // toast.error(`Error: ${error.message || 'Could not toggle source status.'}`);
-            // Revert optimistic update on error if you implemented it
-            await mutate(SWR_KEY); // Re-fetch data to ensure consistency
+            toast.error(`Error: ${error.message || 'Could not toggle source status.'}`);
+            // Revalidate on error to ensure consistency
+            await mutate(SWR_KEY);
         } finally {
             setIsToggling(prev => ({ ...prev, [sourceId]: false }));
+        }
+    };
+
+    // --- Re-run Handler ---
+    const handleReRun = async (sourceId: string) => {
+        setIsReRunning(prev => ({ ...prev, [sourceId]: true }));
+        logger.info({ sourceId }, 'Attempting to trigger source re-run...');
+
+        try {
+            const res = await fetch(`/api/admin/sources/${sourceId}/rerun`, {
+                method: 'POST',
+            });
+
+            const responseData = await res.json(); // Always try to parse JSON
+
+            if (!res.ok) {
+                const errorMsg = responseData.message || `Failed to trigger re-run (${res.status})`;
+                throw new Error(errorMsg);
+            }
+
+            logger.info({ sourceId }, responseData.message || 'Source re-run triggered successfully.');
+            toast.success(responseData.message || `Re-run triggered for source ${sourceId}.`);
+
+            // Optionally trigger a delayed refresh
+            setTimeout(() => mutate(SWR_KEY), 5000); // Revalidate after 5s
+
+        } catch (error: any) {
+            logger.error({ error, sourceId }, 'Error triggering source re-run');
+            toast.error(`Error: ${error.message || 'Could not trigger re-run.'}`);
+        } finally {
+            setIsReRunning(prev => ({ ...prev, [sourceId]: false }));
         }
     };
 
@@ -224,20 +250,31 @@ const AdminSourceHealth: NextPage = () => { // Removed unused props
                                         ) : 'N/A'}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono text-xs">{getConfigSourceValue(source)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center space-x-2">
                                         <button
                                             onClick={() => handleToggleEnable(source.id, source.isEnabled)}
                                             className={`px-3 py-1 text-xs font-semibold rounded-full ${source.isEnabled
                                                 ? 'bg-red-100 text-red-800 hover:bg-red-200'
                                                 : 'bg-green-100 text-green-800 hover:bg-green-200'}
                                                 focus:outline-none focus:ring-2 focus:ring-offset-2 ${source.isEnabled ? 'focus:ring-red-500' : 'focus:ring-green-500'}
-                                                disabled:opacity-50 disabled:cursor-not-allowed` // Added disabled styles
+                                                disabled:opacity-50 disabled:cursor-not-allowed`
                                             }
-                                            disabled={isToggling[source.id]} // Use loading state
+                                            disabled={isToggling[source.id] || isReRunning[source.id]} // Disable if toggling or re-running
                                         >
                                             {isToggling[source.id] ? '...' : (source.isEnabled ? 'Disable' : 'Enable')}
                                         </button>
-                                        {/* Add Re-run button later */}
+                                        <button
+                                            onClick={() => handleReRun(source.id)}
+                                            className={`px-3 py-1 text-xs font-semibold rounded-full 
+                                                bg-blue-100 text-blue-800 hover:bg-blue-200
+                                                focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                                                disabled:opacity-50 disabled:cursor-not-allowed`
+                                            }
+                                            disabled={!source.isEnabled || isToggling[source.id] || isReRunning[source.id]} // Disable if source is disabled, or during any action
+                                            title={!source.isEnabled ? "Source must be enabled to re-run" : "Trigger a new fetch for this source"}
+                                        >
+                                             {isReRunning[source.id] ? '...' : 'Re-run'}
+                                        </button>
                                     </td>
                                 </tr>
                             ))}

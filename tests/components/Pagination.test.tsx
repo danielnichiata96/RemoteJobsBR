@@ -71,6 +71,27 @@ Object.defineProperty(window, 'scrollTo', {
     writable: true,
 });
 
+// Define a base mock return value for useJobsSearch to ensure mutate is always present
+const baseMockJobSearchData = {
+  jobs: [],
+  pagination: {
+    totalCount: 0,
+    totalPages: 1,
+    currentPage: 1,
+    pageSize: 10,
+    hasNextPage: false,
+    hasPrevPage: false,
+  },
+  isLoading: false,
+  isError: false,
+  aggregations: {
+    jobTypes: [],
+    experienceLevels: [],
+    technologies: [],
+  },
+  mutate: jest.fn(), // Add the mock mutate function here
+};
+
 describe('Pagination functionality', () => {
   const mockPush = jest.fn();
   const mockRouter = {
@@ -88,6 +109,7 @@ describe('Pagination functionality', () => {
     // Mock the useJobsSearch hook return value with pagination
     const useJobsSearchMock = require('@/hooks/useJobsSearch').useJobsSearch;
     useJobsSearchMock.mockReturnValue({
+      ...baseMockJobSearchData, // Use the base mock
       jobs: Array(10).fill({}).map((_, i) => ({ id: `job-${i}` })),
       pagination: {
         totalCount: 25,
@@ -96,13 +118,6 @@ describe('Pagination functionality', () => {
         pageSize: 10,
         hasNextPage: true,
         hasPrevPage: false,
-      },
-      isLoading: false,
-      isError: false,
-      aggregations: {
-        jobTypes: [],
-        experienceLevels: [],
-        technologies: [],
       },
     });
 
@@ -126,6 +141,7 @@ describe('Pagination functionality', () => {
     // Mock the useJobsSearch hook return value with pagination
     const useJobsSearchMock = require('@/hooks/useJobsSearch').useJobsSearch;
     useJobsSearchMock.mockReturnValue({
+      ...baseMockJobSearchData, // Use the base mock
       jobs: Array(5).fill({}).map((_, i) => ({ id: `job-${i}` })),
       pagination: {
         totalCount: 5,
@@ -134,13 +150,6 @@ describe('Pagination functionality', () => {
         pageSize: 10,
         hasNextPage: false,
         hasPrevPage: false,
-      },
-      isLoading: false,
-      isError: false,
-      aggregations: {
-        jobTypes: [],
-        experienceLevels: [],
-        technologies: [],
       },
     });
 
@@ -156,6 +165,7 @@ describe('Pagination functionality', () => {
     // Mock the useJobsSearch hook return value with pagination
     const useJobsSearchMock = require('@/hooks/useJobsSearch').useJobsSearch;
     useJobsSearchMock.mockReturnValue({
+      ...baseMockJobSearchData, // Use the base mock
       jobs: Array(10).fill({}).map((_, i) => ({ id: `job-${i}` })),
       pagination: {
         totalCount: 25,
@@ -164,13 +174,6 @@ describe('Pagination functionality', () => {
         pageSize: 10,
         hasNextPage: true,
         hasPrevPage: false,
-      },
-      isLoading: false,
-      isError: false,
-      aggregations: {
-        jobTypes: [],
-        experienceLevels: [],
-        technologies: [],
       },
     });
 
@@ -194,6 +197,7 @@ describe('Pagination functionality', () => {
     // Mock the useJobsSearch hook return value with pagination
     const useJobsSearchMock = require('@/hooks/useJobsSearch').useJobsSearch;
     useJobsSearchMock.mockReturnValue({
+      ...baseMockJobSearchData, // Use the base mock
       jobs: Array(10).fill({}).map((_, i) => ({ id: `job-${i}` })),
       pagination: {
         totalCount: 25,
@@ -202,13 +206,6 @@ describe('Pagination functionality', () => {
         pageSize: 10,
         hasNextPage: true,
         hasPrevPage: true,
-      },
-      isLoading: false,
-      isError: false,
-      aggregations: {
-        jobTypes: [],
-        experienceLevels: [],
-        technologies: [],
       },
     });
 
@@ -241,8 +238,9 @@ describe('Pagination functionality', () => {
     // Mock the useJobsSearch hook return value with pagination and loading state
     const useJobsSearchMock = require('@/hooks/useJobsSearch').useJobsSearch;
     useJobsSearchMock.mockReturnValue({
-      jobs: [],
-      pagination: {
+      ...baseMockJobSearchData, // Use the base mock
+      jobs: [], // No jobs needed when loading
+      pagination: { // Keep pagination info consistent
         totalCount: 25,
         totalPages: 3,
         currentPage: 2,
@@ -250,13 +248,7 @@ describe('Pagination functionality', () => {
         hasNextPage: true,
         hasPrevPage: true,
       },
-      isLoading: true,
-      isError: false,
-      aggregations: {
-        jobTypes: [],
-        experienceLevels: [],
-        technologies: [],
-      },
+      isLoading: true, // Set loading to true
     });
 
     // Mock the current page as 2
@@ -276,24 +268,18 @@ describe('Pagination functionality', () => {
   });
 
   it('should disable next button on the last page', () => {
-    // Mock the useJobsSearch hook return value with pagination on last page
+    // Mock the useJobsSearch hook return value with pagination
     const useJobsSearchMock = require('@/hooks/useJobsSearch').useJobsSearch;
     useJobsSearchMock.mockReturnValue({
-      jobs: Array(5).fill({}).map((_, i) => ({ id: `job-${i}` })),
+      ...baseMockJobSearchData, // Use the base mock
+      jobs: Array(5).fill({}).map((_, i) => ({ id: `job-${i}` })), // Adjust job count if needed
       pagination: {
         totalCount: 25,
         totalPages: 3,
-        currentPage: 3,
+        currentPage: 3, // On the last page
         pageSize: 10,
-        hasNextPage: false,
+        hasNextPage: false, // No next page
         hasPrevPage: true,
-      },
-      isLoading: false,
-      isError: false,
-      aggregations: {
-        jobTypes: [],
-        experienceLevels: [],
-        technologies: [],
       },
     });
 

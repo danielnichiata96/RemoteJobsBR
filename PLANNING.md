@@ -33,6 +33,7 @@
     │   │   ├── adapters/        # Adapters (e.g., JobProcessingAdapter)
     │   │   ├── fetchers/        # Job fetcher implementations (Greenhouse, Ashby)
     │   │   ├── jobProcessors/   # Job processor implementations (Greenhouse, Ashby)
+    │   │   ├── services/        # Service layer (e.g., JobProcessingService) 
     │   │   ├── utils/           # Shared utility functions (job, date, text, logo)
     │   │   └── prisma.ts        # Prisma client instance
     │   ├── styles/          # Global CSS, Tailwind config
@@ -113,10 +114,21 @@
 *   **Job Alert:** Users receive email notifications for new jobs matching their criteria
 *   **Job Posting:** Recruiters/companies can post jobs with external application links
 *   **Analytics:** Recruiters can view metrics on job views and click-throughs
+*   **Admin Dashboard:** Administrators can monitor source health and perform actions
+    *   **Source Toggle:** Enable/disable specific job sources
+    *   **Source Re-run:** Manually trigger job processing for specific sources
+    *   **Health Monitoring:** View metrics and status for each job source
+
+## 7. Core Services
+
+*   **JobProcessingService:** Central service handling job processing workflows
+    *   **saveOrUpdateJob:** Saves or updates standardized job data in the database
+    *   **deactivateJobs:** Marks jobs as inactive when no longer available from source
+    *   **processJobSourceById:** Processes a specific job source by ID (triggered manually via admin)
 
 ---
 
-## 7. AI Assistant Collaboration Rules
+## 8. AI Assistant Collaboration Rules
 
 *   **Reference `PLANNING.md`:** Consult this document at the start of new conversations for project context.
 *   **Manage `TASK.md`:** Update task status and add newly discovered tasks to `TASK.md`.

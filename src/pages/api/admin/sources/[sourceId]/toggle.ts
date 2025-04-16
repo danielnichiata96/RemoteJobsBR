@@ -1,13 +1,22 @@
-import { NextApiRequest, NextApiResponse } from 'next';
+import type { NextApiRequest, NextApiResponse } from 'next';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../auth/[...nextauth]'; // Adjust path as needed
-import { prisma } from '../../../../lib/prisma';
-import { UserRole, JobSource } from '@prisma/client';
+import { authOptions } from '../../../../../pages/api/auth/[...nextauth]';
+import { prisma } from '../../../../../lib/prisma';
+import { UserRole } from '@prisma/client';
 import pino from 'pino';
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+const logger = pino({
+    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+});
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+type ErrorResponse = {
+    message: string;
+};
+
+export default async function handler(
+    req: NextApiRequest,
+    res: NextApiResponse<any | ErrorResponse> // Response can be the updated JobSource or an error
+) {
     if (req.method !== 'PATCH') {
         res.setHeader('Allow', ['PATCH']);
         return res.status(405).json({ message: `Method ${req.method} Not Allowed` });
@@ -15,48 +24,51 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const session = await getServerSession(req, res, authOptions);
 
-    // Check authentication and authorization
-    // @ts-ignore // Ignore possible type issue with custom session/user fields
     if (!session || session.user?.role !== UserRole.ADMIN) {
-        logger.warn('Unauthorized access attempt to toggle job source API');
+        logger.warn({ userId: session?.user?.id, role: session?.user?.role }, 'Unauthorized attempt to toggle job source');
         return res.status(403).json({ message: 'Forbidden: Access denied' });
     }
 
     const { sourceId } = req.query;
 
-    if (typeof sourceId !== 'string' || !sourceId) {
-        logger.warn('Invalid sourceId provided for toggle');
-        return res.status(400).json({ message: 'Bad Request: Missing or invalid sourceId' });
+    if (!sourceId || typeof sourceId !== 'string') {
+        logger.warn('Toggle attempt with missing sourceId');
+        return res.status(400).json({ message: 'Bad Request: Missing sourceId' });
     }
 
-    const adminUserId = session.user.id;
-    logger.info({ adminUserId, sourceId }, 'Admin request to toggle job source status');
+    const logCtx = logger.child({ sourceId, adminUserId: session.user.id });
 
     try {
-        // 1. Fetch the current source to get its current state
-        const currentSource = await prisma.jobSource.findUnique({
+        logCtx.info('Attempting to find job source for toggle');
+        const jobSource = await prisma.jobSource.findUnique({
             where: { id: sourceId },
         });
 
-        if (!currentSource) {
-            logger.warn({ adminUserId, sourceId }, 'Job source not found for toggling');
+        if (!jobSource) {
+            logCtx.warn('Job source not found for toggle');
             return res.status(404).json({ message: 'Job source not found' });
         }
 
-        // 2. Update the source with the toggled isEnabled status
-        const updatedSource = await prisma.jobSource.update({
+        logCtx.info({ currentIsEnabled: jobSource.isEnabled }, 'Found job source, attempting to toggle');
+        const updatedJobSource = await prisma.jobSource.update({
             where: { id: sourceId },
             data: {
-                isEnabled: !currentSource.isEnabled, // Toggle the status
+                isEnabled: !jobSource.isEnabled,
             },
         });
 
-        logger.info({ adminUserId, sourceId, newStatus: updatedSource.isEnabled }, 'Successfully toggled job source status');
-        return res.status(200).json(updatedSource);
+        logCtx.info({ newIsEnabled: updatedJobSource.isEnabled }, 'Job source toggled successfully');
+        return res.status(200).json(updatedJobSource); // Return the updated source
 
-    } catch (error) {
-        logger.error({ error, adminUserId, sourceId }, 'Failed to toggle job source status');
-        // Check for specific Prisma errors if needed, e.g., RecordNotFound
-        return res.status(500).json({ message: 'Internal Server Error' });
+    } catch (error: any) {
+        if (error.code === 'P2025') { // Prisma error code for record not found during update (should be caught by findUnique, but as a safeguard)
+            logCtx.warn('Job source not found during update attempt (race condition?)');
+            return res.status(404).json({ message: 'Job source not found' });
+        }
+        logCtx.error({ error: error.message, stack: error.stack }, 'Error toggling job source status');
+        // Determine if the error came from findUnique or update for better logging/response
+        // For simplicity now, just return 500
+        const errorMessage = error.message.includes('update') ? 'Internal Server Error updating source' : 'Internal Server Error';
+        return res.status(500).json({ message: errorMessage });
     }
 } 

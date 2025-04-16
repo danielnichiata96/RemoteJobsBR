@@ -14,8 +14,8 @@ export function stripHtml(html: string | null | undefined): string {
   // Remove HTML tags
   let text = html.replace(/<[^>]*>/g, '');
   
-  // Decode HTML entities using 'html-entities' library for better coverage
-  text = decode(text);
+  // Decode HTML entities *first* including &nbsp;
+  text = decode(text); 
   
   // Normalize line endings
   text = text.replace(/\r\n|\r/g, '\n');
@@ -24,7 +24,7 @@ export function stripHtml(html: string | null | undefined): string {
   const placeholder = '__DOUBLE_NEWLINE_PLACEHOLDER__'; // Make placeholder more unique
   text = text.replace(/\n\s*\n/g, placeholder); // Capture double newlines even with spaces between
   
-  // Collapse all other whitespace (including single newlines) to single spaces
+  // Collapse all whitespace (including single newlines and decoded &nbsp;) to single spaces
   text = text.replace(/\s+/g, ' ');
   
   // Restore double newlines

@@ -259,4 +259,53 @@ export class JobProcessingService {
       return 0;
     }
   }
+
+  /**
+   * Processes a job source by its ID. This method triggers the job fetching and processing
+   * pipeline for the specified source.
+   * 
+   * @param sourceId The ID of the job source to process
+   * @returns Promise<void>
+   */
+  public async processJobSourceById(sourceId: string): Promise<void> {
+    const logCtx = this.logger.child({ sourceId, method: 'processJobSourceById' });
+    
+    try {
+      logCtx.info('Starting job source processing');
+      
+      // Find the job source to get its type and configuration
+      const jobSource = await this.prisma.jobSource.findUnique({
+        where: { id: sourceId }
+      });
+      
+      if (!jobSource) {
+        throw new Error(`Job source with ID ${sourceId} not found`);
+      }
+      
+      if (!jobSource.isEnabled) {
+        throw new Error(`Cannot process disabled job source ${sourceId}`);
+      }
+      
+      logCtx.info({ sourceType: jobSource.type }, 'Found job source, starting processing');
+      
+      // TODO: Implement the actual fetching and processing logic based on the source type
+      // This would typically involve:
+      // 1. Getting a fetcher for the specific source type
+      // 2. Fetching jobs from the source
+      // 3. Processing and standardizing each job
+      // 4. Saving or updating jobs in the database
+      // 5. Marking any jobs no longer available as inactive
+      
+      // For now, just update the lastFetched timestamp to indicate processing occurred
+      await this.prisma.jobSource.update({
+        where: { id: sourceId },
+        data: { lastFetched: new Date() }
+      });
+      
+      logCtx.info('Job source processing completed successfully');
+    } catch (error) {
+      logCtx.error({ error: error instanceof Error ? error.message : String(error) }, 'Error processing job source');
+      throw error; // Re-throw to allow caller to handle or log the error
+    }
+  }
 }

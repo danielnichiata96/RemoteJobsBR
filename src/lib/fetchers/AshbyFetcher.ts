@@ -259,9 +259,9 @@ export class AshbyFetcher implements JobFetcher {
 
         // **NEW**: Check combined identifiers for explicit restrictive patterns
         const combinedIdentifierText = uniqueLocationIdentifiers.join(' ; ');
-        if (detectRestrictivePattern(combinedIdentifierText, jobLogger)) {
-             jobLogger.debug({ identifiers: combinedIdentifierText }, "Rejecting: Explicit restrictive pattern found in combined location/title identifiers.");
-             return { relevant: false, reason: `Location/Title Restriction Pattern Detected` };
+        if (detectRestrictivePattern(combinedIdentifierText, negativeKeywords, jobLogger)) {
+             jobLogger.debug({ identifiers: combinedIdentifierText }, "Rejecting: Explicit restrictive pattern or keyword found in combined location/title identifiers.");
+             return { relevant: false, reason: `Location/Title Restriction Pattern/Keyword Detected` };
         }
 
         // TEMPORARY DEBUG LOG before decision logic
@@ -303,9 +303,9 @@ export class AshbyFetcher implements JobFetcher {
         jobLogger.trace({ jobContentTextPreview: jobContentText.substring(0, 500) + '...' }, 'Content text being analyzed');
 
          // **NEW**: Check content for explicit restrictive patterns first
-         if (detectRestrictivePattern(jobContentText, jobLogger)) {
-             jobLogger.debug("Rejecting: Explicit restrictive pattern found in job content.");
-             return { relevant: false, reason: `Content Restriction Pattern Detected` };
+         if (detectRestrictivePattern(jobContentText, negativeKeywords, jobLogger)) {
+             jobLogger.debug("Rejecting: Explicit restrictive pattern or keyword found in job content.");
+             return { relevant: false, reason: `Content Restriction Pattern/Keyword Detected` };
          }
 
          // Refactored Content Logic Order:

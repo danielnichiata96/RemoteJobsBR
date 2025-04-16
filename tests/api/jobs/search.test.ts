@@ -251,12 +251,13 @@ describe('Jobs Search API', () => {
     expect(prisma.job.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { hiringRegion: 'LATAM' },
+            { hiringRegion: 'WORLDWIDE' },
+            { hiringRegion: null }
+          ]),
           AND: expect.arrayContaining([
-            { OR: expect.arrayContaining([ // Check for the specific OR block
-                { hiringRegion: 'WORLDWIDE' },
-                { hiringRegion: null }
-              ])
-            }
+            { hiringRegion: 'WORLDWIDE' }
           ])
         }),
       })
@@ -279,18 +280,20 @@ describe('Jobs Search API', () => {
     expect(prisma.job.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { hiringRegion: 'LATAM' },
+            { hiringRegion: 'WORLDWIDE' },
+            { hiringRegion: null }
+          ]),
           AND: expect.arrayContaining([
-            // Check for text search OR block
-            { OR: expect.arrayContaining([ 
-                { title: { contains: 'developer', mode: 'insensitive' } }
+            { OR: expect.arrayContaining([
+                { title: { contains: 'developer', mode: 'insensitive' } },
+                { description: { contains: 'developer', mode: 'insensitive' } },
+                { requirements: { contains: 'developer', mode: 'insensitive' } },
+                { tags: { hasSome: ['developer'] } },
               ])
             },
-            // Check for WORLDWIDE region OR block
-            { OR: expect.arrayContaining([
-                { hiringRegion: 'WORLDWIDE' },
-                { hiringRegion: null }
-              ])
-            }
+            { hiringRegion: 'WORLDWIDE' }
           ])
         }),
       })
