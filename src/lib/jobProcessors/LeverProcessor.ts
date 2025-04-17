@@ -46,7 +46,8 @@ export class LeverProcessor implements JobProcessor {
             }
             // --- End Age Filter ---
             
-            const standardizedJob = this._mapToStandardizedJob(rawJob, sourceData);
+            // Explicitly await, though _mapToStandardizedJob is synchronous
+            const standardizedJob = await this._mapToStandardizedJob(rawJob, sourceData); 
             
             jobLogger.info(`Successfully mapped job: ${standardizedJob.title}`);
             return { success: true, job: standardizedJob };
@@ -59,10 +60,10 @@ export class LeverProcessor implements JobProcessor {
 
     private _mapToStandardizedJob(rawJob: LeverApiPosting, sourceData: JobSource): StandardizedJob {
         
-        // Use official 'description' field (HTML) as base, fallback to empty
-        let baseDescriptionHtml = rawJob.description || '';
+        // Use official top-level description field (HTML) as base, fallback to empty
+        let baseDescriptionHtml = rawJob.description || ''; 
         
-        // Use official 'descriptionPlain' or strip the HTML description for text analysis
+        // Use official top-level descriptionPlain (plain text) or strip the HTML description for text analysis
         const descriptionPlainText = rawJob.descriptionPlain || stripHtml(baseDescriptionHtml);
         const fullTextForAnalysis = `${rawJob.text} ${descriptionPlainText}`; // Use job title (rawJob.text) + description text
 
@@ -102,13 +103,13 @@ export class LeverProcessor implements JobProcessor {
         else if (commitment === 'contract' || commitment === 'contractor') { jobType = JobType.CONTRACT; }
         else if (commitment === 'intern' || commitment === 'internship') { jobType = JobType.INTERNSHIP; }
 
-        let salaryMin: number | null = null;
-        let salaryMax: number | null = null;
+        let minSalary: number | null = null;
+        let maxSalary: number | null = null;
         let salaryCurrency: string | null = null; 
         let salaryCycle: string | null = null;
         if (rawJob.salaryRange) {
-            salaryMin = rawJob.salaryRange.min;
-            salaryMax = rawJob.salaryRange.max;
+            minSalary = rawJob.salaryRange.min;
+            maxSalary = rawJob.salaryRange.max;
             const rawCurrency = rawJob.salaryRange.currency?.toUpperCase();
             if (rawCurrency && typeof rawCurrency === 'string' && rawCurrency.length > 0) { 
                 salaryCurrency = rawCurrency; 
@@ -121,26 +122,48 @@ export class LeverProcessor implements JobProcessor {
             else if (interval) { salaryCycle = interval.toUpperCase(); }
         }
 
+        // Determine remote status based on workplaceType primarily, fallback to location category
+        let isRemote = false;
+        const workplaceTypeLower = rawJob.workplaceType?.toLowerCase();
+        const locationLower = rawJob.categories?.location?.toLowerCase() || '';
+
+        if (workplaceTypeLower === 'remote') {
+            isRemote = true;
+        } else if (workplaceTypeLower !== 'on-site' && workplaceTypeLower !== 'hybrid') {
+            // If not explicitly on-site/hybrid, check location for remote keywords
+            // Using a simple includes check for this example
+            if (locationLower.includes('remote')) {
+                isRemote = true;
+            }
+        }
+
         return {
             title: rawJob.text,
             companyName: sourceData.name, 
             source: this.source,
             sourceId: String(rawJob.id),
             applicationUrl: rawJob.applyUrl || rawJob.hostedUrl, 
-            location: rawJob.categories?.location || (
-                rawJob.workplaceType?.toLowerCase() === 'remote' ? 'Remote' : 'Unknown'
-            ), 
-            // Use the combined description from official fields
+            location: rawJob.categories?.location || (isRemote ? 'Remote' : 'Unknown'),
+            isRemote: isRemote, // Add isRemote field
             description: finalDescriptionHtml, 
             publishedAt: publishedAt,
             updatedAt: updatedAt,
-            experienceLevel: detectExperienceLevel(fullTextForAnalysis), // Keep analysis for level/type/skills
-            jobType: jobType,
+            experienceLevel: detectExperienceLevel(fullTextForAnalysis), 
+            jobType: jobType, // Already calculated
             skills: extractSkills(fullTextForAnalysis),
-            minSalary: salaryMin ?? undefined,
-            maxSalary: salaryMax ?? undefined,
+            minSalary: minSalary ?? undefined,
+            maxSalary: maxSalary ?? undefined,
             currency: salaryCurrency,
             salaryCycle: salaryCycle ?? undefined,
+            // Add other potential missing fields with defaults or nulls
+            status: 'ACTIVE', // Default to ACTIVE
+            companyLogo: sourceData.logoUrl ?? undefined, // Use logo from sourceData if available, default undefined
+            companyWebsite: sourceData.companyWebsite ?? undefined, // Use website from sourceData if available, default undefined
+            country: 'Unknown', // Default or derive later if possible
+            workplaceType: rawJob.workplaceType?.toUpperCase() ?? (isRemote ? 'REMOTE' : 'UNKNOWN'), // Map to enum/string
+            visas: [], // Default
+            languages: [], // Default
+            hiringRegion: undefined, // Default undefined
         };
     }
 } 

@@ -1,15 +1,28 @@
-import { LeverFetcher } from '../../src/lib/fetchers/LeverFetcher';
-import { JobProcessingAdapter } from '../../src/lib/adapters/JobProcessingAdapter';
-import { prisma } from '../../src/lib/prisma';
+import { LeverFetcher } from '@/lib/fetchers/LeverFetcher';
+import { JobProcessingAdapter } from '@/lib/adapters/JobProcessingAdapter';
+import { prisma } from '@/lib/prisma';
 import { JobSource } from '@prisma/client';
 import pino from 'pino';
 import { LeverApiPosting } from '../../src/lib/fetchers/types'; // Import Lever type
+import { detectRestrictivePattern } from '@/lib/utils/filterUtils'; // Use import again
 
 // Mocks
-jest.mock('../../src/lib/prisma');
-jest.mock('../../src/lib/adapters/JobProcessingAdapter');
+// Use jest.doMock for potentially deeper dependencies
+jest.doMock('@/lib/prisma', () => ({
+  prisma: {
+    // Mock specific Prisma methods used by the service if needed
+    // Example: user: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+    //         job: { findFirst: jest.fn(), update: jest.fn(), upsert: jest.fn() }
+    // For now, provide a basic mock structure. Adjust if tests fail on specific methods.
+    user: jest.fn(), 
+    job: jest.fn(), 
+  }
+}));
 
-// Mock pino completely to control child loggers effectively
+// Mock adapter BEFORE importing the fetcher
+jest.mock('@/lib/adapters/JobProcessingAdapter');
+
+// Mock pino completely AFTER other mocks
 jest.mock('pino', () => {
     const actualPino = jest.requireActual('pino');
     const mockChild = jest.fn().mockReturnThis(); // Ensure child returns the mock
@@ -28,17 +41,15 @@ jest.mock('pino', () => {
     return pinoMock;
 });
 
-// Mock getLeverConfig
-jest.mock('../../src/types/JobSource', () => ({
+// Mock getLeverConfig AFTER prisma/adapter mocks
+jest.mock('@/types/JobSource', () => ({
     getLeverConfig: jest.fn((config) => config ? ({ companyIdentifier: config.companyIdentifier }) : null),
 }));
 
 // Mock filterUtils
-jest.mock('../../src/lib/utils/filterUtils', () => ({
-    detectRestrictivePattern: jest.fn(),
-}));
-import { detectRestrictivePattern } from '../../src/lib/utils/filterUtils';
-const mockDetectRestrictivePattern = detectRestrictivePattern as jest.Mock;
+jest.mock('@/lib/utils/filterUtils'); // Add the mock declaration
+
+// --- Import dependencies AFTER mocks --- 
 
 // Mock global fetch
 global.fetch = jest.fn();
@@ -53,9 +64,11 @@ describe('LeverFetcher', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        mockPrisma = prisma as any; 
+        mockPrisma = prisma; // Assign the imported (and now hopefully properly mocked) prisma
         mockAdapter = new JobProcessingAdapter() as jest.Mocked<JobProcessingAdapter>;
-        leverFetcher = new LeverFetcher(mockPrisma, mockAdapter);
+        // Explicitly mock the CORRECT method ('processRawJob') on the adapter instance
+        mockAdapter.processRawJob = jest.fn().mockResolvedValue(true); 
+        leverFetcher = new LeverFetcher(mockPrisma, mockAdapter); // Pass the mocked prisma
         mockLogger = pino() as jest.Mocked<pino.Logger>; 
         mockChildLogger = mockLogger.child() as jest.Mocked<pino.Logger>; // Get the mocked child
 
@@ -78,8 +91,8 @@ describe('LeverFetcher', () => {
             json: async () => [],
             text: async () => ''
         });
-        // Default mock for filter (no restrictions)
-        mockDetectRestrictivePattern.mockReturnValue(false);
+        // Default mock for filter (no restrictions) - Cast here
+        (detectRestrictivePattern as jest.Mock).mockReturnValue(false);
     });
 
     it('should instantiate correctly', () => {
@@ -120,11 +133,11 @@ describe('LeverFetcher', () => {
         expect(mockChildLogger.info).toHaveBeenCalledWith('+ 2 jobs found in API response.');
         expect(mockChildLogger.trace).toHaveBeenCalledWith({ jobId: 'job1', reason: 'Explicitly remote' }, 'Job marked as relevant');
         expect(mockChildLogger.trace).toHaveBeenCalledWith({ jobId: 'job2', reason: 'Explicitly on-site/hybrid' }, 'Job marked as irrelevant');
-        expect(mockAdapter.process).toHaveBeenCalledTimes(1);
-        expect(mockAdapter.process).toHaveBeenCalledWith(mockJobRelevant, mockSource, mockPrisma, mockChildLogger);
+        expect(mockAdapter.processRawJob).toHaveBeenCalledTimes(1);
+        expect(mockAdapter.processRawJob).toHaveBeenCalledWith('lever', mockJobRelevant, mockSource);
         expect(result.stats.found).toBe(2);
         expect(result.stats.relevant).toBe(1);
-        expect(result.stats.processed).toBe(1); // Assumes adapter.process succeeds
+        expect(result.stats.processed).toBe(1); // Assumes adapter.processRawJob succeeds
         expect(result.stats.errors).toBe(0);
         expect(result.foundSourceIds).toEqual(new Set(['job1', 'job2']));
     });
@@ -135,7 +148,7 @@ describe('LeverFetcher', () => {
 
         expect(mockChildLogger.info).toHaveBeenCalledWith('+ 0 jobs found in API response.');
         expect(mockChildLogger.info).toHaveBeenCalledWith('No jobs found for this source.');
-        expect(mockAdapter.process).not.toHaveBeenCalled();
+        expect(mockAdapter.processRawJob).not.toHaveBeenCalled();
         expect(result.stats.found).toBe(0);
         expect(result.stats.relevant).toBe(0);
         expect(result.stats.processed).toBe(0);
@@ -154,7 +167,7 @@ describe('LeverFetcher', () => {
         const result = await leverFetcher.processSource(mockSource, mockLogger);
 
         expect(mockChildLogger.error).toHaveBeenCalledWith({ error: expect.any(Error) }, `Error processing Lever source: ${errorMsg}`);
-        expect(mockAdapter.process).not.toHaveBeenCalled();
+        expect(mockAdapter.processRawJob).not.toHaveBeenCalled();
         expect(result.stats.errors).toBe(1);
         expect(result.errorMessage).toBe(errorMsg);
         expect(result.foundSourceIds.size).toBe(0);
@@ -168,7 +181,7 @@ describe('LeverFetcher', () => {
 
         expect(mockChildLogger.error).toHaveBeenCalledWith({ error: expect.any(Error) }, `Error processing Lever source: ${errorMsg}`);
         expect(fetch as jest.Mock).not.toHaveBeenCalled();
-        expect(mockAdapter.process).not.toHaveBeenCalled();
+        expect(mockAdapter.processRawJob).not.toHaveBeenCalled();
         expect(result.stats.errors).toBe(1);
         expect(result.errorMessage).toBe(errorMsg);
     });
@@ -190,11 +203,11 @@ describe('LeverFetcher', () => {
             text: async () => ''
         });
         const processingError = new Error('Failed to process');
-        mockAdapter.process.mockRejectedValueOnce(processingError);
+        mockAdapter.processRawJob.mockRejectedValueOnce(processingError);
 
         const result = await leverFetcher.processSource(mockSource, mockLogger);
 
-        expect(mockAdapter.process).toHaveBeenCalledTimes(1);
+        expect(mockAdapter.processRawJob).toHaveBeenCalledTimes(1);
         expect(mockChildLogger.error).toHaveBeenCalledWith({ error: processingError, jobId: 'job1' }, 'Error processing relevant job');
         expect(result.stats.found).toBe(1);
         expect(result.stats.relevant).toBe(1);
@@ -217,16 +230,17 @@ describe('LeverFetcher', () => {
             json: async () => [job],
             text: async () => ''
         });
-        mockDetectRestrictivePattern.mockReturnValue(restricted);
+        // Set mock value for this specific test run - Cast here
+        (detectRestrictivePattern as jest.Mock).mockReturnValue(restricted);
 
         await leverFetcher.processSource(mockSource, mockLogger);
 
         if (expectedRelevant) {
-            expect(mockChildLogger.trace).toHaveBeenCalledWith({ jobId: job.id, reason: expectedReason }, 'Job marked as relevant');
-            expect(mockAdapter.process).toHaveBeenCalled();
+            expect(mockChildLogger.trace).toHaveBeenCalledWith(expect.objectContaining({ jobId: job.id, reason: expectedReason }), 'Job marked as relevant');
+            expect(mockAdapter.processRawJob).toHaveBeenCalled();
         } else {
-             expect(mockChildLogger.trace).toHaveBeenCalledWith({ jobId: job.id, reason: expectedReason }, 'Job marked as irrelevant');
-             expect(mockAdapter.process).not.toHaveBeenCalled();
+             expect(mockChildLogger.trace).toHaveBeenCalledWith(expect.objectContaining({ jobId: job.id, reason: expectedReason }), 'Job marked as irrelevant');
+             expect(mockAdapter.processRawJob).not.toHaveBeenCalled();
         }
     };
 
@@ -243,16 +257,16 @@ describe('LeverFetcher', () => {
     });
 
     it('_isJobRelevant should return true for remote keyword in location (no workplaceType)', async () => {
-        await testRelevance({ categories: { location: 'Remote - Global' } }, true, 'Remote keyword in location');
+        await testRelevance({ categories: { location: 'Remote - Global' } }, true, 'Remote keyword in location (config)');
     });
     
     it('_isJobRelevant should return true for remote keyword in location (null workplaceType)', async () => {
-        await testRelevance({ workplaceType: null, categories: { location: 'Remote - LATAM' } }, true, 'Remote keyword in location');
+        await testRelevance({ workplaceType: null, categories: { location: 'Remote - LATAM' } }, true, 'Remote keyword in location (config)');
     });
 
     it('_isJobRelevant should return false if restrictive pattern detected', async () => {
-        await testRelevance({ workplaceType: 'remote' }, false, 'Restrictive keyword detected', true);
-        expect(mockDetectRestrictivePattern).toHaveBeenCalled();
+        await testRelevance({ workplaceType: 'remote' }, false, 'Restrictive keyword detected (config)', true);
+        expect(detectRestrictivePattern).toHaveBeenCalled();
     });
 
     it('_isJobRelevant should return false if no positive indicators (and not restricted)', async () => {

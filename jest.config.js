@@ -12,7 +12,7 @@ const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'], // if using JavaScript
   // setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'], // if using TypeScript
 
-  testEnvironment: 'jest-environment-jsdom',
+  testEnvironment: 'jsdom',
 
   moduleNameMapper: {
     // Handle module aliases (this will be automatically configured for you soon)

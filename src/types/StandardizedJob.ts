@@ -27,7 +27,10 @@ export interface StandardizedJob {
   location: string;
   country?: string;
   workplaceType?: string;
+  isRemote: boolean;
   hiringRegion?: HiringRegion;
+  visas?: string[];
+  languages?: string[];
   
   // Salary details
   minSalary?: number;
@@ -53,4 +56,5 @@ export interface StandardizedJob {
   publishedAt?: Date;
   expiresAt?: Date;
   updatedAt?: Date;
+  status?: string;
 } 
