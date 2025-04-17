@@ -7,6 +7,7 @@ import { JobProcessingAdapter } from '../lib/adapters/JobProcessingAdapter';
 import { JobProcessingService } from '../lib/services/jobProcessingService';
 import { GreenhouseFetcher } from '../lib/fetchers/GreenhouseFetcher';
 import { LeverFetcher } from '../lib/fetchers/LeverFetcher';
+import { AshbyFetcher } from '../lib/fetchers/AshbyFetcher';
 import { JobFetcher, FetcherResult, SourceStats } from '../lib/fetchers/types';
 import { searchCache } from '../lib/cache/searchCache';
 
@@ -55,6 +56,7 @@ const concurrencyLevel =
 const fetcherMap = new Map<string, JobFetcher>();
 fetcherMap.set('greenhouse', new GreenhouseFetcher(prisma, jobProcessorAdapter));
 fetcherMap.set('lever', new LeverFetcher(prisma, jobProcessorAdapter));
+fetcherMap.set('ashby', new AshbyFetcher(prisma, jobProcessorAdapter));
 
 // Add mappings for new fetchers here, e.g.:
 // fetcherMap.set('workable', new WorkableFetcher(prisma, jobProcessorAdapter));

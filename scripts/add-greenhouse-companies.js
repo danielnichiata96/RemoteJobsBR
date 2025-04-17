@@ -40,7 +40,6 @@ const companies = [
   { name: 'Valtech', boardToken: 'valtechgreenhouse' }, // Digital agency, various remote roles
   { name: 'Brave', boardToken: 'brave' },         // Privacy-focused browser, remote-friendly
   { name: 'Canonical', boardToken: 'canonical' }, // Ubuntu Linux, remote-friendly
-  // Add more as you find them!
 ];
 
 async function main() {
@@ -120,4 +119,4 @@ async function main() {
   }
 }
 
-main(); 
+main();

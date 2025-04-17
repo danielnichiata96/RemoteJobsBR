@@ -4,6 +4,7 @@ import { StandardizedJob } from '../../types/StandardizedJob';
 import { JobProcessor, ProcessedJobResult, GreenhouseJob } from '../jobProcessors/types';
 import { GreenhouseProcessor } from '../jobProcessors/greenhouseProcessor';
 import { LeverProcessor } from '../jobProcessors/LeverProcessor';
+import { AshbyProcessor } from '../jobProcessors/AshbyProcessor';
 import pino from 'pino';
 
 const logger = pino({
@@ -48,6 +49,15 @@ export class JobProcessingAdapter {
       logger.info('LeverProcessor instantiated and added.');
     } catch (error: any) {
         logger.error({ error }, 'Failed to instantiate LeverProcessor');
+    }
+
+    // Add AshbyProcessor
+    try {
+      logger.info('Attempting to instantiate AshbyProcessor...');
+      this.processors.set('ashby', new AshbyProcessor());
+      logger.info('AshbyProcessor instantiated and added.');
+    } catch (error: any) {
+        logger.error({ error }, 'Failed to instantiate AshbyProcessor');
     }
 
     // Add other processors here as needed

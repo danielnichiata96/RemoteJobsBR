@@ -27,6 +27,8 @@ LLM should update this file based on conversational progress.
 *   [ ] **Testing:** Investigate and fix failing tests in `tests/pages/admin/source-health.test.tsx`. Tests are consistently failing likely due to complex mocking interactions (SWR, NextAuth, NextRouter) or hangs in asynchronous `waitFor` calls. Refactoring attempts were unsuccessful. (Tracked - YYYY-MM-DD)
 *   [ ] **Testing:** Investigate and fix failing tests in `tests/pages/api/admin/sources/[sourceId]/rerun.test.ts`. The mock `mockProcessJobSourceById` for `JobProcessingService` is not being called as expected, despite trying various mocking strategies (`jest.doMock` with factory/prototype). (Tracked - YYYY-MM-DD)
 *   [x] **Testing:** Revisit and fix failing tests in `tests/lib/utils/filterUtils.test.ts`. The regex logic for detecting restrictive patterns needs refinement to pass all edge cases reliably. (Completed - Fixed word boundary handling for "usa" keyword - 2025-04-23)
+*   [ ] **Testing:** Investigate and fix final failing test in `tests/lib/fetchers/AshbyFetcher.test.ts` (`should return relevant=false if content indicates restriction`). The test receives `true` when `false` is expected, despite logic seeming correct. (Tracked - YYYY-MM-DD)
+*   [ ] **Core/Concurrency:** Investigate `Unique constraint failed` errors during company creation in `JobProcessingService.saveOrUpdateJob` when multiple jobs for the same new company are processed concurrently. Implement a more robust handling mechanism (e.g., better locking, pre-creation check with retry) if the current find-after-fail approach proves insufficient. (Tracked - YYYY-MM-DD) *Added based on Ashby fetch run* 
 
 ## Next Tasks To Consider
 *   [x] **Admin/Monitoring:** Criar Painel de Saúde das Fontes (`JobSource Health Dashboard`).
@@ -39,6 +41,17 @@ LLM should update this file based on conversational progress.
     *   [x] Adicionar ações (Ativar/Desativar, Re-executar). (Completed 2025-04-22)
         *   [x] Implementar e testar API para reexecução de fontes (`/api/admin/sources/[sourceId]/rerun`). (Completed 2025-04-23)
 *   [x] **Data:** Criar script (`scripts/backfillNormalizedFields.ts`) para preencher `normalizedCompanyName` (User) e `normalizedTitle` (Job) em registros existentes. (Moved to Current Focus)
+*   [ ] **Integrations:** Re-implement AshbyHQ Fetcher using the official API (`posting-api/job-board`). (Tracked - YYYY-MM-DD)
+    *   [x] Re-create `AshbyFetcher.ts` and `AshbyProcessor.ts` with basic structure. (Completed - YYYY-MM-DD)
+    *   [x] Re-implement API fetching logic in `AshbyFetcher` (use `jobBoardName` from `JobSource.config`). (Completed - YYYY-MM-DD)
+    *   [x] Define Ashby-specific types (`AshbyApiJob`, etc.) in `types.ts` (if previously removed). (Completed - YYYY-MM-DD)
+    *   [x] Add Ashby config type to `JobSource.ts` (if previously removed). (Completed - YYYY-MM-DD)
+    *   [x] Re-implement filtering logic (`_isJobRelevant`) in `AshbyFetcher` (consider `isRemote`, `location`, etc.). (Completed - YYYY-MM-DD)
+    *   [x] Re-implement mapping logic (`_mapToStandardizedJob`) in `AshbyProcessor`, including using `textUtils` for cleaning. (Completed - YYYY-MM-DD)
+    *   [x] Ensure jobs with `isListed: false` are filtered out. (Handled in Fetcher and Processor - YYYY-MM-DD)
+    *   [x] Add `AshbyFetcher` back to the fetcher map in `fetchJobSources.ts`. (Completed - YYYY-MM-DD)
+    *   [ ] Write/Update unit tests for `AshbyFetcher` and `AshbyProcessor`.
+    *   [ ] Test with real Ashby sources.
 *   [ ] **Integrations:** Research and Implement Lever API Fetcher. (Tracked - 2025-04-23)
     *   [x] Create `LeverFetcher.ts` and `LeverProcessor.ts` files with basic structure. (Completed - 2025-04-23)
     *   [x] Implement API fetching logic in `LeverFetcher`. (Completed - 2025-04-23)

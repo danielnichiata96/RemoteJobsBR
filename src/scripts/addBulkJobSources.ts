@@ -8,19 +8,48 @@ const prisma = new PrismaClient();
 
 // Defina tipos específicos para cada entrada
 type GreenhouseSourceInput = { name: string; type: 'greenhouse'; boardToken: string; website?: string | null; logoUrl?: string | null };
-// type AshbySourceInput = { name: string; type: 'ashby'; config: { jobBoardName: string }; companyWebsite?: string | null; logoUrl?: string | null };
+type AshbySourceInput = { name: string; type: 'ashby'; jobBoardName: string; website?: string | null; logoUrl?: string | null };
 type LeverSourceInput = { name: string; type: 'lever'; companyIdentifier: string; website?: string | null; logoUrl?: string | null };
 
 // Use um tipo de união
-const sourcesToAddOrUpdate: (GreenhouseSourceInput | LeverSourceInput)[] = [
-    // // --- Ashby Sources ---
-    // {
-    //     name: 'Zapier',
-    //     type: 'ashby',
-    //     config: { jobBoardName: 'zapier' },
-    //     companyWebsite: 'https://zapier.com/',
-    //     logoUrl: null
-    // },
+const sourcesToAddOrUpdate: (GreenhouseSourceInput | LeverSourceInput | AshbySourceInput)[] = [
+    // --- Ashby Sources ---
+    {
+        name: 'Zapier',
+        type: 'ashby',
+        jobBoardName: 'zapier',
+        website: 'https://zapier.com/',
+        logoUrl: null
+    },
+    {
+        name: 'Synthflow',
+        type: 'ashby',
+        jobBoardName: 'synthflow',
+        website: 'https://synthflow.ai/',
+        logoUrl: null
+    },
+    {
+        name: 'Silver Technologies',
+        type: 'ashby',
+        jobBoardName: 'silver',
+        website: 'https://silver.dev/',
+        logoUrl: null
+    },
+    {
+        name: 'Sierra Studio',
+        type: 'ashby',
+        jobBoardName: 'sierra-studio',
+        website: 'https://www.sierra.studio/',
+        logoUrl: null
+    },
+    {
+        name: 'Dynamic',
+        type: 'ashby',
+        jobBoardName: 'dynamic',
+        website: 'https://www.dynamic.xyz/',
+        logoUrl: null
+    },
+
     // --- Greenhouse Sources ---
     { name: 'Affirm', type: 'greenhouse', boardToken: 'affirm' },
     { name: 'Auth0', type: 'greenhouse', boardToken: 'auth0' },
@@ -75,10 +104,10 @@ async function main() {
                 existingSource = await prisma.jobSource.findFirst({
                     where: {
                         type: 'greenhouse',
-                        config: { path: ['boardToken'], equals: sourceInput.boardToken }, // Correct way to query JSON
+                        config: { path: ['boardToken'], equals: sourceInput.boardToken },
                     },
                 });
-                // Fallback check by name if config doesn't match (e.g., during transition)
+                 // Fallback check by name
                 if (!existingSource) {
                     existingSource = await prisma.jobSource.findUnique({
                         where: { name_type: { name: sourceInput.name, type: sourceInput.type } },
@@ -89,7 +118,21 @@ async function main() {
                 existingSource = await prisma.jobSource.findFirst({
                     where: {
                         type: 'lever',
-                        config: { path: ['companyIdentifier'], equals: sourceInput.companyIdentifier }, // Correct way to query JSON
+                        config: { path: ['companyIdentifier'], equals: sourceInput.companyIdentifier },
+                    },
+                });
+                 // Fallback check by name
+                if (!existingSource) {
+                    existingSource = await prisma.jobSource.findUnique({
+                        where: { name_type: { name: sourceInput.name, type: sourceInput.type } },
+                    });
+                }
+            } else if (sourceInput.type === 'ashby') {
+                sourceConfig = { jobBoardName: sourceInput.jobBoardName };
+                existingSource = await prisma.jobSource.findFirst({
+                    where: {
+                        type: 'ashby',
+                        config: { path: ['jobBoardName'], equals: sourceInput.jobBoardName },
                     },
                 });
                  // Fallback check by name
@@ -110,7 +153,6 @@ async function main() {
             const commonData = {
                 name: sourceInput.name,
                 type: sourceInput.type,
-                // Use optional chaining and nullish coalescing for website/logo
                 companyWebsite: sourceInput.website ?? null,
                 logoUrl: sourceInput.logoUrl ?? null,
                 isEnabled: true,

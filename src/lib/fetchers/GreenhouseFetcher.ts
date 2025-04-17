@@ -198,11 +198,19 @@ export class GreenhouseFetcher implements JobFetcher {
     
         const metadataFieldsConfig = filterConfig.REMOTE_METADATA_FIELDS;
     
+        // Add explicit check if metadataFieldsConfig is defined
+        if (!metadataFieldsConfig) {
+            logger.trace('No REMOTE_METADATA_FIELDS configured. Skipping metadata check.');
+            return 'UNKNOWN';
+        }
+    
         for (const item of metadata) {
             const fieldNameLower = item.name?.toLowerCase() || '';
             // Use case-insensitive lookup for the config key
-            const configKey = Object.keys(metadataFieldsConfig).find(key => key.toLowerCase() === fieldNameLower);
-            const config = configKey ? metadataFieldsConfig[configKey] : undefined;
+            // Also, ensure metadataFieldsConfig is not undefined before accessing keys
+            const configKey = metadataFieldsConfig ? Object.keys(metadataFieldsConfig).find(key => key.toLowerCase() === fieldNameLower) : undefined;
+            // Explicitly cast metadataFieldsConfig before indexing, after confirming it exists
+            const config = configKey ? (metadataFieldsConfig as any)[configKey] as FilterMetadataConfig : undefined;
     
             if (config) {
                 const rawValue = item.value;
@@ -250,13 +258,13 @@ export class GreenhouseFetcher implements JobFetcher {
                             }
                             break;
                         case 'string':
-                            const disallowedValuesLower = config.disallowedValues?.map(dv => dv.toLowerCase());
-                            const allowedValuesLower = config.allowedValues?.map(av => av.toLowerCase());
-                            const positiveValuesLower = config.positiveValues?.map(pv => pv.toLowerCase());
+                            const disallowedValuesLower = config.disallowedValues?.map((dv: string) => dv.toLowerCase());
+                            const allowedValuesLower = config.allowedValues?.map((av: string) => av.toLowerCase());
+                            const positiveValuesLower = config.positiveValues?.map((pv: string) => pv.toLowerCase());
 
                             // 1. Check Disallowed first
-                            if (disallowedValuesLower?.some(disallowed => val.includes(disallowed))) {
-                                const matchedDisallowed = disallowedValuesLower.find(disallowed => val.includes(disallowed));
+                            if (disallowedValuesLower?.some((disallowed: string) => val.includes(disallowed))) {
+                                const matchedDisallowed = disallowedValuesLower.find((disallowed: string) => val.includes(disallowed));
                                 hasRejectionIndicator = true;
                                 rejectionReason = `Metadata field '${fieldNameLower}' includes disallowed value '${matchedDisallowed}' (from '${val}')`;
                                 logger.trace({ field: fieldNameLower, value: val, disallowed: matchedDisallowed }, 'Metadata: Disallowed value match -> Reject');
@@ -265,8 +273,8 @@ export class GreenhouseFetcher implements JobFetcher {
 
                             // 2. Check Allowed for specific regions
                             let allowedMatch = false;
-                            if (allowedValuesLower?.some(allowed => val.includes(allowed))) {
-                                const matchedAllowed = allowedValuesLower.find(allowed => val.includes(allowed));
+                            if (allowedValuesLower?.some((allowed: string) => val.includes(allowed))) {
+                                const matchedAllowed = allowedValuesLower.find((allowed: string) => val.includes(allowed));
                                 if (matchedAllowed) {
                                     allowedMatch = true;
                                     if (['latam', 'americas', 'brazil', 'brasil'].includes(matchedAllowed)) {
@@ -284,9 +292,9 @@ export class GreenhouseFetcher implements JobFetcher {
                             }
 
                             // 3. Check Positive values as fallback/confirmation
-                            if (!allowedMatch && positiveValuesLower?.some(positive => val.includes(positive))) {
+                            if (!allowedMatch && positiveValuesLower?.some((positive: string) => val.includes(positive))) {
                                  hasGlobalIndicator = true; // Assume generic positive values map to global
-                                 logger.trace({ field: fieldNameLower, value: val, positive: positiveValuesLower.find(p => val.includes(p)) }, 'Metadata: Positive value match -> Global (Fallback)');
+                                 logger.trace({ field: fieldNameLower, value: val, positive: positiveValuesLower.find((p: string) => val.includes(p)) }, 'Metadata: Positive value match -> Global (Fallback)');
                             }
                             break;
                     }
@@ -341,7 +349,7 @@ export class GreenhouseFetcher implements JobFetcher {
             const start = Math.max(0, index - proximityWindow);
             const end = Math.min(text.length, index + keyword.length + proximityWindow);
             const context = text.substring(start, end);
-            const negativeMatch = this._matchesKeywordRegex(context, keywords.STRONG_NEGATIVE_RESTRICTION);
+            const negativeMatch = this._matchesKeywordRegex(context, keywords.STRONG_NEGATIVE_RESTRICTION || []);
             if (negativeMatch.match) {
                  logger.debug({ context, keyword, negativeKeyword: negativeMatch.keyword }, "Found negative keyword near ambiguous term.");
                  return { match: true, negativeKeyword: negativeMatch.keyword };
@@ -350,25 +358,25 @@ export class GreenhouseFetcher implements JobFetcher {
         };
 
         // Check Negative FIRST
-        const negativeMatch = this._matchesKeywordRegex(combinedLocationText, keywords.STRONG_NEGATIVE_RESTRICTION);
+        const negativeMatch = this._matchesKeywordRegex(combinedLocationText, keywords.STRONG_NEGATIVE_RESTRICTION || []);
         if (negativeMatch.match) {
-            const reason = `Location/Office indicates Restriction: \"${negativeMatch.keyword}\"`;
+            const reason = `Location/Office indicates Restriction: "${negativeMatch.keyword}"`;
             logger.debug({ location: combinedLocationText, keyword: negativeMatch.keyword }, reason);
             return { decision: 'REJECT', reason };
         }
 
         // Check LATAM
-        const latamMatch = this._matchesKeywordRegex(combinedLocationText, keywords.STRONG_POSITIVE_LATAM);
+        const latamMatch = this._matchesKeywordRegex(combinedLocationText, keywords.STRONG_POSITIVE_LATAM || []);
         if (latamMatch.match) {
-            const reason = `Location/Office indicates LATAM: \"${latamMatch.keyword}\"`;
+            const reason = `Location/Office indicates LATAM: "${latamMatch.keyword}"`;
             logger.trace({ location: combinedLocationText, keyword: latamMatch.keyword }, reason);
             return { decision: 'ACCEPT_LATAM', reason };
         }
 
         // Check Global
-        const globalMatch = this._matchesKeywordRegex(combinedLocationText, keywords.STRONG_POSITIVE_GLOBAL);
+        const globalMatch = this._matchesKeywordRegex(combinedLocationText, keywords.STRONG_POSITIVE_GLOBAL || []);
         if (globalMatch.match) {
-            const reason = `Location/Office indicates Global: \"${globalMatch.keyword}\"`;
+            const reason = `Location/Office indicates Global: "${globalMatch.keyword}"`;
             logger.trace({ location: combinedLocationText, keyword: globalMatch.keyword }, reason);
             return { decision: 'ACCEPT_GLOBAL', reason };
         }
@@ -400,7 +408,7 @@ export class GreenhouseFetcher implements JobFetcher {
             const countries = keywords.ACCEPT_EXACT_LATAM_COUNTRIES.map(c => c.toLowerCase());
             if (countries.some(country => combinedLocationText.includes(country))) {
                 const foundCountry = countries.find(country => combinedLocationText.includes(country));
-                const reason = `Location/Office indicates specific LATAM country: \"${foundCountry}\"`;
+                const reason = `Location/Office indicates specific LATAM country: "${foundCountry}"`;
                  logger.trace({ location: combinedLocationText, country: foundCountry }, reason);
                 return { decision: 'ACCEPT_LATAM', reason };
             }
@@ -452,26 +460,27 @@ export class GreenhouseFetcher implements JobFetcher {
         };
 
         // Check Negative FIRST
-        const negativeRegionMatch = this._matchesKeywordRegex(fullContentLower, keywords.STRONG_NEGATIVE_REGION);
+        const negativeRegionMatch = this._matchesKeywordRegex(fullContentLower, keywords.STRONG_NEGATIVE_REGION || []);
         if (negativeRegionMatch.match) {
-             const reason = `Content indicates Region Restriction: \"${negativeRegionMatch.keyword}\"`;
+             const reason = `Content indicates Region Restriction: "${negativeRegionMatch.keyword}"`;
              logger.debug({ keyword: negativeRegionMatch.keyword }, reason);
             return { decision: 'REJECT', reason };
         }
-        const negativeTimezoneMatch = this._matchesKeywordRegex(fullContentLower, keywords.STRONG_NEGATIVE_TIMEZONE);
+        const negativeTimezoneMatch = this._matchesKeywordRegex(fullContentLower, keywords.STRONG_NEGATIVE_TIMEZONE || []);
         if (negativeTimezoneMatch.match) {
-             const reason = `Content indicates Timezone Restriction: \"${negativeTimezoneMatch.keyword}\"`;
+             const reason = `Content indicates Timezone Restriction: "${negativeTimezoneMatch.keyword}"`;
              logger.debug({ keyword: negativeTimezoneMatch.keyword }, reason);
             return { decision: 'REJECT', reason };
         }
 
         // Check LATAM 
-        const latamMatch = this._includesSubstringKeyword(fullContentLower, keywords.STRONG_POSITIVE_LATAM);
+        const latamMatch = this._includesSubstringKeyword(fullContentLower, keywords.STRONG_POSITIVE_LATAM || []);
         if (latamMatch.match) {
-             const reason = `Content indicates LATAM: \"${latamMatch.keyword}\"`;
+             const reason = `Content indicates LATAM: "${latamMatch.keyword}"`;
              logger.trace({ keyword: latamMatch.keyword }, reason);
             // Even if LATAM found, quickly check its context for immediate negatives
-             const latamPattern = new RegExp(`\\b(${keywords.STRONG_POSITIVE_LATAM.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\\]{}]/g, '\\$&')).join('|')})\\b`, 'gi');
+             const latamKeywordsList = keywords.STRONG_POSITIVE_LATAM || [];
+             const latamPattern = new RegExp(`\b(${latamKeywordsList.map((kw: string) => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\b`, 'gi');
              let latamIdxMatch;
              while((latamIdxMatch = latamPattern.exec(fullContentLower)) !== null){
                  const nearbyNegative = hasNearbyNegative(fullContentLower, latamIdxMatch.index, latamIdxMatch[1]);

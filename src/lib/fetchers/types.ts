@@ -123,4 +123,38 @@ export interface LeverApiPosting {
 
 export interface NegativeFilterConfig {
     keywords: string[];
+}
+
+// --- Ashby Specific Interfaces ---
+interface AshbyAddress {
+    addressLocality?: string;
+    addressRegion?: string;
+    addressCountry?: string;
+}
+
+interface AshbySecondaryLocation {
+    location: string;
+    address?: AshbyAddress;
+}
+
+export interface AshbyApiJob {
+    id: string; // UUID
+    title: string;
+    departmentName?: string;
+    location?: string; // Often a specific location or "Remote"
+    descriptionHtml?: string;
+    isRemote?: boolean;
+    publishedAt?: string; // ISO 8601 date string
+    updatedAt?: string; // ISO 8601 date string
+    applyUrl?: string; // Direct application link
+    jobUrl?: string; // Link to job on Ashby board
+    isListed?: boolean; // If the job is publicly visible
+    organizationName?: string;
+    employmentType?: string; // e.g., "Full-time", "Contract"
+    address?: {            // Add the primary address object structure
+        postalAddress?: AshbyAddress;
+    };
+    secondaryLocations?: AshbySecondaryLocation[]; // Update to use the defined type
+    // Internal field added during processing
+    _determinedHiringRegionType?: 'global' | 'latam';
 } 

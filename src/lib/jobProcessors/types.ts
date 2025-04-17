@@ -78,4 +78,8 @@ export interface EnhancedGreenhouseJob extends GreenhouseJob {
   tags?: string[];
   country?: string;
   workplaceType?: string;
-} 
+}
+
+// Union type for raw job data from different sources
+// Allows the adapter to pass source-specific data to the correct processor
+export type RawJobData = GreenhouseJob | EnhancedGreenhouseJob | AshbyApiJob; 
