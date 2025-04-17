@@ -1,0 +1,22 @@
+{
+  "LOCATION_KEYWORDS": {
+    "STRONG_NEGATIVE_RESTRICTION": [
+      "us", "usa", "united states", "canada", "uk", "united kingdom", "eu", "europe", "emea", "apac", "asia", "australia",
+      "germany", "france", "poland", "switzerland", "netherlands", "ireland", "spain", "italy", 
+      "dominican republic",
+      "vancouver", "british columbia", "toronto",
+      "cape town", "johannesburg", "lagos", "nairobi",
+      "on-site", "hybrid", "office", "in-office", 
+      "must reside in", "eligible to work in", "based in", "located in", "citizen of", "resident of",
+      "AL", "AK", "AZ", "AR", "CA", "California", "CO", "Colorado", "CT", "DE", "FL", "Florida", "GA", "Georgia", 
+      "HI", "ID", "IL", "Illinois", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "Maryland", "MA", "Massachusetts", "MI", "Michigan", 
+      "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "New Jersey", "NM", "NY", "New York", "NC", "North Carolina", 
+      "ND", "OH", "Ohio", "OK", "OR", "Oregon", "PA", "Pennsylvania", "RI", "SC", "South Carolina", "SD", "TN", "TX", "Texas", 
+      "UT", "VT", "VA", "Virginia", "WA", "Washington", "WV", "WI", "WY",
+      "new york city", "nyc", "san francisco", "sf", "bay area", "seattle", "austin", "chicago", "boston", "atlanta", "denver", "los angeles", "dallas", "houston", "baltimore"
+    ],
+    "STRONG_POSITIVE_GLOBAL": [
+      "remote", "home office", "work from home", "anywhere", "global", "world", "worldwide"
+    ]
+  }
+} 

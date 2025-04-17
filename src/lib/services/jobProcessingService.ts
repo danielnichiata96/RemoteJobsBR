@@ -152,7 +152,7 @@ export class JobProcessingService {
               existingJobId: existingJob.id,
               incomingSource: job.source,
               incomingSourceId: job.sourceId,
-              normalizedTitle,
+              normalizedJobTitle,
               companyName: rawCompanyName
           }, 'Duplicate job detected. Skipping save, updating existing job timestamp.');
 

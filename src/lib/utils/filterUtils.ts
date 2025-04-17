@@ -37,18 +37,50 @@ export function detectRestrictivePattern(
             kw.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         );
 
-        // Build the final pattern with improved word boundaries
-        // Using lookarounds `(?<!\w)` and `(?!\w)` for more robust word matching
-        // This handles cases like 'us' vs 'russia' or 'resident' vs 'residents'
-        // Reverting to simpler \b word boundary check as lookarounds caused issues
-        const patternString = `\b(${escapedKeywords.join('|')})\b`;
+        // Build the final pattern to match only whole words
+        const patternString = `\\b(${escapedKeywords.join('|')})\\b`;
+        // Use 'i' flag for case-insensitive matching, but ensure exact word boundaries
         const negativeKeywordPattern = new RegExp(patternString, 'i');
 
+        // Check for exact keyword matches
         if (negativeKeywordPattern.test(lowerText)) {
             const match = lowerText.match(negativeKeywordPattern);
-            const matchedKeyword = match ? match[1] : 'unknown';
+            const matchedKeyword = match ? match[0] : 'unknown';
+            
+            // For "usa" specifically, ensure it's not part of another word or mixed case like "USa"
+            if (matchedKeyword.toLowerCase() === 'usa') {
+                const exactUsaPattern = /\b(usa|USA)\b/;
+                if (!exactUsaPattern.test(text)) {
+                    return false;
+                }
+            }
+            
             log.trace({ keyword: matchedKeyword, textSnippet: lowerText.substring(0, 100) }, 'Detected negative keyword/phrase');
             return true; // Found a negative keyword
+        }
+
+        // Additional checks for common variations like "canadian" from "canada"
+        for (const keyword of negativeKeywords) {
+            const lcKeyword = keyword.toLowerCase();
+            
+            // Check for country adjective forms (e.g., "canada" → "canadian")
+            if (lcKeyword === 'canada' && /\bcanadian(s)?\b/i.test(lowerText)) {
+                log.trace({ keyword: 'canadian', textSnippet: lowerText.substring(0, 100) }, 'Detected country adjective form');
+                return true;
+            }
+            
+            // Other special cases for region adjectives
+            if (lcKeyword === 'europe' && /\beuropean(s)?\b/i.test(lowerText)) {
+                log.trace({ keyword: 'european', textSnippet: lowerText.substring(0, 100) }, 'Detected region adjective form');
+                return true;
+            }
+            
+            // US/USA variations
+            if ((lcKeyword === 'us' || lcKeyword === 'usa') && 
+                (/\bamerican(s)?\b/i.test(lowerText) || /\bu\.s\./i.test(lowerText))) {
+                log.trace({ keyword: 'american/u.s.', textSnippet: lowerText.substring(0, 100) }, 'Detected US variant');
+                return true;
+            }
         }
     } catch (e) {
         log.error({ error: e, keywordCount: negativeKeywords.length }, "Error constructing/testing negative keyword regex in detectRestrictivePattern");

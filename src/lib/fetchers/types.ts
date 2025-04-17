@@ -77,55 +77,48 @@ export interface FilterResult {
     type?: 'global' | 'latam';
 }
 
-// --- Ashby Specific Interfaces ---
-// Based on: https://api.ashbyhq.com/posting-api-schema#Location
-export interface AshbyLocation {
-  id: string;
-  name: string;
-  type: string; // Using string for flexibility as exact enum might vary
-  address?: {
-    rawAddress: string | null;
-    streetAddress1: string | null;
-    streetAddress2: string | null;
-    city: string | null;
-    state: string | null;
-    postalCode: string | null;
-    country: string | null;
-    countryCode: string | null; // Example: "US", "BR"
-  } | null;
-  isRemote: boolean; // Location specific remote flag
-}
 
-// Updated AshbyApiJob interface based on official schema + internal field
-export interface AshbyApiJob {
+export interface LeverApiPosting {
     id: string;
-    title: string;
-    locations: AshbyLocation[]; // Primary locations array
-    secondaryLocations?: AshbyLocation[]; // Optional secondary locations array
-    department?: { id: string; name: string; } | null;
-    team?: { id: string; name: string; } | null;
-    isRemote: boolean | null;
-    descriptionHtml?: string | null;
-    descriptionPlain?: string | null;
-    publishedAt: string; // ISO DateTime string
-    updatedAt: string; // ISO DateTime string
-    employmentType?: "FullTime" | "PartTime" | "Intern" | "Contract" | "Temporary" | null;
-    compensationTier?: { id: string; name: string; } | null;
-    compensationRange?: string | null;
-    isListed: boolean;
-    jobUrl: string;
-    applyUrl: string;
+    text: string; // Job posting name (Title)
+    categories?: {
+        commitment?: string; // e.g., "Full-time"
+        department?: string;
+        level?: string;
+        location?: string; // Primary location category
+        team?: string;
+        allLocations?: string[]; // Added based on docs note
+    };
+    // --- Fields based on Official Docs ---
+    description?: string; // Combined job description opening and body (as styled HTML)
+    descriptionPlain?: string; // Combined job description opening and body (as plaintext)
+    lists?: Array<{ // Extra lists (such as requirements, benefits, etc.)
+        text: string; // NAME
+        content: string; // unstyled HTML of list elements
+    }>;
+    opening?: string; // Job description opening (as styled HTML)
+    openingPlain?: string; // Job description opening (as plaintext)
+    descriptionBody?: string; // Job description body without opening (as styled HTML)
+    descriptionBodyPlain?: string; // Job description body without opening (as plaintext)
+    additional?: string; // Optional closing content (as styled HTML)
+    additionalPlain?: string; // Optional closing content (as plaintext)
+    // --- End Official Docs Fields ---
+
+    createdAt: number; // Unix timestamp (milliseconds)
+    updatedAt: number; // Unix timestamp (milliseconds)
+    hostedUrl: string; // URL to the Lever-hosted job page
+    applyUrl: string; // URL to the Lever-hosted application page
+    country?: string;
+    company?: string; // Name of the company (often inferred from the source)
+    salaryRange?: { // Note: Salary info might not always be present
+        min: number;
+        max: number;
+        currency: string; // e.g., "USD"
+        interval: string; // e.g., "year"
+    };
+    workplaceType?: 'on-site' | 'remote' | 'hybrid'; // Lever standard field
     // Internal field added by fetcher after filtering:
     _determinedHiringRegionType?: 'global' | 'latam';
-}
-
-// --- Ashby Specific Config Interfaces ---
-export interface AshbyPositiveFilterConfig {
-    remoteKeywords: string[];     // From LOCATION_KEYWORDS.STRONG_POSITIVE_GLOBAL
-    latamKeywords: string[];      // From LOCATION_KEYWORDS.STRONG_POSITIVE_LATAM
-    brazilKeywords: string[];     // From LOCATION_KEYWORDS.ACCEPT_EXACT_LATAM_COUNTRIES
-    contentLatamKeywords: string[]; // From CONTENT_KEYWORDS.STRONG_POSITIVE_LATAM
-    contentGlobalKeywords: string[]; // From CONTENT_KEYWORDS.STRONG_POSITIVE_GLOBAL
 }
 
 export interface NegativeFilterConfig {

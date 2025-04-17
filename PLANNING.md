@@ -31,8 +31,8 @@
     │   ├── pages/           # Next.js pages and API routes
     │   ├── lib/
     │   │   ├── adapters/        # Adapters (e.g., JobProcessingAdapter)
-    │   │   ├── fetchers/        # Job fetcher implementations (Greenhouse, Ashby)
-    │   │   ├── jobProcessors/   # Job processor implementations (Greenhouse, Ashby)
+    │   │   ├── fetchers/        # Job fetcher implementations (Greenhouse)
+    │   │   ├── jobProcessors/   # Job processor implementations (Greenhouse)
     │   │   ├── services/        # Service layer (e.g., JobProcessingService) 
     │   │   ├── utils/           # Shared utility functions (job, date, text, logo)
     │   │   └── prisma.ts        # Prisma client instance
@@ -101,7 +101,7 @@
 
 *   **User:** Supports multiple roles (Candidate, Recruiter/Company) with role-specific fields
 *   **Job:** Contains job details, required skills, location info, and external application URLs
-*   **JobSource:** Defines a source of job listings (e.g., Greenhouse board, Ashby feed), including URL, type, and configuration.
+*   **JobSource:** Defines a source of job listings (e.g., Greenhouse board), including URL, type, and configuration.
 *   **SavedJob:** Tracks jobs saved/favorited by candidates
 *   **ClickTracking:** Records when users click on external job links (for analytics)
 *   **Newsletter:** Manages user email preferences for job notifications

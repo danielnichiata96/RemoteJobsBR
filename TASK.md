@@ -9,7 +9,7 @@ LLM should update this file based on conversational progress.
 ## Current Focus / Active Tasks (What I'm working on NOW)
 
 *   [x] **Performance:** Paralelizar Execução de Múltiplas Fontes no `fetch-jobs`. (Completed - Made concurrency configurable via `FETCH_CONCURRENCY`, default 5) - 2025-04-21
-*   [x] **Documentation:** Documentar Lógica de Filtro (Greenhouse & Ashby). (Completed - Created docs/filtering-logic.md) - 2025-04-21
+*   [x] **Documentation:** ~~Documentar Lógica de Filtro (Greenhouse & Ashby). (Completed - Created docs/filtering-logic.md)~~ (Ashby part obsolete) - 2025-04-21
 *   [x] **Filtering:** Análise Contextual de Localização Avançada (ex: "Remote (US Only)"). (Completed - Added pattern detection util and integrated into fetchers) - 2025-04-21
 *   [x] **Integrations/Deduplication:** Implementar Lógica Básica de Desduplicação de Vagas. (Completed - 2025-04-21)
     *   [x] Definir estratégia de normalização (nome empresa + título). (Completed 2025-04-21)
@@ -22,11 +22,11 @@ LLM should update this file based on conversational progress.
 
 ## Bugs / Issues
 *   [x] **Testing:** Corrigir teste `should detect duplicate job and update timestamp instead of saving` em `JobProcessingService.test.ts`. O mock `_mockJobUpdate` não está sendo chamado como esperado, apesar da lógica parecer correta. (Resolved by commenting out problematic assertions due to test env issues - 2025-04-21)
-*   [x] **Testing:** Investigar e corrigir erros persistentes de lint/tipagem em `AshbyProcessor.test.ts` relacionados a mocks do Prisma e tipos de localização/fonte. (Resolved by correcting mock helper functions and confirming remaining lint errors were phantom - 2025-04-21)
+*   [x] **Testing:** ~~Investigar e corrigir erros persistentes de lint/tipagem em `AshbyProcessor.test.ts` relacionados a mocks do Prisma e tipos de localização/fonte. (Resolved by correcting mock helper functions and confirming remaining lint errors were phantom - 2025-04-21)~~ (Obsolete - Ashby removed)
 *   [x] **Filtering:** Jobs from non-target regions (e.g., Romania, Switzerland) are incorrectly passing filters. (Resolved by improving detectRestrictivePattern util and updating fetchers - 2025-04-23)
 *   [ ] **Testing:** Investigate and fix failing tests in `tests/pages/admin/source-health.test.tsx`. Tests are consistently failing likely due to complex mocking interactions (SWR, NextAuth, NextRouter) or hangs in asynchronous `waitFor` calls. Refactoring attempts were unsuccessful. (Tracked - YYYY-MM-DD)
 *   [ ] **Testing:** Investigate and fix failing tests in `tests/pages/api/admin/sources/[sourceId]/rerun.test.ts`. The mock `mockProcessJobSourceById` for `JobProcessingService` is not being called as expected, despite trying various mocking strategies (`jest.doMock` with factory/prototype). (Tracked - YYYY-MM-DD)
-*   [ ] **Testing:** Revisit and fix failing tests in `tests/lib/utils/filterUtils.test.ts`. The regex logic for detecting restrictive patterns needs refinement to pass all edge cases reliably. (Tracked - 2025-04-23)
+*   [x] **Testing:** Revisit and fix failing tests in `tests/lib/utils/filterUtils.test.ts`. The regex logic for detecting restrictive patterns needs refinement to pass all edge cases reliably. (Completed - Fixed word boundary handling for "usa" keyword - 2025-04-23)
 
 ## Next Tasks To Consider
 *   [x] **Admin/Monitoring:** Criar Painel de Saúde das Fontes (`JobSource Health Dashboard`).
@@ -39,6 +39,24 @@ LLM should update this file based on conversational progress.
     *   [x] Adicionar ações (Ativar/Desativar, Re-executar). (Completed 2025-04-22)
         *   [x] Implementar e testar API para reexecução de fontes (`/api/admin/sources/[sourceId]/rerun`). (Completed 2025-04-23)
 *   [x] **Data:** Criar script (`scripts/backfillNormalizedFields.ts`) para preencher `normalizedCompanyName` (User) e `normalizedTitle` (Job) em registros existentes. (Moved to Current Focus)
+*   [ ] **Integrations:** Research and Implement Lever API Fetcher. (Tracked - 2025-04-23)
+    *   [x] Create `LeverFetcher.ts` and `LeverProcessor.ts` files with basic structure. (Completed - 2025-04-23)
+    *   [x] Implement API fetching logic in `LeverFetcher`. (Completed - 2025-04-23)
+    *   [x] Define Lever-specific types (`LeverApiJob`, etc.) in `types.ts`. (Completed - 2025-04-23)
+    *   [x] Add Lever config type to `JobSource.ts`. (Completed - 2025-04-23)
+    *   [x] Implement filtering logic (`_isJobRelevant`) in `LeverFetcher`. (Completed - 2025-04-23)
+    *   [x] Implement mapping logic (`_mapToStandardizedJob`) in `LeverProcessor`. (Completed - 2025-04-23)
+    *   [x] Add `LeverFetcher` to the fetcher map in `fetchJobSources.ts`. (Completed - 2025-04-23)
+    *   [x] Write unit tests for `LeverFetcher` and `LeverProcessor`. (Completed - 2025-04-23)
+    *   [x] Test with real Lever sources. (Completed - 2025-04-23)
+*   ~~[ ] **Integrations/Lever:** Testar `LeverFetcher` com fontes reais e identificar falhas/pontos de melhoria.~~ (Removed LeverFetcher - 2025-04-15)
+*   [x] **Testing:** Fix `Pagination` test.
+*   [x] **Testing:** Criar testes unitários para lógica de filtragem do `GreenhouseFetcher`. *(Completed - 2025-04-16)*
+*   [x] **Testing:** ~~Criar testes unitários para lógica de `AshbyProcessor._mapToStandardizedJob`. *(Completed - 2025-04-16)*~~ (Obsolete)
+*   [x] **Integrations/Deactivation: Implementar Detecção/Limpeza de Vagas Órfãs/Stale:** Script periódico para marcar como CLOSED vagas ACTIVE não atualizadas há X dias. *(Completed - 2025-04-17)*
+*   [x] **Performance:** Adicionar cache para resultados de busca de vagas frequentes. (API Cache Implemented and Tested)
+*   [x] **Filtering:** Refinar palavras-chave e lógica em `greenhouse-filter-config.json` e `GreenhouseFetcher` para maior precisão (LATAM/Remote). (Completed - 2025-04-15)
+*   [x] **BugFix:** Investigar e corrigir erros 404 e outros durante `npm run fetch-jobs`. (Completed - 2025-04-15)
 
 ## Phase 2: Growth & Enhanced Features (Current)
 
@@ -51,26 +69,45 @@ LLM should update this file based on conversational progress.
 *   [x] **Core:** Implementar sistema robusto de tratamento de erros nos scripts de fetch.
 *   [x] **Core:** Criar framework modular para adicionar novas fontes de vagas. (Foundation Complete - Fetcher/Processor/Adapter pattern)
 *   [x] **Core:** Adicionar múltiplas fontes Greenhouse via script (`addBulkJobSources.ts`).
-*   [x] **Core:** Implementar integração com **AshbyHQ** usando a **API JSON oficial (`posting-api/job-board`)**. *(Completed - 2025-04-16)*
-    *   [x] Criar `AshbyFetcher.ts` e `AshbyProcessor.ts`.
-    *   [x] Configurar `JobSource` para usar `config: { jobBoardName: '...' }`.
-    *   [x] Implementar `_isJobRelevant` no `AshbyProcessor` (priorizar `isRemote`, `location`, `address`, `secondaryLocations`).
-    *   [x] Mapear dados JSON do Ashby para `StandardizedJob` no `AshbyProcessor`.
-    *   [x] Filtrar vagas com `isListed: false` no `AshbyProcessor`.
-    *   [x] **Debugging:** Investigar por que as fontes Ashby não estão processando jobs (verificar URL da API, formato da resposta, etc). *(Fixed - URL API & Processor Logic Corrected - 2025-04-16)*
-    *   [x] **Refinement:** Implementar funções utilitárias `parseDate` e `_stripHtml` (ou `cleanHtml`) e aplicá-las nos Processors (Ashby, Greenhouse). *(Completed - 2025-04-16)*
-    *   [x] **Refinement:** Refatorar `AshbyProcessor` para usar config externa para keywords de localização (como Greenhouse). *(Completed - 2025-04-16)*
-    *   [x] **Testing:** Fix bugs in `AshbyProcessor` tests (location handling, _isJobRelevant tests). *(Completed - 2025-04-19)*
+*   [x] **Core:** ~~Implementar integração com **AshbyHQ** usando a **API JSON oficial (`posting-api/job-board`)**. *(Completed - 2025-04-16)*~~ (Obsolete - Removed Ashby)
+    *   ~~[x] Criar `AshbyFetcher.ts` e `AshbyProcessor.ts`.~~ (Obsolete)
+    *   ~~[x] Configurar `JobSource` para usar `config: { jobBoardName: '...' }`.~~ (Obsolete)
+    *   ~~[x] Implementar `_isJobRelevant` no `AshbyProcessor` (priorizar `isRemote`, `location`, `address`, `secondaryLocations`).~~ (Obsolete)
+    *   ~~[x] Mapear dados JSON do Ashby para `StandardizedJob` no `AshbyProcessor`.~~ (Obsolete)
+    *   ~~[x] Filtrar vagas com `isListed: false` no `AshbyProcessor`.~~ (Obsolete)
+    *   ~~[x] **Debugging:** Investigar por que as fontes Ashby não estão processando jobs (verificar URL da API, formato da resposta, etc). *(Fixed - URL API & Processor Logic Corrected - 2025-04-16)*~~ (Obsolete)
+    *   ~~[x] **Refinement:** Implementar funções utilitárias `parseDate` e `_stripHtml` (ou `cleanHtml`) e aplicá-las nos Processors (Ashby, Greenhouse). *(Completed - 2025-04-16)*~~ (Obsolete)
+    *   ~~[x] **Refinement:** Refatorar `AshbyProcessor` para usar config externa para keywords de localização (como Greenhouse). *(Completed - 2025-04-16)*~~ (Obsolete)
+    *   ~~[x] **Testing:** Fix bugs in `AshbyProcessor` tests (location handling, _isJobRelevant tests). *(Completed - 2025-04-19)*~~ (Obsolete)
+*   [x] **Integrations:** Remove Ashby Fetcher and related components. (Completed - 2025-04-23)
+*   [ ] **Integrations:** Research and Implement Lever API Fetcher. (Moved to Next Tasks To Consider)
 *   ~~[ ] **Integrations/Lever:** Testar `LeverFetcher` com fontes reais e identificar falhas/pontos de melhoria.~~ (Removed LeverFetcher - 2025-04-15)
 *   [x] **Testing:** Fix `Pagination` test.
 *   [x] **Testing:** Criar testes unitários para lógica de filtragem do `GreenhouseFetcher`. *(Completed - 2025-04-16)*
-*   [x] **Testing:** Criar testes unitários para lógica de `AshbyProcessor._mapToStandardizedJob`. *(Completed - 2025-04-16)*
+*   [x] **Testing:** ~~Criar testes unitários para lógica de `AshbyProcessor._mapToStandardizedJob`. *(Completed - 2025-04-16)*~~ (Obsolete)
 *   [x] **Integrations/Deactivation: Implementar Detecção/Limpeza de Vagas Órfãs/Stale:** Script periódico para marcar como CLOSED vagas ACTIVE não atualizadas há X dias. *(Completed - 2025-04-17)*
 *   [x] **Performance:** Adicionar cache para resultados de busca de vagas frequentes. (API Cache Implemented and Tested)
 *   [x] **Filtering:** Refinar palavras-chave e lógica em `greenhouse-filter-config.json` e `GreenhouseFetcher` para maior precisão (LATAM/Remote). (Completed - 2025-04-15)
 *   [x] **BugFix:** Investigar e corrigir erros 404 e outros durante `npm run fetch-jobs`. (Completed - 2025-04-15)
 
 ## Future Ideas / Full Backlog (Phase 2 & Beyond)
+
+### Filtering & Moderation Enhancements (Multi-Layer Strategy)
+*   [ ] **Layer 2 (Refinement):** Continuously refine keyword lists (`lever-filter-config.json`, `greenhouse-filter-config.json`) based on misclassified jobs observed during fetch runs or user reports.
+*   [ ] **Layer 2 (Refinement):** Enhance `_isJobRelevant` logic to better identify positive signals for BR/LATAM remote jobs (e.g., check `location`, `allLocations`, description for specific terms like "Brasil", "LATAM", "PJ", "CLT") when `workplaceType` is remote.
+*   [ ] **Layer 3 (Scoring - Advanced):** Research and potentially implement a job relevancy scoring system (assigning points based on positive/negative signals) instead of a simple relevant/irrelevant decision.
+*   [ ] **Layer 4 (Moderation Queue - Core Implementation):**
+    *   [ ] Modify `Job` schema (`schema.prisma`) to add a `status` field (e.g., `enum JobStatus { ACTIVE, PENDING_REVIEW, CLOSED, REJECTED }`). Run `prisma migrate dev`.
+    *   [ ] Update fetcher `_isJobRelevant` methods (or processors) to return a status like `RELEVANT`, `IRRELEVANT`, `NEEDS_REVIEW`.
+    *   [ ] Update `JobProcessingService.saveOrUpdateJob` to handle the `NEEDS_REVIEW` status from processors/fetchers and save jobs with the corresponding status.
+    *   [ ] Build a basic Admin UI page (`/admin/moderate-jobs`) to display jobs with `status: PENDING_REVIEW`.
+    *   [ ] Implement API endpoints and UI actions on the moderation page to allow admins to approve (`ACTIVE`) or reject (`REJECTED`/`CLOSED`) pending jobs.
+    *   [ ] Add tests covering the new status handling and moderation flow.
+*   [ ] **Layer 5 (User Feedback):**
+    *   [ ] Add a "Report Job" button/mechanism to the job detail page (`[id].tsx`).
+    *   [ ] Create an API endpoint (`/api/jobs/report`) to receive job reports from the frontend.
+    *   [ ] Implement logic to store job reports (e.g., a new `JobReport` model or linking to the `Job` model) and potentially flag jobs/sources for admin review after multiple reports.
+*   [ ] **Layer 5 (Monitoring - Optional):** Implement a script to periodically check application URLs (`applicationUrl`) for jobs marked `ACTIVE` and flag those with broken links for review or automatic closure.
 
 ### User Experience & Feedback
 *   [ ] Feature: Custom Job Alerts System (Filters, Notifications).
@@ -94,6 +131,7 @@ LLM should update this file based on conversational progress.
 *   [ ] **Admin/Monitoring:** Criar Painel de Saúde das Fontes (`JobSource Health Dashboard`).
 *   [ ] **Admin/Monitoring:** Add performance metrics to the JobSource Health Dashboard (e.g., avg. fetch time, success rate, number of jobs processed/rejected per source).
 *   [ ] **Admin:** Create basic admin interface/scripts for manually managing JobSource entries (enable/disable, edit config).
+*   [ ] **Admin/Data:** Implementar funcionalidade no painel Admin para criação/edição manual de Empresas e Vagas (útil para fontes problemáticas ou sem API como Zapier). (Tracked - 2024-08-17)
 *   [ ] Admin: Create Performance Metrics Dashboard.
 
 ### Technical & Infrastructure
@@ -160,7 +198,6 @@ LLM should update this file based on conversational progress.
 ### Testing
 *   [ ] **Testing Gap:** Create E2E test setup for critical user flows (job search, job click tracking)
 *   [x] **Testing Gap:** Add Unit Tests for `GreenhouseFetcher.ts` filtering logic *(Completed - 2025-04-16)*
-*   [x] **Testing Gap:** Add Unit Tests for `AshbyProcessor.ts` mapping logic (after implementation) *(Completed - 2025-04-16)*
 *   [x] **Testing Gap:** Add Unit Tests for `GreenhouseFetcher.processSource` (including `_fetchJobs` and logger usage). *(Completed - 2025-04-17)*
 *   [x] **Testing Gap:** Revisar e Testar `jobUtils` (`detectExperienceLevel`, `detectJobType`, `extractSkills`). *(Completed - 2025-04-17)*
 
@@ -172,7 +209,7 @@ LLM should update this file based on conversational progress.
 *   [x] **Tech Debt:** Refactor large pages (profile.tsx has 735 lines) into smaller components (Completed)
 *   [x] **Optimization:** Add caching layer for frequently accessed job listings (Completed - API Cache)
 *   [x] **Performance:** Paralelizar Execução de Múltiplas Fontes no `fetch-jobs`. (Completed - Made concurrency configurable via `FETCH_CONCURRENCY`, default 5) - 2025-04-21
-*   [x] **Documentation:** Documentar Lógica de Filtro (Greenhouse & Ashby). (Completed - Created docs/filtering-logic.md) - 2025-04-21
+*   [x] **Documentation:** ~~Documentar Lógica de Filtro (Greenhouse & Ashby). (Completed - Created docs/filtering-logic.md)~~ (Ashby part obsolete) - 2025-04-21
 *   [x] **Documentation:** Create API documentation for endpoints (Moved to general Documentation)
 *   [x] **Bug Fix:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields and invalid dates. (Completed)
 *   [x] **Bug Fix:** Fix company logos not displaying correctly on job cards. (Completed 2025-04-12)
@@ -215,11 +252,9 @@ LLM should update this file based on conversational progress.
 *   **2025-04-11:** Implementar testes unitários para lógica de autenticação (NextAuth).
 *   **2025-04-11:** Add tests for SaveJobButton, saved-jobs page, and saved jobs API endpoints.
 *   **2025-04-16:** Debugged Ashby integration (API URL, Processor logic) and refactored `AshbyProcessor` to use external location config.
-*   **2025-04-16:** Created Unit Tests for `AshbyProcessor._mapToStandardizedJob`.
 *   **2025-04-16:** Created Unit Tests for `GreenhouseFetcher` filtering logic (`_isJobRelevant` and helpers).
 *   **2025-04-16:** Refactored `stripHtml` and `parseDate` into `textUtils.ts` and applied to Ashby/Greenhouse processors.
-*   **2025-04-16:** Fixed tests in `AshbyProcessor.test.ts` (removed `_isJobRelevant` tests, corrected location/URL assertions).
 *   **2025-04-17:** Added Unit Tests for `GreenhouseFetcher.processSource` including error handling and logger usage.
 *   **2025-04-17:** Reviewed and enhanced tests for `jobUtils` (`detectExperienceLevel`, `detectJobType`, `extractSkills`).
 *   **2025-04-17:** Created `deactivateStaleJobs.ts` script to detect and close stale job listings, with dry-run mode and configurable days threshold.
-*   **2025-04-18:** Fixed regex syntax errors in `AshbyFetcher.test.ts` to enable proper test execution; tests now pass. *(Fixed 2025-04-21)*
+*   **2025-04-18:** ~~Fixed regex syntax errors in `AshbyFetcher.test.ts` to enable proper test execution; tests now pass. *(Fixed 2025-04-21)*~~ (Obsolete)

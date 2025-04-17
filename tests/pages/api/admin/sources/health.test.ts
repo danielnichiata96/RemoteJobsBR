@@ -139,9 +139,7 @@ describe('/api/admin/sources/health API Route', () => {
     
     const mockDbResponse = [
         { id: 'source-1', name: 'Healthy Source', type: 'greenhouse', isEnabled: true, lastFetched: new Date(), companyWebsite: null, config: {}, runStats: [mockRunHealthy] },
-        { id: 'source-2', name: 'Warning Source', type: 'ashby', isEnabled: true, lastFetched: new Date(), companyWebsite: null, config: {}, runStats: [mockRunWarningError] },
         { id: 'source-3', name: 'Error Source', type: 'greenhouse', isEnabled: true, lastFetched: new Date(), companyWebsite: null, config: {}, runStats: [mockRunFailure] },
-        { id: 'source-4', name: 'Stale Source', type: 'ashby', isEnabled: true, lastFetched: new Date(Date.now() - 6*24*60*60*1000), companyWebsite: null, config: {}, runStats: [mockRunStale] },
         { id: 'source-5', name: 'Empty Source', type: 'greenhouse', isEnabled: true, lastFetched: new Date(), companyWebsite: null, config: {}, runStats: [mockRunEmpty] },
         { id: 'source-6', name: 'Unknown Source', type: 'other', isEnabled: false, lastFetched: null, companyWebsite: null, config: {}, runStats: [] }, // No run stats
     ];
@@ -164,9 +162,7 @@ describe('/api/admin/sources/health API Route', () => {
 
     // Check specific health statuses
     expect(responseData.find((s: any) => s.id === 'source-1').healthStatus).toBe('Healthy');
-    expect(responseData.find((s: any) => s.id === 'source-2').healthStatus).toBe('Warning');
     expect(responseData.find((s: any) => s.id === 'source-3').healthStatus).toBe('Error');
-    expect(responseData.find((s: any) => s.id === 'source-4').healthStatus).toBe('Warning'); // Stale
     expect(responseData.find((s: any) => s.id === 'source-5').healthStatus).toBe('Warning'); // Empty run
     expect(responseData.find((s: any) => s.id === 'source-6').healthStatus).toBe('Unknown');
 

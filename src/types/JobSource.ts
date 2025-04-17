@@ -57,18 +57,12 @@ export const GreenhouseConfigSchema = z.object({
 });
 export type GreenhouseConfig = z.infer<typeof GreenhouseConfigSchema>;
 
-// Define the shape of the config JSON for Ashby
-export const AshbyConfigSchema = z.object({
-    jobBoardName: z.string().min(1, "Job board name (slug) is required"),
-    // Add other Ashby-specific config fields if needed
-});
-export type AshbyConfig = z.infer<typeof AshbyConfigSchema>;
-
 // Lever Configuration
-export interface LeverConfig {
-  companyIdentifier: string;
-  // Add any Lever-specific filter overrides here if needed in the future
-}
+export const LeverConfigSchema = z.object({
+    companyIdentifier: z.string().min(1, "Lever company identifier is required"),
+    // Add any Lever-specific filter overrides here if needed in the future
+});
+export type LeverConfig = z.infer<typeof LeverConfigSchema>;
 
 // Helper function to safely parse and validate Greenhouse config
 export function getGreenhouseConfig(config: any): GreenhouseConfig | null {
@@ -81,33 +75,14 @@ export function getGreenhouseConfig(config: any): GreenhouseConfig | null {
   }
 }
 
-// Helper function to safely parse and validate Ashby config
-export function getAshbyConfig(config: any): AshbyConfig | null {
-    const result = AshbyConfigSchema.safeParse(config);
-    if (result.success) {
-      return result.data;
-    } else {
-      console.error("Invalid Ashby config:", result.error.format());
-      return null;
-    }
-  }
-
 // Helper function for Lever config
 export function getLeverConfig(config: Prisma.JsonValue | null): LeverConfig | null {
-  if (!config) return null;
-
-  try {
-    // Check if config is an object with a companyIdentifier property
-    if (typeof config === 'object' && config !== null && !Array.isArray(config) && 'companyIdentifier' in config) {
-      // Basic validation: ensure companyIdentifier is a non-empty string
-      if (typeof (config as any).companyIdentifier === 'string' && (config as any).companyIdentifier.trim() !== '') {
-         return config as unknown as LeverConfig;
-      }
-    }
-  } catch (error) {
-    // Use a more robust logging mechanism if available, e.g., pino
-    console.error('[getLeverConfig] Failed to parse config:', error);
+  const result = LeverConfigSchema.safeParse(config);
+  if (result.success) {
+      return result.data;
+  } else {
+      // Use a more robust logging mechanism if available, e.g., pino
+      console.error('[getLeverConfig] Invalid Lever config:', result.error.format());
+      return null;
   }
-
-  return null;
 } 

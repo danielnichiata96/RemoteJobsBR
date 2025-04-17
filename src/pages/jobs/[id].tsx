@@ -230,35 +230,24 @@ export default function JobDetailPage({ job, error }: InferGetServerSidePropsTyp
             </div>
           </div>
           
-          {/* Main Content Sections - Increased spacing */}
-          <div className="space-y-8"> {/* Increased from space-y-6 */}
-            {job.description && (
-              <div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-3">Descrição da Vaga</h2>
-                <div 
-                  className="text-gray-700 prose max-w-none prose-headings:font-semibold prose-headings:text-lg prose-p:my-2 prose-ul:my-2 prose-li:marker:text-gray-500"
-                  dangerouslySetInnerHTML={{ __html: job.description }}
-                />
-              </div>
-            )}
-            {job.requirements && (
-              <div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-3">Requisitos</h2>
-                <div 
-                  className="text-gray-700 prose max-w-none prose-headings:font-semibold prose-headings:text-lg prose-p:my-2 prose-ul:my-2 prose-li:marker:text-gray-500"
-                  dangerouslySetInnerHTML={{ __html: job.requirements }}
-                />
-              </div>
-            )}
-            {job.responsibilities && (
-              <div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-3">Responsabilidades</h2>
-                <div 
-                  className="text-gray-700 prose max-w-none prose-headings:font-semibold prose-headings:text-lg prose-p:my-2 prose-ul:my-2 prose-li:marker:text-gray-500"
-                  dangerouslySetInnerHTML={{ __html: job.responsibilities }}
-                />
-              </div>
-            )}
+          {/* Main Content Sections - Refactored */}
+          <div className="space-y-8"> 
+            {/* Always render description section */}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-3">Descrição da Vaga</h2>
+              {(job.description && job.description.trim()) ? (
+                  <div 
+                    className="text-gray-700 prose max-w-none prose-headings:font-semibold prose-headings:text-lg prose-p:my-2 prose-ul:my-2 prose-li:marker:text-gray-500"
+                    dangerouslySetInnerHTML={{ __html: job.description }}
+                  />
+              ) : (
+                  <p className="text-gray-500 italic">
+                      Nenhuma descrição detalhada fornecida pela empresa. Consulte o link de candidatura para mais informações.
+                  </p>
+              )}
+            </div>
+            
+            {/* Render Benefits section conditionally */}
             {job.benefits && (
                <div>
                 <h2 className="text-xl font-semibold text-gray-800 mb-3">Benefícios</h2>
@@ -406,24 +395,37 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
     
     try {
-        // Fix: Use absolute URL or direct API access for server-side fetching
-        // Option 1: For server-side rendering, we can use the internal API directly
-        // Import the API handler and call it directly
         const prisma = new PrismaClient();
         
         try {
             const job = await prisma.job.findUnique({
                 where: { id },
-                include: {
-                    company: { // Ensure company website is selected
+                // Updated select: Remove requirements and responsibilities
+                select: { 
+                    id: true,
+                    title: true,
+                    description: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    publishedAt: true,
+                    jobType: true,
+                    experienceLevel: true,
+                    skills: true,
+                    location: true,
+                    workplaceType: true,
+                    applicationUrl: true,
+                    applicationEmail: true,
+                    benefits: true,
+                    country: true,
+                    company: {
                         select: {
                             id: true,
                             name: true,
                             logo: true,
-                            website: true // Make sure 'website' field is selected
+                            website: true
                         }
                     }
-                },
+                }
             });
     
             if (!job || !job.company) { 
@@ -476,14 +478,12 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
                 workplaceType: job.workplaceType || 'REMOTE',
                 applicationUrl: job.applicationUrl,
                 applicationEmail: job.applicationEmail,
-                requirements: job.requirements || '',
-                responsibilities: job.responsibilities || '',
                 benefits: job.benefits || '',
                 country: job.country || undefined,
                 company: {
                     id: job.company.id,
                     name: job.company.name,
-                    logo: finalLogoUrl, // Use the final URL from JobCard-like logic
+                    logo: finalLogoUrl, 
                     websiteUrl: job.company.website || null,
                 }
             };

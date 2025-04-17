@@ -70,7 +70,7 @@ const HealthIndicator = ({ status }: { status: string }) => {
     );
 };
 
-const AdminSourceHealth: NextPage = () => { // Removed unused props
+const AdminSourceHealth: NextPage = (props) => { // Removed unused props
     const { data: session, status } = useSession();
     const router = useRouter();
     const [isLoadingPage, setIsLoadingPage] = useState(true);
@@ -188,9 +188,7 @@ const AdminSourceHealth: NextPage = () => { // Removed unused props
             const sourceTypeLower = source.type?.toLowerCase();
             if (sourceTypeLower === 'greenhouse' && config?.boardToken) {
                 return `Token: ${config.boardToken}`;
-            } else if (sourceTypeLower === 'ashby' && config?.jobBoardName) {
-                return `Board: ${config.jobBoardName}`;
-            }
+            } 
             return 'N/A';
         } catch (e) {
             return 'Invalid Config';

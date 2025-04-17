@@ -13,7 +13,7 @@
     "fetch-jobs": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/fetchJobSources.ts",
     "add-bulk-sources": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/addBulkJobSources.ts",
     "list-sources": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/listJobSources.ts",
-    "clean-db": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/cleanDatabase.ts",
+    "clean-db": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/cleanAllData.ts",
     "fix-jobs": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} src/scripts/fixJobSources.ts",
     "deactivate-stale-jobs": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} scripts/deactivateStaleJobs.ts",
     "backfill-normalized": "ts-node --compiler-options {\\\"module\\\":\\\"commonjs\\\"} scripts/backfillNormalizedFields.ts"

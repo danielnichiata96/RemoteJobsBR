@@ -9,7 +9,8 @@ import {
 import { stripHtml } from '../utils/textUtils';
 import pino from 'pino';
 import { JobType, ExperienceLevel, HiringRegion, JobSource, Prisma } from '@prisma/client';
-import { extractDomain, buildCompanyLogoUrl } from '../utils/logoUtils';
+import { extractDomain, getCompanyLogo } from '../utils/logoUtils';
+import { detectRestrictivePattern } from '../utils/filterUtils';
 
 const logger = pino({
   name: 'greenhouseProcessor',
@@ -135,11 +136,11 @@ export class GreenhouseProcessor implements JobProcessor {
 
       // --- Logo Fetching (using logo.dev) ---
       try {
-        const websiteForLogo = standardizedJob.companyWebsite; 
-        if (websiteForLogo) { 
-          // *** Use the buildCompanyLogoUrl utility function ***
-          standardizedJob.companyLogo = buildCompanyLogoUrl(websiteForLogo);
-          logger.trace({ jobId: rawJob.id, websiteUsed: websiteForLogo, logoUrl: standardizedJob.companyLogo }, 'Called buildCompanyLogoUrl.');
+        const websiteForLogo = standardizedJob.companyWebsite;
+        if (websiteForLogo) {
+          // *** Use the getCompanyLogo utility function ***
+          standardizedJob.companyLogo = getCompanyLogo(websiteForLogo);
+          logger.trace({ jobId: rawJob.id, websiteUsed: websiteForLogo, logoUrl: standardizedJob.companyLogo }, 'Called getCompanyLogo.');
           // ***************************************************
         } else {
              logger.trace({ jobId: rawJob.id }, 'Company website not available for logo fetching.');

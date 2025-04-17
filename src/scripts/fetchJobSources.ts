@@ -1,29 +1,42 @@
 import { PrismaClient, JobSource } from '@prisma/client';
 import pMap from 'p-map';
 import pino from 'pino';
+import * as fs from 'fs'; // Import fs
+import * as path from 'path'; // Import path
 import { JobProcessingAdapter } from '../lib/adapters/JobProcessingAdapter';
 import { JobProcessingService } from '../lib/services/jobProcessingService';
 import { GreenhouseFetcher } from '../lib/fetchers/GreenhouseFetcher';
+import { LeverFetcher } from '../lib/fetchers/LeverFetcher';
 import { JobFetcher, FetcherResult, SourceStats } from '../lib/fetchers/types';
-import { AshbyFetcher } from '../lib/fetchers/AshbyFetcher';
 import { searchCache } from '../lib/cache/searchCache';
 
 // --- Configuração Inicial ---
 const prisma = new PrismaClient();
-const logger = pino({
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'HH:MM:ss',
-      ignore: 'pid,hostname',
-      messageFormat: '{msg}', // Simple message format
-      levelFirst: false, // Show level after timestamp
-    },
+
+// Logger Configuration (Simplified - removed file logging)
+// const logFilePath = path.join(__dirname, '../../fetch_jobs.log'); // Removed ashby specific path
+
+// Ensure log directory exists (if file logging is used)
+// const logDir = path.dirname(logFilePath);
+// if (!fs.existsSync(logDir)) {
+//   fs.mkdirSync(logDir, { recursive: true });
+// }
+
+// Configure file transport (if needed)
+// const fileTransport = pino.transport({
+//   target: 'pino/file',
+//   options: { destination: logFilePath, append: true },
+//   level: 'trace',
+// });
+
+// Configure Pino logger (Console only)
+const logger = pino(
+  {
+    level: process.env.LOG_LEVEL || 'info', // Default level for console
+    redact: ['*.password', '*.token'],
   },
-  base: undefined, // Don't bind pid, hostname
-  level: process.env.LOG_LEVEL || 'info',
-});
+  process.stdout // Log directly to console
+);
 
 // Instantiate necessary services and adapters
 const jobProcessorAdapter = new JobProcessingAdapter(); // Adapter handles processor selection
@@ -41,7 +54,8 @@ const concurrencyLevel =
 // Maps source type string to the corresponding fetcher class instance
 const fetcherMap = new Map<string, JobFetcher>();
 fetcherMap.set('greenhouse', new GreenhouseFetcher(prisma, jobProcessorAdapter));
-fetcherMap.set('ashby', new AshbyFetcher(prisma, jobProcessorAdapter));
+fetcherMap.set('lever', new LeverFetcher(prisma, jobProcessorAdapter));
+
 // Add mappings for new fetchers here, e.g.:
 // fetcherMap.set('workable', new WorkableFetcher(prisma, jobProcessorAdapter));
 

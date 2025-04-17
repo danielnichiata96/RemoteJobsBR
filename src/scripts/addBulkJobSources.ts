@@ -8,18 +8,19 @@ const prisma = new PrismaClient();
 
 // Defina tipos específicos para cada entrada
 type GreenhouseSourceInput = { name: string; type: 'greenhouse'; boardToken: string; website?: string | null; logoUrl?: string | null };
-type AshbySourceInput = { name: string; type: 'ashby'; config: { jobBoardName: string }; companyWebsite?: string | null; logoUrl?: string | null };
+// type AshbySourceInput = { name: string; type: 'ashby'; config: { jobBoardName: string }; companyWebsite?: string | null; logoUrl?: string | null };
+type LeverSourceInput = { name: string; type: 'lever'; companyIdentifier: string; website?: string | null; logoUrl?: string | null };
 
 // Use um tipo de união
-const sourcesToAddOrUpdate: (GreenhouseSourceInput | AshbySourceInput)[] = [
-    // --- Ashby Sources ---
-    {
-        name: 'Zapier',
-        type: 'ashby',
-        config: { jobBoardName: 'zapier' },
-        companyWebsite: 'https://zapier.com/',
-        logoUrl: null
-    },
+const sourcesToAddOrUpdate: (GreenhouseSourceInput | LeverSourceInput)[] = [
+    // // --- Ashby Sources ---
+    // {
+    //     name: 'Zapier',
+    //     type: 'ashby',
+    //     config: { jobBoardName: 'zapier' },
+    //     companyWebsite: 'https://zapier.com/',
+    //     logoUrl: null
+    // },
     // --- Greenhouse Sources ---
     { name: 'Affirm', type: 'greenhouse', boardToken: 'affirm' },
     { name: 'Auth0', type: 'greenhouse', boardToken: 'auth0' },
@@ -47,6 +48,13 @@ const sourcesToAddOrUpdate: (GreenhouseSourceInput | AshbySourceInput)[] = [
     { name: 'Valtech', type: 'greenhouse', boardToken: 'valtechgreenhouse' },
     { name: 'Vercel', type: 'greenhouse', boardToken: 'vercel' },
     { name: 'Wikimedia Foundation', type: 'greenhouse', boardToken: 'wikimedia' },
+
+    // --- Lever Sources ---
+    { name: 'Superside', type: 'lever', companyIdentifier: 'superside', website: 'https://superside.com/' },
+    { name: 'Black & White Zebra', type: 'lever', companyIdentifier: 'Black-White-Zebra', website: 'https://www.blackandwhitezebra.com/' },
+    { name: 'Remofirst', type: 'lever', companyIdentifier: 'remofirst', website: 'https://www.remofirst.com/' },
+    { name: 'Blue Coding', type: 'lever', companyIdentifier: 'bluecoding', website: 'https://www.bluecoding.com/' },
+    { name: 'Anagram', type: 'lever', companyIdentifier: 'anagram', website: 'https://anagram.care/' }, 
 ];
 
 async function main() {
@@ -67,28 +75,31 @@ async function main() {
                 existingSource = await prisma.jobSource.findFirst({
                     where: {
                         type: 'greenhouse',
-                        config: { equals: sourceConfig },
+                        config: { path: ['boardToken'], equals: sourceInput.boardToken }, // Correct way to query JSON
                     },
                 });
+                // Fallback check by name if config doesn't match (e.g., during transition)
                 if (!existingSource) {
                     existingSource = await prisma.jobSource.findUnique({
                         where: { name_type: { name: sourceInput.name, type: sourceInput.type } },
                     });
                 }
-            } else if (sourceInput.type === 'ashby') {
-                sourceConfig = sourceInput.config;
+            } else if (sourceInput.type === 'lever') {
+                sourceConfig = { companyIdentifier: sourceInput.companyIdentifier };
                 existingSource = await prisma.jobSource.findFirst({
                     where: {
-                        type: 'ashby',
-                        config: { equals: sourceConfig },
+                        type: 'lever',
+                        config: { path: ['companyIdentifier'], equals: sourceInput.companyIdentifier }, // Correct way to query JSON
                     },
                 });
+                 // Fallback check by name
                 if (!existingSource) {
                     existingSource = await prisma.jobSource.findUnique({
-                         where: { name_type: { name: sourceInput.name, type: sourceInput.type } },
+                        where: { name_type: { name: sourceInput.name, type: sourceInput.type } },
                     });
                 }
-            } else {
+            } 
+             else {
                 const unknownSource = sourceInput as any;
                 console.warn(`⚠️ Tipo de fonte desconhecido: ${unknownSource?.type}. Pulando ${unknownSource?.name ?? '(nome indisponível)'}`);
                 continue;
@@ -99,8 +110,9 @@ async function main() {
             const commonData = {
                 name: sourceInput.name,
                 type: sourceInput.type,
-                companyWebsite: sourceInput.type === 'greenhouse' ? sourceInput.website : sourceInput.companyWebsite,
-                logoUrl: sourceInput.logoUrl,
+                // Use optional chaining and nullish coalescing for website/logo
+                companyWebsite: sourceInput.website ?? null,
+                logoUrl: sourceInput.logoUrl ?? null,
                 isEnabled: true,
                 config: sourceConfig, // Use the prepared config
             };

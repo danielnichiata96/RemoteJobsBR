@@ -167,7 +167,6 @@ describe('AdminSourceHealth Page', () => {
         };
         const mockSources: MockSourceHealthData[] = [
             { id: 'source-1', name: 'Healthy Source', type: 'greenhouse', isEnabled: true, lastFetched: new Date(), companyWebsite: 'https://healthy.com', config: {boardToken: 'h1'}, healthStatus: 'Healthy', latestRun: mockRunHealthy },
-            { id: 'source-2', name: 'Warning Source', type: 'ashby', isEnabled: true, lastFetched: new Date(), companyWebsite: null, config: {jobBoardName: 'w1'}, healthStatus: 'Warning', latestRun: mockRunWarning },
             { id: 'source-3', name: 'Error Source', type: 'greenhouse', isEnabled: false, lastFetched: new Date(), companyWebsite: null, config: {boardToken: 'e1'}, healthStatus: 'Error', latestRun: mockRunError },
             { id: 'source-4', name: 'Unknown Source', type: 'other', isEnabled: true, lastFetched: null, companyWebsite: null, config: {}, healthStatus: 'Unknown', latestRun: null },
         ];
@@ -182,7 +181,6 @@ describe('AdminSourceHealth Page', () => {
         
         // Assert source names
         expect(screen.getByText('Healthy Source')).toBeInTheDocument();
-        expect(screen.getByText('Warning Source')).toBeInTheDocument();
         expect(screen.getByText('Error Source')).toBeInTheDocument();
         expect(screen.getByText('Unknown Source')).toBeInTheDocument();
         

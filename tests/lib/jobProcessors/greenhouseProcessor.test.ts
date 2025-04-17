@@ -6,7 +6,7 @@ import pino from 'pino';
 import { PrismaClient } from '@prisma/client';
 import { JobSource } from '../../types/models';
 import { JobSourceType } from '../../types/JobSource';
-import { buildCompanyLogoUrl } from '../../../src/lib/utils/logoUtils';
+import { getCompanyLogo, extractDomain } from '../../../src/lib/utils/logoUtils';
 
 // --- Mocks ---
 
@@ -75,11 +75,14 @@ jest.mock('../../../src/lib/utils/jobUtils', () => ({
 
 // Mock logoUtils module and the specific function
 jest.mock('../../../src/lib/utils/logoUtils', () => ({
-    buildCompanyLogoUrl: jest.fn((website) => {
+    getCompanyLogo: jest.fn((website) => {
         if (website === 'https://enhanced.corp') {
             return 'https://img.logo.dev/enhanced.corp?token=pk_f4m8WG-wQOeM90skJ8dV6Q';
         }
-        return undefined; 
+        if (website === 'https://basic.example.com') {
+            return undefined;
+        }
+        return undefined;
     }),
     extractDomain: jest.fn((url) => {
         try {
@@ -132,11 +135,14 @@ describe('GreenhouseProcessor', () => {
     });
     mockedJobUtils.isRemoteJob.mockReturnValue(true);
 
-    (buildCompanyLogoUrl as jest.Mock).mockClear();
-    (buildCompanyLogoUrl as jest.Mock).mockImplementation((website) => {
+    (getCompanyLogo as jest.Mock).mockClear();
+    (getCompanyLogo as jest.Mock).mockImplementation((website) => {
         if (website === 'https://enhanced.corp') {
             return 'https://img.logo.dev/enhanced.corp?token=pk_f4m8WG-wQOeM90skJ8dV6Q';
         }
+        if (website === 'https://basic.example.com') {
+             return undefined;
+         }
         return undefined;
     });
 
@@ -183,7 +189,7 @@ describe('GreenhouseProcessor', () => {
       expect(job.applicationUrl).toBe(basicRawJob.absolute_url);
       expect(job.companyName).toBe(mockSourceDataBasic.name);
       expect(job.companyWebsite).toBe(mockSourceDataBasic.companyWebsite);
-      expect(buildCompanyLogoUrl).toHaveBeenCalledWith(mockSourceDataBasic.companyWebsite); 
+      expect(getCompanyLogo).toHaveBeenCalledWith(mockSourceDataBasic.companyWebsite); 
       expect(job.companyLogo).toBeUndefined();
       expect(job.jobType).toBe(JobType.FULL_TIME);
       expect(job.experienceLevel).toBe(ExperienceLevel.MID);
@@ -230,7 +236,7 @@ describe('GreenhouseProcessor', () => {
       expect(job.applicationUrl).toBe(enhancedRawJob.absolute_url);
       expect(job.companyName).toBe(mockSourceDataEnhanced.name);
       expect(job.companyWebsite).toBe(mockSourceDataEnhanced.companyWebsite);
-      expect(buildCompanyLogoUrl).toHaveBeenCalledWith(mockSourceDataEnhanced.companyWebsite);
+      expect(getCompanyLogo).toHaveBeenCalledWith(mockSourceDataEnhanced.companyWebsite);
       expect(job.companyLogo).toBe('https://img.logo.dev/enhanced.corp?token=pk_f4m8WG-wQOeM90skJ8dV6Q');
       expect(job.jobType).toBe(JobType.CONTRACT);
       expect(job.experienceLevel).toBe(ExperienceLevel.SENIOR);

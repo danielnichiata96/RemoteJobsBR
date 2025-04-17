@@ -3,7 +3,7 @@ import { JobProcessingService } from '../services/jobProcessingService';
 import { StandardizedJob } from '../../types/StandardizedJob';
 import { JobProcessor, ProcessedJobResult, GreenhouseJob } from '../jobProcessors/types';
 import { GreenhouseProcessor } from '../jobProcessors/greenhouseProcessor';
-import { AshbyProcessor } from '../jobProcessors/AshbyProcessor';
+import { LeverProcessor } from '../jobProcessors/LeverProcessor';
 import pino from 'pino';
 
 const logger = pino({
@@ -41,14 +41,15 @@ export class JobProcessingAdapter {
     } catch (error: any) {
         logger.error({ error }, 'Failed to instantiate GreenhouseProcessor');
     }
-
+    
     try {
-        logger.info('Attempting to instantiate AshbyProcessor...');
-        this.processors.set('ashby', new AshbyProcessor());
-        logger.info('AshbyProcessor instantiated and added.');
+      logger.info('Attempting to instantiate LeverProcessor...');
+      this.processors.set('lever', new LeverProcessor());
+      logger.info('LeverProcessor instantiated and added.');
     } catch (error: any) {
-        logger.error({ error }, 'Failed to instantiate AshbyProcessor');
+        logger.error({ error }, 'Failed to instantiate LeverProcessor');
     }
+
     // Add other processors here as needed
     logger.info('JobProcessingAdapter initialization complete. Processors: %s', Array.from(this.processors.keys()).join(', '));
   }
@@ -116,28 +117,4 @@ export class JobProcessingAdapter {
       return false;
     }
   }
-  
-  // --- Deprecated Method --- 
-  // This method is kept temporarily for backward compatibility if needed,
-  // but the flow should ideally be Fetcher -> processRawJob -> Service.saveOrUpdateJob
-  /**
-   * @deprecated Use processRawJob instead. This method assumes input is already standardized 
-   *             and adapts it to a Greenhouse format, which is incorrect for other sources.
-   */
-  async processAndSaveJob_DEPRECATED(standardizedJob: StandardizedJob): Promise<boolean> {
-     logger.warn("processAndSaveJob_DEPRECATED called - this indicates an old workflow is still in use.");
-     try {
-       if (!standardizedJob.source || !standardizedJob.sourceId) {
-         logger.error('Job missing required source or sourceId');
-         return false;
-       }
- 
-       // Call the service directly to save/update
-       return await this.jobProcessingService.saveOrUpdateJob(standardizedJob);
-
-     } catch (error) {
-       logger.error({ error }, 'Error in JobProcessingAdapter (Deprecated Method)');
-       return false;
-     }
-   }
 } 
