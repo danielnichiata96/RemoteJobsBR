@@ -163,7 +163,7 @@ const AdminSourceHealth: NextPage = (props) => { // Removed unused props
         } else {
             setIsLoadingPage(false);
         }
-    }, [status, session, router]);
+    }, [status, session]);
 
     // Handle different loading/error states
     if (isLoadingPage || status === 'loading') {

@@ -85,50 +85,73 @@ export class JobProcessingService {
           this.logger.info({ companyId: company.id, companyName: rawCompanyName }, 'Company created successfully.');
         } catch (createError: any) {
            if (createError.code === 'P2002') { 
-                this.logger.warn({ companyName: rawCompanyName, error: createError.message }, 'Company creation failed likely due to race condition. Attempting find again.');
+                this.logger.warn({ companyName: rawCompanyName, error: createError.message }, 'Company creation failed (P2002 - likely race condition). Attempting find again with slight delay...');
+                
+                // Add a small delay before retrying the find
+                await new Promise(resolve => setTimeout(resolve, 100)); // e.g., 100ms delay
+
+                company = await this.prisma.user.findFirst({
+                    where: {
+                      name: rawCompanyName,
+                      role: UserRole.COMPANY
+                    },
+                });
+
+                if (!company) {
+                    // Optional: Retry find one more time after another delay?
+                    // await new Promise(resolve => setTimeout(resolve, 200));
+                    // company = await this.prisma.user.findFirst({...});
+                    // if (!company) {
+                    this.logger.error({ companyName: rawCompanyName }, 'Still could not find company after P2002 error and retry. Skipping job.');
+                    return false;
+                    // }
+                }
+                
+                this.logger.info({ companyId: company.id, companyName: rawCompanyName }, 'Found company after P2002 error and retry.');
+                // Ensure normalized name is set if found after error
+                if (company && !company.normalizedCompanyName) {
+                    await this.prisma.user.update({
+                         where: { id: company.id },
+                         data: { normalizedCompanyName: normalizedCompanyName },
+                    });
+                 }
+
            } else {
-                this.logger.error({ companyName: rawCompanyName, error: createError }, 'Failed to create company.');
+                // Handle other unexpected errors during company creation
+                this.logger.error({ companyName: rawCompanyName, errorCode: createError.code, error: createError }, 'Unexpected error failed to create company. Skipping job.');
+                return false; // Do not proceed if creation failed unexpectedly
            }
-          
-          // Try finding again just in case
-          company = await this.prisma.user.findFirst({
-            where: {
-              name: rawCompanyName,
-              role: UserRole.COMPANY
-            },
-          });
-          if (!company) {
-            this.logger.error({ companyName: rawCompanyName }, 'Still could not find or create company after error. Skipping job.');
-            return false;
-          }
-           this.logger.info({ companyId: company.id, companyName: rawCompanyName }, 'Found company after creation error.');
-            // Update normalized name if found after error and it's missing
-            if (!company.normalizedCompanyName) {
-                 await this.prisma.user.update({
-                     where: { id: company.id },
-                     data: { normalizedCompanyName: normalizedCompanyName },
-                 });
-             }
         }
       } else {
         this.logger.debug({ companyId: company.id, companyName: rawCompanyName }, 'Company found.');
-        // Ensure existing company has normalized name
-        if (!company.normalizedCompanyName || company.normalizedCompanyName !== normalizedCompanyName) {
-            await this.prisma.user.update({
-                where: { id: company.id },
-                data: { normalizedCompanyName: normalizedCompanyName },
-            });
-            this.logger.debug({ companyId: company.id }, 'Updated missing/mismatched normalized company name.');
+        
+        // Combine potential updates for existing company
+        const dataToUpdate: Partial<Prisma.UserUpdateInput> = {};
+        let shouldUpdate = false;
+
+        // Check if normalized name needs update
+        const calculatedNormalizedName = normalizeForDeduplication(rawCompanyName);
+        if (!company.normalizedCompanyName || company.normalizedCompanyName !== calculatedNormalizedName) {
+            dataToUpdate.normalizedCompanyName = calculatedNormalizedName;
+            shouldUpdate = true;
+            this.logger.trace({ companyId: company.id }, 'Adding missing/mismatched normalized company name to update.');
         }
 
-         // Update logo if missing (existing logic)
-         if (!company.logo && job.companyLogo) {
-           await this.prisma.user.update({
-             where: { id: company.id },
-             data: { logo: job.companyLogo },
-           });
-           this.logger.debug({ companyId: company.id }, 'Updated missing company logo.');
-         }
+        // Check if logo needs update
+        if (!company.logo && job.companyLogo) {
+           dataToUpdate.logo = job.companyLogo;
+           shouldUpdate = true;
+           this.logger.trace({ companyId: company.id }, 'Adding missing company logo to update.');
+        }
+        
+        // Perform update only if needed
+        if (shouldUpdate) {
+            this.logger.debug({ companyId: company.id, data: Object.keys(dataToUpdate) }, 'Updating existing company data...');
+            await this.prisma.user.update({
+                where: { id: company.id },
+                data: dataToUpdate,
+            });
+        }
       }
 
       // --- 1.5 Check for Duplicates ---

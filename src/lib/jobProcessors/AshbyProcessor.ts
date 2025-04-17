@@ -30,7 +30,8 @@ function mapAshbyEmploymentType(ashbyType?: string): JobType | undefined {
     case 'intern':
       return JobType.INTERNSHIP;
     default:
-      return JobType.UNKNOWN ?? undefined;
+      // Return undefined for unknown types to allow fallback to detectJobType
+      return undefined;
   }
 }
 

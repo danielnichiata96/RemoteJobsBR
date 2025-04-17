@@ -3,62 +3,52 @@ import { getServerSession } from 'next-auth/next';
 import { prisma } from '../../../../../../src/lib/prisma'; // Adjusted path
 import { UserRole, JobSource } from '@prisma/client';
 import { JobProcessingService } from '../../../../../../src/lib/services/jobProcessingService'; // Import the actual service
+import handler from '@/pages/api/admin/sources/[sourceId]/rerun';
 
 // --- Mocks ---
 
-// Define the mock function implementation
+// Mock the JobProcessingService directly
 const mockProcessJobSourceById = jest.fn();
-
-// Hoist the mock definition using jest.doMock with path alias
-jest.doMock('@/lib/services/jobProcessingService', () => { // USE PATH ALIAS
-    // Factory returns the mock class constructor
-    return {
-        __esModule: true, 
-        JobProcessingService: jest.fn() // Mock the constructor itself
-    };
+jest.mock('@/lib/services/jobProcessingService', () => { // Use path alias
+  // Mock the constructor
+  return {
+    JobProcessingService: jest.fn().mockImplementation(() => {
+      // The constructor returns an instance with the mocked method
+      return {
+        processJobSourceById: mockProcessJobSourceById,
+      };
+    }),
+  };
 });
 
-// --- Import AFTER mocks ---
-
-// Import the TYPE of the class we are mocking the prototype for
-import { JobProcessingService as ActualJobProcessingService } from '@/lib/services/jobProcessingService'; // Use path alias here too for consistency
-// Import the handler AFTER the mock setup
-import handler from '@/pages/api/admin/sources/[sourceId]/rerun';
-
-// --- Assign mock to prototype BEFORE tests run ---
-// Get the mocked constructor reference (important: after doMock) using the alias
-const MockedJobProcessingService = require('@/lib/services/jobProcessingService').JobProcessingService; // USE PATH ALIAS
-// Assign the specific mock function to the prototype
-MockedJobProcessingService.prototype.processJobSourceById = mockProcessJobSourceById;
-
 // Mock Prisma
-jest.mock('../../../../../../src/lib/prisma', () => ({
-    prisma: {
-        jobSource: {
-            findUnique: jest.fn(),
-        },
+jest.mock('@/lib/prisma', () => ({ // Use path alias
+  prisma: {
+    jobSource: {
+      findUnique: jest.fn(),
     },
+  },
 }));
 
 // Mock NextAuth getServerSession
 jest.mock('next-auth/next', () => ({
-    getServerSession: jest.fn(),
+  getServerSession: jest.fn(),
 }));
 
 // Mock the default export of next-auth
 jest.mock('next-auth', () => ({
-    __esModule: true,
-    default: jest.fn(),
+  __esModule: true,
+  default: jest.fn(),
 }));
 
 // Mock pino logger
 jest.mock('pino', () => jest.fn(() => ({
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-    trace: jest.fn(),
-    child: jest.fn().mockReturnThis(),
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+  trace: jest.fn(),
+  child: jest.fn().mockReturnThis(),
 })));
 
 // Type helpers for mocks
@@ -84,7 +74,12 @@ describe('/api/admin/sources/[sourceId]/rerun API Route', () => {
 
     beforeEach(() => {
         // Reset mocks before each test
-        jest.clearAllMocks(); // Clear all mocks defined with jest.fn(), jest.spyOn(), jest.mock() etc.
+        jest.clearAllMocks();
+        // IMPORTANT: Also clear the mock implementation details if necessary
+        // (Not strictly needed here as mockProcessJobSourceById is cleared by clearAllMocks)
+        // mockProcessJobSourceById.mockClear(); 
+        // Ensure the constructor mock is also cleared if it holds state (it doesn't here)
+        // (JobProcessingService as jest.Mock).mockClear(); 
     });
 
     it('should return 405 if method is not POST', async () => {
@@ -196,7 +191,7 @@ describe('/api/admin/sources/[sourceId]/rerun API Route', () => {
         expect(JSON.parse(res._getData())).toEqual({ message: 'Cannot re-run a disabled job source' });
     });
 
-    it('should return 500 if triggering the job processing fails', async () => {
+    it('should return 500 if triggering the job processing fails (mock rejects)', async () => {
         const mockSource: JobSource = {
             id: testSourceId,
             name: 'Enabled Source',
@@ -209,36 +204,37 @@ describe('/api/admin/sources/[sourceId]/rerun API Route', () => {
             logoUrl: null,
             config: {}
         };
-        (getServerSession as jest.Mock).mockResolvedValue(adminSession);
-        (prisma.jobSource.findUnique as jest.Mock).mockResolvedValue(mockSource);
+        mockGetServerSession.mockResolvedValue(adminSession);
+        mockPrismaJobSourceFindUnique.mockResolvedValue(mockSource);
 
-        // Set up the mock function to reject the promise
-        mockProcessJobSourceById.mockRejectedValue(new Error('Processing Error'));
+        // Configure the mock method to reject
+        const processingError = new Error('Processing Error');
+        mockProcessJobSourceById.mockRejectedValue(processingError);
 
         const { req, res } = createMocks<ApiRequest, ApiResponse>({
             method: 'POST',
             query: { sourceId: testSourceId },
         });
 
-        try {
-            await handler(req, res);
-        } catch (e) { 
-            // This catch is mainly for the async rejection, 
-            // the primary assertions below handle the immediate response.
-        }
+        await handler(req, res); // Call the handler
 
-        expect(prisma.jobSource.findUnique).toHaveBeenCalledWith({ where: { id: testSourceId } });
-        expect(res._getStatusCode()).toBe(200); // API responds 200 immediately
+        // API responds 200 immediately
+        expect(res._getStatusCode()).toBe(200);
         expect(JSON.parse(res._getData())).toEqual({ message: `Re-run triggered for source ${testSourceId}` });
-        
-        // Allow pending promises (like the rejected one) to settle
-        await new Promise(process.nextTick); 
-        // NOW check if the mock was called
+
+        // Allow async operations initiated by the handler to complete
+        await new Promise(process.nextTick);
+
+        // Check that the service method was called
+        expect(JobProcessingService).toHaveBeenCalledTimes(1); // Constructor called
+        expect(mockProcessJobSourceById).toHaveBeenCalledTimes(1);
         expect(mockProcessJobSourceById).toHaveBeenCalledWith(testSourceId);
-        // You might add assertions here about logging the error if needed
+        
+        // We can't easily check the internal .catch() logging, but 
+        // we know the mock was called and it rejected.
     });
 
-    it('should successfully trigger the re-run for an enabled source', async () => {
+    it('should successfully trigger the re-run for an enabled source (mock resolves)', async () => {
         const mockSource: JobSource = {
             id: testSourceId,
             name: 'Enabled Source',
@@ -251,10 +247,10 @@ describe('/api/admin/sources/[sourceId]/rerun API Route', () => {
             logoUrl: null,
             config: {}
         };
-        (getServerSession as jest.Mock).mockResolvedValue(adminSession);
-        (prisma.jobSource.findUnique as jest.Mock).mockResolvedValue(mockSource);
+        mockGetServerSession.mockResolvedValue(adminSession);
+        mockPrismaJobSourceFindUnique.mockResolvedValue(mockSource);
 
-        // Mock the function to resolve successfully
+        // Configure the mock method to resolve
         mockProcessJobSourceById.mockResolvedValue(undefined);
 
         const { req, res } = createMocks<ApiRequest, ApiResponse>({
@@ -267,10 +263,13 @@ describe('/api/admin/sources/[sourceId]/rerun API Route', () => {
         expect(prisma.jobSource.findUnique).toHaveBeenCalledWith({ where: { id: testSourceId } });
         expect(res._getStatusCode()).toBe(200);
         expect(JSON.parse(res._getData())).toEqual({ message: `Re-run triggered for source ${testSourceId}` });
-        
-        // Allow pending promises (like the service call) to settle
+
+        // Allow async operations to complete
         await new Promise(process.nextTick);
-        // NOW check if the mock was called
+
+        // Check that the service method was called
+        expect(JobProcessingService).toHaveBeenCalledTimes(1); // Constructor called
+        expect(mockProcessJobSourceById).toHaveBeenCalledTimes(1);
         expect(mockProcessJobSourceById).toHaveBeenCalledWith(testSourceId);
     });
 }); 

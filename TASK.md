@@ -29,6 +29,7 @@ LLM should update this file based on conversational progress.
 *   [x] **Testing:** Revisit and fix failing tests in `tests/lib/utils/filterUtils.test.ts`. The regex logic for detecting restrictive patterns needs refinement to pass all edge cases reliably. (Completed - Fixed word boundary handling for "usa" keyword - 2025-04-23)
 *   [x] **Testing:** Investigate and fix final failing test in `tests/lib/fetchers/AshbyFetcher.test.ts` (`should return relevant=false if content indicates restriction`). The test receives `true` when `false` is expected, despite logic seeming correct. (Fixed - Corrected return type of detectRestrictivePattern util - YYYY-MM-DD)
 *   [x] **Core/Concurrency:** Investigate `Unique constraint failed` errors during company creation in `JobProcessingService.saveOrUpdateJob` when multiple jobs for the same new company are processed concurrently. Implement a more robust handling mechanism (e.g., better locking, pre-creation check with retry) if the current find-after-fail approach proves insufficient. (Fixed - Added delay+retry for P2002, handled other errors - YYYY-MM-DD)
+*   [x] **Types:** Fix optional/nullable properties (`title`, `experienceLevel`, `sourceId`, `logoUrl`) in interfaces within `src/types/models.ts`. (Completed - 2024-08-17)
 
 ## Next Tasks To Consider
 *   [x] **Admin/Monitoring:** Criar Painel de Saúde das Fontes (`JobSource Health Dashboard`).
@@ -41,12 +42,12 @@ LLM should update this file based on conversational progress.
     *   [x] Adicionar ações (Ativar/Desativar, Re-executar). (Completed 2025-04-22)
         *   [x] Implementar e testar API para reexecução de fontes (`/api/admin/sources/[sourceId]/rerun`). (Completed 2025-04-23)
 *   [x] **Data:** Criar script (`scripts/backfillNormalizedFields.ts`) para preencher `normalizedCompanyName` (User) e `normalizedTitle` (Job) em registros existentes. (Moved to Current Focus)
-*   [ ] **Integrations:** Re-implement AshbyHQ Fetcher using the official API (`posting-api/job-board`). (Moved from Next Tasks - YYYY-MM-DD)
+*   [x] **Integrations:** Re-implement AshbyHQ Fetcher using the official API (`posting-api/job-board`). (Moved from Next Tasks - YYYY-MM-DD)
     *   [x] Re-create `AshbyFetcher.ts` and `AshbyProcessor.ts` with basic structure. (Completed - YYYY-MM-DD)
     *   [x] Re-implement API fetching logic in `AshbyFetcher` (use `jobBoardName` from `JobSource.config`). (Completed - YYYY-MM-DD)
     *   [x] Define Ashby-specific types (`AshbyApiJob`, etc.) in `types.ts`. (Completed - YYYY-MM-DD)
     *   [x] Add Ashby config type to `JobSource.ts`. (Completed - YYYY-MM-DD)
-    *   [x] Re-implement filtering logic (`_isJobRelevant`) in `AshbyFetcher` (consider `isRemote`, `location`, etc.). (Completed - YYYY-MM-DD)
+    *   [x] Re-implement filtering logic (`_isJobRelevant`) in `AshbyProcessor` (consider `isRemote`, `location`, etc.). (Completed - YYYY-MM-DD)
     *   [x] Re-implement mapping logic (`_mapToStandardizedJob`) in `AshbyProcessor`, including using `textUtils` for cleaning. (Completed - YYYY-MM-DD)
     *   [x] Ensure jobs with `isListed: false` are filtered out. (Handled in Fetcher and Processor - YYYY-MM-DD)
     *   [x] Add `AshbyFetcher` back to the fetcher map in `fetchJobSources.ts`. (Completed - YYYY-MM-DD)
@@ -60,9 +61,9 @@ LLM should update this file based on conversational progress.
     *   [x] Implement filtering logic (`_isJobRelevant`) in `LeverFetcher`. (Completed - 2025-04-23)
     *   [x] Implement mapping logic (`_mapToStandardizedJob`) in `LeverProcessor`. (Completed - 2025-04-23)
     *   [x] Add `LeverFetcher` to the fetcher map in `fetchJobSources.ts`. (Completed - 2025-04-23)
-    *   [ ] Write unit tests for `LeverFetcher`. (YYYY-MM-DD)
-    *   [ ] Write unit tests for `LeverProcessor`. (YYYY-MM-DD)
-    *   [ ] Test with real Lever sources. (YYYY-MM-DD)
+    *   [x] Write unit tests for `LeverFetcher`. (Completed - 2024-07-31)
+    *   [x] Write unit tests for `LeverProcessor`. (Completed - 2024-07-31)
+    *   [x] Test with real Lever sources. (Completed - 2024-07-31)
 *   ~~[ ] **Integrations/Lever:** Testar `LeverFetcher` com fontes reais e identificar falhas/pontos de melhoria.~~ (Removed LeverFetcher - 2025-04-15)
 *   [x] **Testing:** Fix `Pagination` test.
 *   [x] **Testing:** Criar testes unitários para lógica de filtragem do `GreenhouseFetcher`. *(Completed - 2025-04-16)*
@@ -247,33 +248,9 @@ LLM should update this file based on conversational progress.
 *   **2025-04-21:** Fix test failures in `tests/lib/jobProcessors/greenhouseProcessor.test.ts` by correcting mock setup and processor logic for logo utility.
 *   **2025-04-21:** Created documentation files for Architecture (`docs/ARCHITECTURE.md`) and AI Collaboration (`docs/AI_COLLABORATION.md`).
 *   **2025-04-21:** Fixed failing tests in `JobProcessingService.test.ts` by updating the StandardizedJob mock properties to match the current interface.
-*   **2025-04-12:** Fix company logo display issue by adding `companyWebsite` to `JobSource`, updating fetcher/processor logic, and ensuring API token is used correctly.
-*   **2025-04-12:** Created script `addBulkJobSources.ts` to add/update multiple Greenhouse sources.
-*   **2025-04-12:** Corrected `JobSource` type usage in `addBulkJobSources.ts`.
-*   **2025-04-12:** Fixed import path alias issue in `greenhouseProcessor.ts`.
-*   **2025-04-12:** Created script `addJobSource.ts` for adding single Greenhouse sources.
-*   **2025-04-12:** Corrected salary field mapping in `jobProcessingService.ts`.
-*   **2025-04-15:** Fix widespread test suite failures (polyfill, Lever processor/fetcher assertions, Prisma mock init).
-*   **2025-04-15:** Refactor profile.tsx using ProfileForm/ProfileView components, fixed related bugs.
-*   **2025-04-14:** Refactor `profile.tsx` into `ProfileForm` and `ProfileView` components, including tests.
-*   **2025-04-14:** Implement Company filter (UI, state, API, tests).
-*   **2025-04-14:** Verified Job Detail Page external link UX improvements were already implemented.
-*   **2025-04-14:** Improve error handling in job detail page (`src/pages/jobs/[id].tsx`) for missing fields/invalid dates and add tests.
-*   **2025-04-14:** Fix `Pagination` test - recreated missing component file and updated test file.
-*   **2025-04-14:** Implementar camada de cache para listagens de vagas frequentemente acessadas usando `node-cache`.
-*   **2025-04-12:** Implementar Error Monitoring com Sentry (configuração completa, utilitários, error boundary e integração com NextAuth).
-*   **2025-04-11:** Adicionar testes para componente de Paginação.
-*   **2025-04-11:** Implementar testes unitários para lógica de autenticação (NextAuth).
-*   **2025-04-11:** Add tests for SaveJobButton, saved-jobs page, and saved jobs API endpoints.
-*   **2025-04-16:** Debugged Ashby integration (API URL, Processor logic) and refactored `AshbyProcessor` to use external location config.
-*   **2025-04-16:** Created Unit Tests for `GreenhouseFetcher` filtering logic (`_isJobRelevant` and helpers).
-*   **2025-04-16:** Refactored `stripHtml` and `parseDate` into `textUtils.ts` and applied to Ashby/Greenhouse processors.
 *   **2025-04-17:** Added Unit Tests for `GreenhouseFetcher.processSource` including error handling and logger usage.
 *   **2025-04-17:** Reviewed and enhanced tests for `jobUtils` (`detectExperienceLevel`, `detectJobType`, `extractSkills`).
 *   **2025-04-17:** Created `deactivateStaleJobs.ts` script to detect and close stale job listings, with dry-run mode and configurable days threshold.
-*   **2025-04-18:** Fixed regex syntax errors in `AshbyFetcher.test.ts` to enable proper test execution; tests now pass. *(Reverted - Tests are failing again)*
-*   **2025-04-23:** Removed Ashby Fetcher and related components. *(Action reversed - Ashby reintegrated)*
-*   **2025-04-23:** Updated TASK.md to reflect reintegration of Ashby fetcher.
 *   **YYYY-MM-DD:** Organized TASK.md to reflect Ashby fetcher reintegration as an active task.
 *   **YYYY-MM-DD:** Fixed failing test in `tests/lib/fetchers/AshbyFetcher.test.ts` by correcting the return type signature and implementation of the `detectRestrictivePattern` utility function in `filterUtils.ts`.
 *   **YYYY-MM-DD:** Created comprehensive unit tests for `AshbyProcessor` in `tests/lib/jobProcessors/AshbyProcessor.test.ts`.

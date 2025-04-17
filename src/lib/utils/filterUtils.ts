@@ -21,36 +21,34 @@ export function detectRestrictivePattern(
     text: string | null | undefined,
     negativeKeywords: string[],
     contextLogger?: pino.Logger
-): boolean {
+): {
+    isRestrictive: boolean;
+    matchedKeyword?: string;
+    reason?: string;
+} {
     const log = contextLogger || logger;
     if (!text || !negativeKeywords || negativeKeywords.length === 0) {
-        return false;
+        return { isRestrictive: false };
     }
 
     const lowerText = text.toLowerCase();
 
-    // --- Simplified Check using includes() ---
     for (const keyword of negativeKeywords) {
-        const lowerKeyword = keyword.toLowerCase();
-        // --- Remove DEBUG LOG --- 
-        // log.info({ checkingText: lowerText, againstKeyword: lowerKeyword }, "detectRestrictivePattern: Checking keyword");
-        if (lowerText.includes(lowerKeyword)) {
-            // Add specific checks for ambiguous keywords like 'us' vs 'usa' if needed
-            if (lowerKeyword === 'us' && !lowerText.includes(' us ') && !lowerText.endsWith(' us') && !lowerText.includes(' u.s')) {
-                // Avoid matching 'us' within words like 'status' or 'previous' unless it stands alone
-                // or is followed by punctuation like 'us.' which includes might catch.
-                // This check might need refinement based on false positives.
-                log.trace({ keyword, textSnippet: lowerText.substring(0,100) }, `Keyword 'us' found, but potentially part of another word. Skipping.`);
-                continue; 
-            }
-            
-            log.trace({ keyword: lowerKeyword, textSnippet: lowerText.substring(0, 100) }, 'Detected negative keyword/phrase via includes()');
-            // --- Remove DEBUG LOG --- 
-            // log.info({ matchedKeyword: lowerKeyword, text: lowerText }, "detectRestrictivePattern: Match found!");
-            return true; // Found a negative keyword
+        const lowerKeyword = keyword.toLowerCase().trim();
+        if (!lowerKeyword) continue; // Skip empty keywords
+
+        // Use regex with word boundaries for all keywords
+        const escapedKeyword = lowerKeyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        // Create regex: \b(keyword)\b - handles beginning/end of string or non-word chars
+        // Use \b for word boundaries
+        const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i'); // Case-insensitive
+
+        if (regex.test(lowerText)) {
+            const reason = `Found restrictive keyword: "${keyword}" using regex \b${escapedKeyword}\b`;
+            log.trace({ keyword: lowerKeyword, textSnippet: lowerText.substring(0, 100), reason }, 'Detected negative keyword/phrase via regex');
+            return { isRestrictive: true, matchedKeyword: keyword, reason }; // Found a negative keyword
         }
     }
-    // --- Remove DEBUG LOG --- 
-    // log.info({ text: lowerText }, "detectRestrictivePattern: No match found.");
-    return false; // No negative keywords found
+    // Explicitly return false if loop completes without finding a match
+    return { isRestrictive: false }; 
 }

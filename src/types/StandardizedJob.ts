@@ -1,5 +1,5 @@
-import { JobType, ExperienceLevel, Currency } from '@prisma/client';
-import { HiringRegion } from '@prisma/client';
+import { JobType, ExperienceLevel, HiringRegion } from '@prisma/client';
+import { Currency } from './models';
 
 /**
  * StandardizedJob represents the normalized job data structure

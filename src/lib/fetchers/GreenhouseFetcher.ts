@@ -319,53 +319,35 @@ export class GreenhouseFetcher implements JobFetcher {
         logger: pino.Logger
     ): { decision: 'ACCEPT_GLOBAL' | 'ACCEPT_LATAM' | 'REJECT' | 'UNKNOWN', reason?: string } {
         logger.trace("Checking Location Name and Offices...");
-        const combinedLocationText = ((locationName || '') + ' ' + (offices?.map(o => o.name || '').join(' ') || '')).toLowerCase();
+        const locationStr = (locationName || '').toLowerCase();
+        const officeNamesStr = (offices || []).map(o => o.name?.toLowerCase()).filter(Boolean).join(' ; ');
+        const combinedLocationText = `${locationStr} ; ${officeNamesStr}`.trim();
 
-        if (!combinedLocationText.trim()) {
-            return { decision: 'UNKNOWN' };
-        }
-
-        // Combine ALL relevant negative keywords for this check
+        // Combine all negative keywords for initial, more stringent check
         const allNegativeKeywords = [
-            ...(filterConfig.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || []),
-            // Add content keywords here too if they should apply to location string analysis
-            ...(filterConfig.CONTENT_KEYWORDS?.STRONG_NEGATIVE_REGION || []),
-            ...(filterConfig.CONTENT_KEYWORDS?.STRONG_NEGATIVE_TIMEZONE || [])
-        ];
-        if (detectRestrictivePattern(combinedLocationText, allNegativeKeywords, logger)) {
-            const reason = `Location/Office indicates Specific Restriction via keyword/pattern`;
-            logger.debug({ location: combinedLocationText }, reason);
+             ...(filterConfig.NEGATIVE_KEYWORDS.LOCATION || []),
+             ...(filterConfig.NEGATIVE_KEYWORDS.CONTENT || [])
+         ];
+
+        // 1. Initial check for restrictive patterns in location/office names
+        const restrictiveCheck = detectRestrictivePattern(combinedLocationText, allNegativeKeywords);
+        if (restrictiveCheck.isRestrictive) {
+            const reason = `Location/Office indicates Specific Restriction via keyword/pattern: ${restrictiveCheck.matchedKeyword}`;
+            logger.trace({ location: combinedLocationText, keyword: restrictiveCheck.matchedKeyword }, reason);
+            // *** Return immediately if restrictive pattern found ***
             return { decision: 'REJECT', reason };
         }
 
+        // --- If no restrictive pattern found, proceed with positive/ambiguous checks ---
+
+        // 2. Check for positive LATAM keywords in location name
         const keywords = filterConfig.LOCATION_KEYWORDS;
         if (!keywords) {
             logger.warn("LOCATION_KEYWORDS missing in filter config.");
             return { decision: 'UNKNOWN' };
         }
 
-        const proximityWindow = 30;
-        const hasNearbyNegative = (text: string, index: number, keyword: string): { match: boolean, negativeKeyword: string | undefined } => {
-            const start = Math.max(0, index - proximityWindow);
-            const end = Math.min(text.length, index + keyword.length + proximityWindow);
-            const context = text.substring(start, end);
-            const negativeMatch = this._matchesKeywordRegex(context, keywords.STRONG_NEGATIVE_RESTRICTION || []);
-            if (negativeMatch.match) {
-                 logger.debug({ context, keyword, negativeKeyword: negativeMatch.keyword }, "Found negative keyword near ambiguous term.");
-                 return { match: true, negativeKeyword: negativeMatch.keyword };
-            }
-            return { match: false, negativeKeyword: undefined };
-        };
-
-        // Check Negative FIRST
-        const negativeMatch = this._matchesKeywordRegex(combinedLocationText, keywords.STRONG_NEGATIVE_RESTRICTION || []);
-        if (negativeMatch.match) {
-            const reason = `Location/Office indicates Restriction: "${negativeMatch.keyword}"`;
-            logger.debug({ location: combinedLocationText, keyword: negativeMatch.keyword }, reason);
-            return { decision: 'REJECT', reason };
-        }
-
-        // Check LATAM
+        // Priority 1: Positive LATAM Keywords
         const latamMatch = this._matchesKeywordRegex(combinedLocationText, keywords.STRONG_POSITIVE_LATAM || []);
         if (latamMatch.match) {
             const reason = `Location/Office indicates LATAM: "${latamMatch.keyword}"`;
@@ -373,37 +355,15 @@ export class GreenhouseFetcher implements JobFetcher {
             return { decision: 'ACCEPT_LATAM', reason };
         }
 
-        // Check Global
+        // Priority 2: Positive Global Keywords
         const globalMatch = this._matchesKeywordRegex(combinedLocationText, keywords.STRONG_POSITIVE_GLOBAL || []);
         if (globalMatch.match) {
             const reason = `Location/Office indicates Global: "${globalMatch.keyword}"`;
             logger.trace({ location: combinedLocationText, keyword: globalMatch.keyword }, reason);
             return { decision: 'ACCEPT_GLOBAL', reason };
         }
-
-        // Check Ambiguous WITH Context Check
-        if (keywords.AMBIGUOUS && keywords.AMBIGUOUS.length > 0) {
-             const ambiguousPattern = new RegExp(`\\b(${keywords.AMBIGUOUS.map(kw =>
-                kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\\]{}]/g, '\\$&')
-            ).join('|')})\\b`, 'gi'); 
-            let match;
-            while ((match = ambiguousPattern.exec(combinedLocationText)) !== null) {
-                const ambiguousKeyword = match[1];
-                const index = match.index;
-                const nearbyNegative = hasNearbyNegative(combinedLocationText, index, ambiguousKeyword);
-                if (nearbyNegative.match) {
-                     const reason = `Ambiguous term '${ambiguousKeyword}' rejected due to nearby negative '${nearbyNegative.negativeKeyword}'.`;
-                     logger.debug({ location: combinedLocationText, keyword: ambiguousKeyword, negativeKeyword: nearbyNegative.negativeKeyword }, reason);
-                     return { decision: 'REJECT', reason }; 
-                } else {
-                    const reason = `Ambiguous keyword '${ambiguousKeyword}' confirmed as Global (no nearby negatives).`;
-                     logger.trace({ location: combinedLocationText, keyword: ambiguousKeyword }, reason);
-                    return { decision: 'ACCEPT_GLOBAL', reason }; 
-                }
-            }
-        }
-
-        // Check specific LATAM countries
+        
+        // Priority 3: Specific LATAM Countries
         if (keywords.ACCEPT_EXACT_LATAM_COUNTRIES) {
             const countries = keywords.ACCEPT_EXACT_LATAM_COUNTRIES.map(c => c.toLowerCase());
             if (countries.some(country => combinedLocationText.includes(country))) {
@@ -414,7 +374,48 @@ export class GreenhouseFetcher implements JobFetcher {
             }
         }
 
-        logger.trace({ location: combinedLocationText }, "Location/Office analysis result: UNKNOWN");
+        // Priority 4: Ambiguous Keywords (only if no positive signal found)
+        const proximityWindow = 30;
+        const hasNearbyNegative = (text: string, index: number, keyword: string): { match: boolean, negativeKeyword: string | undefined } => {
+            const start = Math.max(0, index - proximityWindow);
+            const end = Math.min(text.length, index + keyword.length + proximityWindow);
+            const context = text.substring(start, end);
+            // Use only location negatives for proximity check within location string
+            const negativeMatch = this._matchesKeywordRegex(context, keywords.STRONG_NEGATIVE_RESTRICTION || []);
+            if (negativeMatch.match) {
+                 logger.debug({ context, keyword, negativeKeyword: negativeMatch.keyword }, "Found negative keyword near ambiguous term in location.");
+                 return { match: true, negativeKeyword: negativeMatch.keyword };
+            }
+            return { match: false, negativeKeyword: undefined };
+        };
+
+        if (keywords.AMBIGUOUS && keywords.AMBIGUOUS.length > 0) {
+             const ambiguousPattern = new RegExp(`\\b(${keywords.AMBIGUOUS.map(kw =>
+                kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\\]{}]/g, '\\$&')
+            ).join('|')})\\b`, 'gi'); 
+            let match;
+            while ((match = ambiguousPattern.exec(combinedLocationText)) !== null) {
+                const ambiguousKeyword = match[1];
+                const index = match.index;
+                const nearbyNegative = hasNearbyNegative(combinedLocationText, index, ambiguousKeyword);
+                if (nearbyNegative.match) {
+                     const reason = `Ambiguous location term '${ambiguousKeyword}' has nearby negative '${nearbyNegative.negativeKeyword}', deferring decision.`;
+                     logger.debug({ location: combinedLocationText, keyword: ambiguousKeyword, negativeKeyword: nearbyNegative.negativeKeyword }, reason);
+                     // Don't return REJECT. Defer to content check. Mark as UNKNOWN for now.
+                     // Continue checking other ambiguous terms in case one IS global.
+                } else {
+                    // Found an ambiguous term with NO nearby negatives. This implies GLOBAL.
+                    const reason = `Ambiguous location keyword '${ambiguousKeyword}' confirmed as Global (no nearby negatives).`;
+                     logger.trace({ location: combinedLocationText, keyword: ambiguousKeyword }, reason);
+                    return { decision: 'ACCEPT_GLOBAL', reason }; 
+                }
+            }
+            // If loop finishes and all ambiguous terms had nearby negatives, decision remains UNKNOWN for location stage.
+        }
+        // --- END REORDERED LOGIC --- 
+
+        // If no positive signal, no restrictive pattern, and no clear ambiguous signal, result is UNKNOWN
+        logger.trace({ location: combinedLocationText }, "Location/Office analysis result: UNKNOWN (no definitive signal found)");
         return { decision: 'UNKNOWN' };
     }
 
@@ -423,18 +424,22 @@ export class GreenhouseFetcher implements JobFetcher {
         logger.trace("Checking Content Keywords...");
         if (!content) return { decision: 'UNKNOWN' };
 
-        const fullContentLower = ((title || '') + ' ' + (content || '')).toLowerCase();
+        // Clean content first
+        const cleanedContent = stripHtml(content); // Use stripHtml utility
+        const fullContentLower = ((title || '') + ' ' + cleanedContent).toLowerCase();
 
-        // Combine ALL relevant negative keywords for this check
+        // --- START REORDERED LOGIC --- 
+
+        // Priority 1: Check for Restrictive Patterns/Keywords FIRST
         const allNegativeKeywords = [
-             // Location keywords can also appear in content
-            ...(filterConfig.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || []),
+            ...(filterConfig.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || []), // Location terms can appear in content
             ...(filterConfig.CONTENT_KEYWORDS?.STRONG_NEGATIVE_REGION || []),
             ...(filterConfig.CONTENT_KEYWORDS?.STRONG_NEGATIVE_TIMEZONE || [])
         ];
-        if (detectRestrictivePattern(fullContentLower, allNegativeKeywords, logger)) {
-             const reason = `Content indicates Specific Restriction via keyword/pattern`;
-             logger.debug(reason);
+        const restrictiveResult = detectRestrictivePattern(fullContentLower, allNegativeKeywords, logger);
+        if (restrictiveResult.isRestrictive) {
+            const reason = `Content indicates Specific Restriction via keyword/pattern: ${restrictiveResult.matchedKeyword}`;
+            logger.debug({ contentSnippet: fullContentLower.substring(0, 100), keyword: restrictiveResult.matchedKeyword }, reason);
             return { decision: 'REJECT', reason };
         }
 
@@ -444,125 +449,133 @@ export class GreenhouseFetcher implements JobFetcher {
             return { decision: 'UNKNOWN' };
         }
 
+        // Define proximity check helper specific to content
         const proximityWindow = 30;
-
-        const hasNearbyNegative = (text: string, index: number, keyword: string): { match: boolean, negativeKeyword: string | undefined } => {
+        const hasNearbyNegativeInContent = (text: string, index: number, keyword: string): { match: boolean, negativeKeyword: string | undefined } => {
             const start = Math.max(0, index - proximityWindow);
             const end = Math.min(text.length, index + keyword.length + proximityWindow);
             const context = text.substring(start, end);
-            const allNegativeKeywords = [...(keywords.STRONG_NEGATIVE_REGION || []), ...(keywords.STRONG_NEGATIVE_TIMEZONE || [])];
-            const negativeMatch = this._matchesKeywordRegex(context, allNegativeKeywords);
-             if (negativeMatch.match) {
-                 logger.debug({ context, keyword, negativeKeyword: negativeMatch.keyword }, "Found negative keyword near term in content.");
-                 return { match: true, negativeKeyword: negativeMatch.keyword };
+            // Use only content negatives for this check
+            const contentNegativeKeywords = [...(keywords.STRONG_NEGATIVE_REGION || []), ...(keywords.STRONG_NEGATIVE_TIMEZONE || [])];
+            const negativeMatch = this._matchesKeywordRegex(context, contentNegativeKeywords);
+            if (negativeMatch.match) {
+                logger.debug({ context, keyword, negativeKeyword: negativeMatch.keyword }, "Found negative keyword near positive term in content.");
+                return { match: true, negativeKeyword: negativeMatch.keyword };
             }
             return { match: false, negativeKeyword: undefined };
         };
 
-        // Check Negative FIRST
-        const negativeRegionMatch = this._matchesKeywordRegex(fullContentLower, keywords.STRONG_NEGATIVE_REGION || []);
-        if (negativeRegionMatch.match) {
-             const reason = `Content indicates Region Restriction: "${negativeRegionMatch.keyword}"`;
-             logger.debug({ keyword: negativeRegionMatch.keyword }, reason);
-            return { decision: 'REJECT', reason };
-        }
-        const negativeTimezoneMatch = this._matchesKeywordRegex(fullContentLower, keywords.STRONG_NEGATIVE_TIMEZONE || []);
-        if (negativeTimezoneMatch.match) {
-             const reason = `Content indicates Timezone Restriction: "${negativeTimezoneMatch.keyword}"`;
-             logger.debug({ keyword: negativeTimezoneMatch.keyword }, reason);
-            return { decision: 'REJECT', reason };
-        }
-
-        // Check LATAM 
-        const latamMatch = this._includesSubstringKeyword(fullContentLower, keywords.STRONG_POSITIVE_LATAM || []);
-        if (latamMatch.match) {
-             const reason = `Content indicates LATAM: "${latamMatch.keyword}"`;
-             logger.trace({ keyword: latamMatch.keyword }, reason);
-            // Even if LATAM found, quickly check its context for immediate negatives
-             const latamKeywordsList = keywords.STRONG_POSITIVE_LATAM || [];
-             const latamPattern = new RegExp(`\b(${latamKeywordsList.map((kw: string) => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\b`, 'gi');
-             let latamIdxMatch;
-             while((latamIdxMatch = latamPattern.exec(fullContentLower)) !== null){
-                 const nearbyNegative = hasNearbyNegative(fullContentLower, latamIdxMatch.index, latamIdxMatch[1]);
-                 if(nearbyNegative.match){
-                     const rejectReason = `LATAM term '${latamIdxMatch[1]}' negated by nearby '${nearbyNegative.negativeKeyword}'.`;
-                     logger.debug(rejectReason);
-                     return { decision: 'REJECT', reason: rejectReason };
-                 }
-             }
-            // If no nearby negatives found for any LATAM term, accept
-            return { decision: 'ACCEPT_LATAM', reason };
-        }
-
-        // Check Global WITH Context Check
-        if (keywords.STRONG_POSITIVE_GLOBAL && keywords.STRONG_POSITIVE_GLOBAL.length > 0) {
-            const globalPattern = new RegExp(`\\b(${keywords.STRONG_POSITIVE_GLOBAL.map(kw =>
-                kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\\]{}]/g, '\\$&')
-            ).join('|')})\\b`, 'gi');
-            let match;
-            while ((match = globalPattern.exec(fullContentLower)) !== null) {
-                const globalKeyword = match[1];
-                const index = match.index;
-                const nearbyNegative = hasNearbyNegative(fullContentLower, index, globalKeyword);
+        // Priority 2: Check Positive LATAM (with context check)
+        if (keywords.STRONG_POSITIVE_LATAM && keywords.STRONG_POSITIVE_LATAM.length > 0) {
+            const latamPattern = new RegExp(`\\b(${keywords.STRONG_POSITIVE_LATAM.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\\]{}]/g, '\\$&')).join('|')})\\b`, 'gi');
+            let latamMatch;
+            let foundCleanLatam = false; // Flag to track if at least one clean LATAM term exists
+            while ((latamMatch = latamPattern.exec(fullContentLower)) !== null) {
+                const latamKeyword = latamMatch[1];
+                const index = latamMatch.index;
+                const nearbyNegative = hasNearbyNegativeInContent(fullContentLower, index, latamKeyword);
                 if (nearbyNegative.match) {
-                     const reason = `Positive global term '${globalKeyword}' negated by nearby negative '${nearbyNegative.negativeKeyword}'.`;
-                     logger.debug({ keyword: globalKeyword, negativeKeyword: nearbyNegative.negativeKeyword }, reason);
-                     return { decision: 'REJECT', reason };
+                    const reason = `Positive LATAM term '${latamKeyword}' in content negated by nearby '${nearbyNegative.negativeKeyword}'.`;
+                    logger.debug({ keyword: latamKeyword, negativeKeyword: nearbyNegative.negativeKeyword }, reason);
+                    // If a LATAM term is explicitly negated, it's a strong REJECT signal for content.
+                    // return { decision: 'REJECT', reason }; // Re-evaluate: Maybe just ignore this specific term?
                 } else {
-                    const reason = `Positive global keyword '${globalKeyword}' confirmed (no nearby negatives).`;
-                     logger.trace({ keyword: globalKeyword }, reason);
-                     return { decision: 'ACCEPT_GLOBAL', reason }; // Found one clean global signal
+                    // Found a LATAM term with NO nearby negatives.
+                    const reason = `Content indicates LATAM via keyword: "${latamKeyword}"`;
+                    logger.trace({ keyword: latamKeyword }, reason);
+                    // Don't return immediately, check all LATAM terms. Set flag.
+                    foundCleanLatam = true; 
                 }
             }
+             // If, after checking all occurrences, we found at least one clean LATAM term, accept LATAM.
+             if (foundCleanLatam) {
+                 return { decision: 'ACCEPT_LATAM', reason: 'Content indicates LATAM (found clean positive keyword)' };
+             }
         }
 
-        logger.trace("Content keyword analysis result: UNKNOWN");
+        // Priority 3: Check Positive Global (with context check)
+        if (keywords.STRONG_POSITIVE_GLOBAL && keywords.STRONG_POSITIVE_GLOBAL.length > 0) {
+            const globalPattern = new RegExp(`\\b(${keywords.STRONG_POSITIVE_GLOBAL.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\\]{}]/g, '\\$&')).join('|')})\\b`, 'gi');
+            let globalMatch;
+            let foundCleanGlobal = false; // Flag to track if at least one clean Global term exists
+            while ((globalMatch = globalPattern.exec(fullContentLower)) !== null) {
+                const globalKeyword = globalMatch[1];
+                const index = globalMatch.index;
+                const nearbyNegative = hasNearbyNegativeInContent(fullContentLower, index, globalKeyword);
+                if (nearbyNegative.match) {
+                    const reason = `Positive Global term '${globalKeyword}' in content negated by nearby '${nearbyNegative.negativeKeyword}'.`;
+                    logger.debug({ keyword: globalKeyword, negativeKeyword: nearbyNegative.negativeKeyword }, reason);
+                    // If a Global term is explicitly negated, it's a strong REJECT signal for content.
+                    // return { decision: 'REJECT', reason }; // Re-evaluate: Maybe just ignore this specific term?
+                } else {
+                    // Found a Global term with NO nearby negatives.
+                    const reason = `Content indicates Global via keyword: "${globalKeyword}"`;
+                    logger.trace({ keyword: globalKeyword }, reason);
+                    // Don't return immediately, check all Global terms. Set flag.
+                    foundCleanGlobal = true; 
+                }
+            }
+            // If, after checking all occurrences, we found at least one clean Global term, accept Global.
+            if (foundCleanGlobal) {
+                 return { decision: 'ACCEPT_GLOBAL', reason: 'Content indicates Global (found clean positive keyword)' };
+            }
+        }
+        // --- END REORDERED LOGIC --- 
+
+        // If no restrictive pattern and no clean positive signal found in content
+        logger.trace({ contentSnippet: fullContentLower.substring(0, 100) }, "Content keyword analysis result: UNKNOWN (no definitive signal found)");
         return { decision: 'UNKNOWN' };
     }
 
     // --- Refactored _isJobRelevant using the updated checks ---
     private _isJobRelevant(job: GreenhouseJob, filterConfig: FilterConfig, logger: pino.Logger): FilterResult {
-        const jobLogger = logger.child({ jobId: job.id, jobTitle: job.title, fn: '_isJobRelevant' });
+        const jobLogger = logger.child({ jobId: job.id, jobTitle: job.title?.substring(0, 50), fn: '_isJobRelevant' });
         jobLogger.debug("--- Starting Relevance Check ---");
 
         // --- Check Order: Metadata -> Location -> Content --- 
 
         // 1. Metadata Check
         const metadataResult = this._checkMetadataForRemoteness(job.metadata || [], filterConfig, jobLogger);
-        jobLogger.debug({ metadataResult }, "Metadata Check Result");
+        jobLogger.trace({ decision: metadataResult }, "Metadata Check Result");
         if (metadataResult === 'REJECT') {
+            jobLogger.info("Decision: REJECT (Metadata)");
             return { relevant: false, reason: 'Metadata indicates Restriction' };
         }
-        // Accept LATAM immediately if found in metadata
         if (metadataResult === 'ACCEPT_LATAM') {
+             jobLogger.info("Decision: ACCEPT_LATAM (Metadata)");
             return { relevant: true, reason: 'Metadata(LATAM)', type: 'latam' };
         }
+         // Note: ACCEPT_GLOBAL from metadata is noted but doesn't cause immediate return
 
         // 2. Location Check
         const locationCheck = this._checkLocationName(job.location?.name, job.offices, filterConfig, jobLogger);
-        jobLogger.debug({ decision: locationCheck.decision, reason: locationCheck.reason }, "Location Check Result");
+        jobLogger.trace({ decision: locationCheck.decision, reason: locationCheck.reason }, "Location Check Result");
         if (locationCheck.decision === 'REJECT') {
+             jobLogger.info({ reason: locationCheck.reason }, "Decision: REJECT (Location)");
             return { relevant: false, reason: locationCheck.reason || 'Location/Office indicates Restriction' };
         }
-        // Accept LATAM immediately if found in location
         if (locationCheck.decision === 'ACCEPT_LATAM') {
+            jobLogger.info({ reason: locationCheck.reason }, "Decision: ACCEPT_LATAM (Location)");
             return { relevant: true, reason: locationCheck.reason || 'Location/Office(LATAM)', type: 'latam' };
         }
+        // Note: ACCEPT_GLOBAL from location is noted but doesn't cause immediate return
 
         // 3. Content Check
-        const contentCheck = this._checkContentKeywords(job.title, stripHtml(job.content || ''), filterConfig, jobLogger);
-        jobLogger.debug({ decision: contentCheck.decision, reason: contentCheck.reason }, "Content Check Result");
+        const contentCheck = this._checkContentKeywords(job.title, job.content, filterConfig, jobLogger); // Pass raw content
+        jobLogger.trace({ decision: contentCheck.decision, reason: contentCheck.reason }, "Content Check Result");
         if (contentCheck.decision === 'REJECT') {
+             jobLogger.info({ reason: contentCheck.reason }, "Decision: REJECT (Content)");
             return { relevant: false, reason: contentCheck.reason || 'Content indicates Restriction' };
         }
-        // Accept LATAM immediately if found in content
         if (contentCheck.decision === 'ACCEPT_LATAM') {
+             jobLogger.info({ reason: contentCheck.reason }, "Decision: ACCEPT_LATAM (Content)");
             return { relevant: true, reason: contentCheck.reason || 'Content(LATAM)', type: 'latam' };
         }
+         // Note: ACCEPT_GLOBAL from content is noted
 
         // --- Final Decision Logic (GLOBAL or UNKNOWN/REJECT) --- 
         // If we reach here, no stage has definitively REJECTED or ACCEPTED_LATAM.
-        // We now check if any stage indicated GLOBAL acceptance.
+        // We now check if *any* stage indicated GLOBAL acceptance.
         const isGlobalFromMetadata = metadataResult === 'ACCEPT_GLOBAL';
         const isGlobalFromLocation = locationCheck.decision === 'ACCEPT_GLOBAL';
         const isGlobalFromContent = contentCheck.decision === 'ACCEPT_GLOBAL';
@@ -574,12 +587,12 @@ export class GreenhouseFetcher implements JobFetcher {
              else if (isGlobalFromLocation) globalReason = locationCheck.reason || 'Location/Office(Global)';
              else if (isGlobalFromContent) globalReason = contentCheck.reason || 'Content(Global)';
              
-             jobLogger.info({ finalReason: globalReason }, "Final Decision: ACCEPT_GLOBAL based on combined checks.");
+             jobLogger.info({ finalReason: globalReason }, "Decision: ACCEPT_GLOBAL (based on combined checks)");
              return { relevant: true, reason: globalReason, type: 'global' };
         }
 
-        // If no REJECT, no ACCEPT_LATAM, and no ACCEPT_GLOBAL signal was found, treat as irrelevant.
-        jobLogger.debug("Final Decision: Job is not relevant (Ambiguous or No Remote Signal).");
+        // If no REJECT, no ACCEPT_LATAM, and no ACCEPT_GLOBAL signal was found across all stages, treat as irrelevant.
+        jobLogger.info("Decision: REJECT (Ambiguous or No Remote Signal Found)");
         return { relevant: false, reason: 'Ambiguous or No Remote Signal' };
     }
 }

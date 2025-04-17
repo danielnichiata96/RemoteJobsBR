@@ -26,13 +26,13 @@ export class AshbyFetcher implements JobFetcher {
     private _loadFilterConfig(logger?: pino.Logger): void {
         const log = logger || pino({ name: 'AshbyFetcherConfigLoad', level: 'info' });
         try {
-            const configPath = path.resolve(__dirname, '../../../config/ashby-filter-config.json');
+            const configPath = path.resolve(__dirname, '../../../src/config/ashby-filter-config.json');
             log.trace({ configPath }, `AshbyFetcher: Attempting to load filter configuration...`);
             const configFile = fs.readFileSync(configPath, 'utf-8');
             this.filterConfig = JSON.parse(configFile) as FilterConfig;
             log.info({ configPath }, `AshbyFetcher: Successfully loaded filter configuration.`);
         } catch (error: any) {
-            log.error({ err: error, configPath: path.resolve(__dirname, '../../../config/ashby-filter-config.json') }, `AshbyFetcher: ❌ Failed to load or parse filter configuration. Filtering keywords will not be applied.`);
+            log.error({ err: error, configPath: path.resolve(__dirname, '../../../src/config/ashby-filter-config.json') }, `AshbyFetcher: ❌ Failed to load or parse filter configuration. Filtering keywords will not be applied.`);
             this.filterConfig = null; // Keep null assignment in case of error
         }
     }
@@ -185,13 +185,18 @@ export class AshbyFetcher implements JobFetcher {
     private _includesSubstringKeyword(text: string | null | undefined, keywords: string[]): { match: boolean, keyword: string | undefined } {
         if (!text || !keywords || keywords.length === 0) return { match: false, keyword: undefined };
         const lowerText = text.toLowerCase().trim();
-        // Handle multi-word keywords and potential extra spacing
+        
         for (const keyword of keywords) {
-            const lowerKeyword = keyword.toLowerCase();
-            // Check for exact phrase match, potentially with variations in spacing
-            if (lowerText.includes(lowerKeyword)) {
-                 // Basic check passed, ensure it's not part of a larger word unexpectedly (optional refinement)
-                 // Example: Check word boundaries if needed, but simple includes is often sufficient
+            const lowerKeyword = keyword.toLowerCase().trim();
+            if (!lowerKeyword) continue; // Skip empty keywords
+
+            // Use regex with word boundaries for more accurate matching
+            // Escape special regex characters in the keyword
+            const escapedKeyword = lowerKeyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            // Create regex: (keyword) - handles beginning/end of string or non-word chars
+            const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i'); // Case-insensitive
+
+            if (regex.test(lowerText)) {
                 return { match: true, keyword: keyword };
             }
         }
@@ -351,8 +356,8 @@ export class AshbyFetcher implements JobFetcher {
         if (allNegativeKeywords.length > 0) {
             const detectedNegative = detectRestrictivePattern(fullContentLower, allNegativeKeywords, logger);
             logger.trace({ detectedNegative }, "Result of detectRestrictivePattern in _checkContent.");
-            if (detectedNegative) {
-                 const reason = `Content indicates Specific Restriction via keyword/pattern`;
+            if (detectedNegative.isRestrictive) {
+                 const reason = `Content indicates Specific Restriction via keyword/pattern: ${detectedNegative.matchedKeyword}`;
                  logger.debug(reason);
                 return { decision: 'REJECT', reason };
             }
@@ -373,7 +378,7 @@ export class AshbyFetcher implements JobFetcher {
             if (latamMatch.match) {
                 const reason = `Content indicates LATAM: "${latamMatch.keyword}"`;
                 logger.trace({ keyword: latamMatch.keyword }, reason);
-                const latamPattern = new RegExp(`\b(${latamKeywords.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\b`, 'gi');
+                const latamPattern = new RegExp(`\\b(${latamKeywords.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\\b`, 'gi');
                 let latamIdxMatch;
                 const proximityWindow = 30;
                 // Check context around LATAM match for negatives
@@ -413,7 +418,7 @@ export class AshbyFetcher implements JobFetcher {
                 logger.trace({ keyword: globalMatchSimple.keyword }, reason);
 
                 // Perform context check ONLY to potentially REJECT, not to confirm acceptance
-                const globalPattern = new RegExp(`\b(${globalKeywords.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\b`, 'gi');
+                const globalPattern = new RegExp(`\\b(${globalKeywords.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\\b`, 'gi');
                 let globalIdxMatch;
                 const proximityWindow = 30;
                 while((globalIdxMatch = globalPattern.exec(fullContentLower)) !== null){

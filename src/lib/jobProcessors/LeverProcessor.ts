@@ -41,13 +41,11 @@ export class LeverProcessor implements JobProcessor {
                 }
             } else {
                 jobLogger.warn('Missing createdAt timestamp, cannot apply age filter.');
-                // Decide whether to proceed or fail if timestamp is missing
-                // For now, let's proceed but warn
             }
             // --- End Age Filter ---
             
             // Explicitly await, though _mapToStandardizedJob is synchronous
-            const standardizedJob = await this._mapToStandardizedJob(rawJob, sourceData); 
+            const standardizedJob = this._mapToStandardizedJob(rawJob, sourceData); // No await needed
             
             jobLogger.info(`Successfully mapped job: ${standardizedJob.title}`);
             return { success: true, job: standardizedJob };
@@ -166,4 +164,17 @@ export class LeverProcessor implements JobProcessor {
             hiringRegion: undefined, // Default undefined
         };
     }
+
+/* 
+   // Commented out salary extraction helper - Ensure it's fully commented
+   private _extractSalaryInfo(compensationText: string): {
+        minSalary: number | null;
+        maxSalary: number | null;
+        currency: string | null;
+    } {
+       // ... potential implementation ...
+       return { minSalary: null, maxSalary: null, currency: null };
+   }
+*/
+
 } 

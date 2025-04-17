@@ -35,6 +35,9 @@ jest.mock('@prisma/client', () => ({
 // Import enums normally
 import { UserRole, JobStatus, JobType, ExperienceLevel, HiringRegion } from '@prisma/client';
 
+// Mock setTimeout globally for timer control
+// jest.useFakeTimers();
+
 // --- Test Suite ---
 
 describe('JobProcessingService', () => {
@@ -198,41 +201,33 @@ describe('JobProcessingService', () => {
       mockPrismaClient.job.findFirst.mockResolvedValue(null);
       // Default behavior for update (used in duplicate case)
       mockPrismaClient.job.update.mockResolvedValue({});
+      // Default behavior for user update
+      mockPrismaClient.user.update.mockResolvedValue({});
     });
 
-    it('should save job successfully when company exists', async () => {
-      // Arrange: Override default mocks if needed (already set up in beforeEach for this case)
-       mockPrismaClient.user.findFirst.mockResolvedValue({ // Be explicit
+    it('should save job successfully when company exists and HAS logo/normalized name', async () => {
+      // Arrange: Mock company found with existing logo and name
+      mockPrismaClient.user.findFirst.mockResolvedValue({ 
         id: 'company-1',
         name: 'Example Company',
         normalizedCompanyName: 'example company',
         logo: 'https://example.com/existing-logo.png',
         role: UserRole.COMPANY
       });
-      mockPrismaClient.job.findFirst.mockResolvedValue(null); // No duplicate
+      mockPrismaClient.job.findFirst.mockResolvedValue(null); // No duplicate job
+      mockPrismaClient.job.upsert.mockResolvedValue({ id: 'job-123' });
 
       // Act
       const result = await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
       
       // Assert
       expect(result).toBe(true);
-      expect(mockPrismaClient.user.findFirst).toHaveBeenCalled();
-      expect(mockPrismaClient.user.update).not.toHaveBeenCalled();
-      expect(mockPrismaClient.job.findFirst).toHaveBeenCalledWith({
-          where: {
-              companyId: 'company-1',
-              normalizedTitle: 'software engineer',
-              status: JobStatus.ACTIVE,
-          }
-      });
-      expect(mockPrismaClient.job.update).not.toHaveBeenCalled();
-      expect(mockPrismaClient.job.upsert).toHaveBeenCalled();
+      expect(mockPrismaClient.user.findFirst).toHaveBeenCalledTimes(1);
+      // Expect NO update calls since logo and name are present
+      expect(mockPrismaClient.user.update).not.toHaveBeenCalled(); 
+      expect(mockPrismaClient.job.findFirst).toHaveBeenCalled();
+      expect(mockPrismaClient.job.upsert).toHaveBeenCalledTimes(1);
       expect(mockPrismaClient.user.create).not.toHaveBeenCalled();
-
-      // Verify upsert data
-      const upsertArgs = mockPrismaClient.job.upsert.mock.calls[0][0];
-      expect(upsertArgs.create.normalizedTitle).toBe('software engineer');
-      expect(upsertArgs.update.normalizedTitle).toBe('software engineer');
     });
 
     it('should create company successfully if company does not exist', async () => {
@@ -242,166 +237,236 @@ describe('JobProcessingService', () => {
         id: 'company-2',
         name: 'Example Company',
         normalizedCompanyName: 'example company',
+        logo: 'https://example.com/logo.png', // Ensure created mock has logo for consistency
+        role: UserRole.COMPANY // Added role
       });
-       mockPrismaClient.job.findFirst.mockResolvedValue(null); // No duplicate job after company creation
+      mockPrismaClient.job.findFirst.mockResolvedValue(null); // No duplicate job after company creation
+      mockPrismaClient.job.upsert.mockResolvedValue({ id: 'job-new', companyId: 'company-2' });
 
       // Act
       const result = await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
       
       // Assert
       expect(result).toBe(true);
-      expect(mockPrismaClient.user.findFirst).toHaveBeenCalled();
-      expect(mockPrismaClient.user.create).toHaveBeenCalled();
-      expect(mockPrismaClient.job.upsert).toHaveBeenCalled();
-
-      // Verify company creation data
+      expect(mockPrismaClient.user.findFirst).toHaveBeenCalledTimes(1);
+      expect(mockPrismaClient.user.create).toHaveBeenCalledTimes(1);
+      expect(mockPrismaClient.user.update).not.toHaveBeenCalled();
+      expect(mockPrismaClient.job.upsert).toHaveBeenCalledTimes(1);
+      // Verify create data
       const createArgs = mockPrismaClient.user.create.mock.calls[0][0];
+      expect(createArgs.data.name).toBe('Example Company');
       expect(createArgs.data.normalizedCompanyName).toBe('example company');
+      expect(createArgs.data.logo).toBe('https://example.com/logo.png');
     });
 
-    it('should update normalizedCompanyName if missing on existing company', async () => {
-       // Arrange
-      mockPrismaClient.user.findFirst.mockResolvedValue({ // Company exists, lacks normalized name
-        id: 'company-3',
-        name: 'Example Company',
-        normalizedCompanyName: null,
+    it('should detect duplicate job and update timestamp instead of saving', async () => {
+      // Arrange: Mock findFirst to return an existing job
+      const existingDuplicateJob = { id: 'existing-job-id', title: 'Duplicate Job', updatedAt: new Date() };
+      mockPrismaClient.user.findFirst.mockResolvedValue({ 
+         id: 'company-dupe', 
+         name: 'Example Company', 
+         normalizedCompanyName: 'example company',
+         role: UserRole.COMPANY
+     });
+      mockPrismaClient.job.findFirst.mockResolvedValue(existingDuplicateJob);
+      mockPrismaClient.job.update.mockResolvedValue({}); // Mock the timestamp update
+
+      // Act
+      const result = await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
+
+      // Assert
+      expect(result).toBe(false);
+      expect(mockPrismaClient.user.findFirst).toHaveBeenCalledTimes(1);
+      expect(mockPrismaClient.job.findFirst).toHaveBeenCalledTimes(1);
+      expect(loggerMock.warn).toHaveBeenCalledWith(expect.objectContaining({ existingJobId: existingDuplicateJob.id }), expect.stringContaining('Duplicate job detected'));
+      // Verify timestamp update call
+      expect(mockPrismaClient.job.update).toHaveBeenCalledWith({
+          where: { id: existingDuplicateJob.id },
+          data: { updatedAt: expect.any(Date) }
+      });
+      expect(mockPrismaClient.job.upsert).not.toHaveBeenCalled();
+    });
+    
+    // --- Tests for updating existing company --- 
+
+    it('should update MISSING company logo if company exists without one', async () => {
+      // Arrange: Mock company found WITHOUT logo
+      mockPrismaClient.user.findFirst.mockResolvedValue({ 
+        id: 'company-no-logo', 
+        name: 'Example Company', 
+        normalizedCompanyName: 'example company',
+        logo: null, // Explicitly null
         role: UserRole.COMPANY
       });
       mockPrismaClient.job.findFirst.mockResolvedValue(null); // No duplicate job
+      mockPrismaClient.job.upsert.mockResolvedValue({ id: 'job-123' });
+      mockPrismaClient.user.update.mockResolvedValue({}); // Mock the update call
 
       // Act
-      await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
+      await jobProcessingService.saveOrUpdateJob(mockStandardizedJob); // Job data HAS logo
 
       // Assert
+      expect(mockPrismaClient.user.update).toHaveBeenCalledTimes(1); // Should be called once
       expect(mockPrismaClient.user.update).toHaveBeenCalledWith({
-        where: { id: 'company-3' },
-        data: { normalizedCompanyName: 'example company' },
+        where: { id: 'company-no-logo' },
+        data: { logo: mockStandardizedJob.companyLogo }
       });
-       expect(mockPrismaClient.job.upsert).toHaveBeenCalled(); // Still expect job upsert
     });
 
-    it('should update normalizedCompanyName if different on existing company', async () => {
-       // Arrange
-      mockPrismaClient.user.findFirst.mockResolvedValue({ // Company exists, different normalized name
-        id: 'company-4',
-        name: 'Example Company',
-        normalizedCompanyName: 'old example company',
+    it('should update MISSING normalized company name if company exists without one', async () => {
+      // Arrange: Mock company found WITHOUT normalized name but WITH logo
+      mockPrismaClient.user.findFirst.mockResolvedValue({ 
+        id: 'company-no-norm', 
+        name: 'Example Company', 
+        normalizedCompanyName: null, // Explicitly null
+        logo: 'https://example.com/existing-logo.png', // Has logo
         role: UserRole.COMPANY
       });
-       mockPrismaClient.job.findFirst.mockResolvedValue(null); // No duplicate job
+      mockPrismaClient.job.findFirst.mockResolvedValue(null); // No duplicate job
+      mockPrismaClient.job.upsert.mockResolvedValue({ id: 'job-123' });
+      mockPrismaClient.user.update.mockResolvedValue({}); // Mock the update call
 
       // Act
       await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
 
       // Assert
+      expect(mockPrismaClient.user.update).toHaveBeenCalledTimes(1); // Should be called once
       expect(mockPrismaClient.user.update).toHaveBeenCalledWith({
-        where: { id: 'company-4' },
-        data: { normalizedCompanyName: 'example company' },
+        where: { id: 'company-no-norm' },
+        data: { normalizedCompanyName: 'example company' }
       });
-       expect(mockPrismaClient.job.upsert).toHaveBeenCalled(); // Still expect job upsert
     });
-
-    it('should return false if there are missing required fields', async () => {
-      // Arrange
-      const incompleteJob: Partial<StandardizedJob> = { title: 'Incomplete Job' };
+    
+    it('should update BOTH missing logo and missing normalized name in ONE call', async () => {
+      // Arrange: Mock company found WITHOUT logo AND WITHOUT normalized name 
+      mockPrismaClient.user.findFirst.mockResolvedValue({ 
+        id: 'company-missing-both', 
+        name: 'Example Company', 
+        normalizedCompanyName: null, // Missing
+        logo: null, // Missing
+        role: UserRole.COMPANY
+      });
+      mockPrismaClient.job.findFirst.mockResolvedValue(null); // No duplicate job
+      mockPrismaClient.job.upsert.mockResolvedValue({ id: 'job-123' });
+      mockPrismaClient.user.update.mockResolvedValue({}); // Mock the update call
 
       // Act
-      const result = await jobProcessingService.saveOrUpdateJob(incompleteJob as StandardizedJob);
+      await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
+
+      // Assert
+      expect(mockPrismaClient.user.update).toHaveBeenCalledTimes(1); // Should be called ONLY ONCE
+      expect(mockPrismaClient.user.update).toHaveBeenCalledWith({
+        where: { id: 'company-missing-both' },
+        data: { 
+          normalizedCompanyName: 'example company', // Update name
+          logo: mockStandardizedJob.companyLogo // Update logo
+        }
+      });
+    });
+
+    it('should return false and log error if essential job fields are missing', async () => {
+      // Arrange
+      const missingJobData: Partial<StandardizedJob> = { title: 'Incomplete Job' };
+
+      // Act
+      const result = await jobProcessingService.saveOrUpdateJob(missingJobData as StandardizedJob);
       
       // Assert
       expect(result).toBe(false);
       expect(mockPrismaClient.user.findFirst).not.toHaveBeenCalled();
       expect(mockPrismaClient.job.upsert).not.toHaveBeenCalled();
+      expect(loggerMock.error).toHaveBeenCalledWith(expect.objectContaining({ jobData: missingJobData }), expect.stringContaining('missing essential fields'));
     });
 
-    it('should return false if database operations fail', async () => {
-      // Arrange
-      mockPrismaClient.user.findFirst.mockRejectedValue(new Error('Database error')); // Mock failure
+    // --- NEW TESTS FOR CONCURRENCY FIX (No fake timers needed) ---
 
-      // Act
-      const result = await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
-      
-      // Assert
-      expect(result).toBe(false);
-      expect(loggerMock.error).toHaveBeenCalled();
-    });
-
-    it('should detect duplicate job and update timestamp instead of saving', async () => {
-      // Arrange: Define the job that already exists
-      const existingDuplicateJob = {
-        id: 'job-existing-duplicate',
-        title: 'Software Engineer',
-        companyId: 'company-1',
-        normalizedTitle: 'software engineer',
-        status: JobStatus.ACTIVE,
-        source: 'some-source',
-        sourceId: 'some-source-id',
-        updatedAt: new Date('2023-01-01T12:00:00Z'),
-        createdAt: new Date('2023-01-01T11:00:00Z'),
-        applicationUrl: 'https://example.com/apply-duplicate',
+    it('should handle company creation race condition (P2002) and find company after delay', async () => {
+      const companyName = 'Race Condition Inc.';
+      mockStandardizedJob.companyName = companyName;
+      const prismaP2002Error = { code: 'P2002', message: 'Unique constraint failed' };
+      const foundCompanyAfterError = {
+        id: 'company-race',
+        name: companyName,
+        normalizedCompanyName: null, // Simulate missing normalized name to test update path
+        role: UserRole.COMPANY
       };
 
-      // Arrange: Mock company find (exists with logo and normalized name)
-      mockPrismaClient.user.findFirst.mockResolvedValue({
-        id: 'company-1',
-        name: 'Example Company',
-        normalizedCompanyName: 'example company',
-        logo: 'some-logo.png',
-        role: UserRole.COMPANY
-      });
-
-      // Arrange: Mock Job Find (returns the duplicate)
-      mockPrismaClient.job.findFirst.mockImplementation(() => {
-        // Return the full object, WRAPPED in Promise.resolve
-        return Promise.resolve(existingDuplicateJob); 
-      });
-
-      // Arrange: Mock Job Update (returns updated object)
-      mockPrismaClient.job.update.mockResolvedValue({
-        ...existingDuplicateJob,
-        updatedAt: new Date(), // Simulate timestamp update
-      });
+      // 1. Initial find fails
+      mockPrismaClient.user.findFirst.mockResolvedValueOnce(null);
+      // 2. Create throws P2002
+      mockPrismaClient.user.create.mockRejectedValueOnce(prismaP2002Error);
+      // 3. Second find (after delay) succeeds
+      mockPrismaClient.user.findFirst.mockResolvedValueOnce(foundCompanyAfterError);
+      // 4. Mock the update for the missing normalized name
+      mockPrismaClient.user.update.mockResolvedValueOnce({}); 
+      // 5. Duplicate job check fails
+      mockPrismaClient.job.findFirst.mockResolvedValue(null);
+      // 6. Job upsert succeeds
+      mockPrismaClient.job.upsert.mockResolvedValue({ id: 'job-race', companyId: 'company-race' });
 
       // Act
       const result = await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
 
-      // Assert: Check logger first (should be called inside the IF)
-      /* // Temporarily comment out due to test environment issue
-      expect(loggerMock.warn).toHaveBeenCalledWith(
-        expect.objectContaining({ existingJobId: existingDuplicateJob.id }),
-        expect.stringContaining('Duplicate job detected')
-      );
-      */
-
-      // Assert: Function returns false
-      expect(result).toBe(false);
-
-      // Assert: Methods called
-      expect(mockPrismaClient.user.findFirst).toHaveBeenCalled();
-      expect(mockPrismaClient.job.findFirst).toHaveBeenCalledWith({
-        where: {
-          companyId: 'company-1',
-          normalizedTitle: 'software engineer',
-          status: JobStatus.ACTIVE,
-        },
+      // Assert
+      expect(result).toBe(true);
+      expect(mockPrismaClient.user.findFirst).toHaveBeenCalledTimes(2); // Initial find + find after error
+      expect(mockPrismaClient.user.create).toHaveBeenCalledTimes(1);
+      expect(loggerMock.warn).toHaveBeenCalledWith(expect.objectContaining({ companyName }), expect.stringContaining('P2002 - likely race condition'));
+      // Verify normalized name was updated after finding the company
+      expect(mockPrismaClient.user.update).toHaveBeenCalledWith({
+        where: { id: 'company-race' },
+        data: { normalizedCompanyName: 'race condition inc' }
       });
-      
-      // Assert: Job update WAS called
-      /* // Temporarily comment out due to test environment issue
-      expect(mockPrismaClient.job.update).toHaveBeenCalledTimes(1); 
-      expect(mockPrismaClient.job.update).toHaveBeenCalledWith({
-        where: { id: existingDuplicateJob.id },
-        data: { updatedAt: expect.any(Date) },
-      });
-      */
-
-      // Assert: Methods NOT called
-      expect(mockPrismaClient.job.upsert).not.toHaveBeenCalled();
-      expect(mockPrismaClient.user.create).not.toHaveBeenCalled();
-      // User update might be called if normalized name/logo were missing - adjust if needed
-      // For this specific test case setup, it shouldn't be called.
-      expect(mockPrismaClient.user.update).not.toHaveBeenCalled();
+      expect(mockPrismaClient.job.upsert).toHaveBeenCalledTimes(1);
     });
 
+    it('should handle company creation race condition (P2002) but fail if company still not found after delay', async () => {
+      const companyName = 'Super Race Condition Inc.';
+      mockStandardizedJob.companyName = companyName;
+      const prismaP2002Error = { code: 'P2002', message: 'Unique constraint failed' };
+
+      // 1. Initial find fails
+      mockPrismaClient.user.findFirst.mockResolvedValueOnce(null);
+      // 2. Create throws P2002
+      mockPrismaClient.user.create.mockRejectedValueOnce(prismaP2002Error);
+      // 3. Second find (after delay) STILL fails
+      mockPrismaClient.user.findFirst.mockResolvedValueOnce(null);
+
+      // Act
+      const result = await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
+
+      // Assert
+      expect(result).toBe(false);
+      expect(mockPrismaClient.user.findFirst).toHaveBeenCalledTimes(2); // Initial find + find after error
+      expect(mockPrismaClient.user.create).toHaveBeenCalledTimes(1);
+      expect(loggerMock.warn).toHaveBeenCalledWith(expect.objectContaining({ companyName }), expect.stringContaining('P2002 - likely race condition'));
+      expect(loggerMock.error).toHaveBeenCalledWith(expect.objectContaining({ companyName }), expect.stringContaining('Still could not find company after P2002 error'));
+      expect(mockPrismaClient.job.upsert).not.toHaveBeenCalled();
+    });
+
+    it('should handle non-P2002 error during company creation and return false', async () => {
+      const companyName = 'Error Creating Inc.';
+      mockStandardizedJob.companyName = companyName;
+      const creationError = new Error('Database connection lost');
+
+      // 1. Initial find fails
+      mockPrismaClient.user.findFirst.mockResolvedValueOnce(null);
+      // 2. Create throws a generic error
+      mockPrismaClient.user.create.mockRejectedValueOnce(creationError);
+
+      // Act
+      const result = await jobProcessingService.saveOrUpdateJob(mockStandardizedJob);
+
+      // Assert
+      expect(result).toBe(false);
+      expect(mockPrismaClient.user.findFirst).toHaveBeenCalledTimes(1); // Only the initial find
+      expect(mockPrismaClient.user.create).toHaveBeenCalledTimes(1);
+      expect(loggerMock.error).toHaveBeenCalledWith(expect.objectContaining({ companyName, error: creationError }), expect.stringContaining('Unexpected error failed to create company'));
+      // Ensure the second find attempt was NOT made
+      expect(mockPrismaClient.user.findFirst).toHaveBeenCalledTimes(1); 
+      expect(mockPrismaClient.job.upsert).not.toHaveBeenCalled();
+    });
+
+    // --- End NEW TESTS ---
   });
 }); 

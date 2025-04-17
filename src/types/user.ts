@@ -1,4 +1,4 @@
-import { Job, SavedJob } from './models';
+import { Job as JobModel, SavedJob } from './models';
 
 export interface User {
   id: string;
@@ -40,7 +40,7 @@ export interface UserProfile {
   website?: string | null;
   // Relations (optional based on context)
   savedJobs?: SavedJob[];
-  jobsPosted?: Job[]; // For COMPANY role
+  jobsPosted?: JobModel[]; // For COMPANY role
 }
 
 // This interface seems redundant now that Application is removed.
