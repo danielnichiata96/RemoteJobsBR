@@ -31,8 +31,8 @@
     │   ├── pages/           # Next.js pages and API routes
     │   ├── lib/
     │   │   ├── adapters/        # Adapters (e.g., JobProcessingAdapter)
-    │   │   ├── fetchers/        # Job fetcher implementations (Greenhouse)
-    │   │   ├── jobProcessors/   # Job processor implementations (Greenhouse)
+    │   │   ├── fetchers/        # Job fetcher implementations (e.g., Greenhouse, Lever, Ashby)
+    │   │   ├── jobProcessors/   # Job processor implementations (e.g., Greenhouse, Lever, Ashby)
     │   │   ├── services/        # Service layer (e.g., JobProcessingService) 
     │   │   ├── utils/           # Shared utility functions (job, date, text, logo)
     │   │   └── prisma.ts        # Prisma client instance
@@ -121,10 +121,11 @@
 
 ## 7. Core Services
 
-*   **JobProcessingService:** Central service handling job processing workflows
-    *   **saveOrUpdateJob:** Saves or updates standardized job data in the database
-    *   **deactivateJobs:** Marks jobs as inactive when no longer available from source
-    *   **processJobSourceById:** Processes a specific job source by ID (triggered manually via admin)
+*   **JobProcessingAdapter:** (Located in `src/lib/adapters/`) Selects the appropriate processor (Greenhouse, Lever, Ashby) based on the job source type and orchestrates the processing and saving via the JobProcessingService.
+*   **JobProcessingService:** (Located in `src/lib/services/`) Central service handling job processing workflows.
+    *   **saveOrUpdateJob:** Saves or updates standardized job data in the database, including deduplication logic.
+    *   **deactivateJobs:** Marks jobs as inactive when no longer available from source (used by `deactivateStaleJobs.ts` script).
+    *   **processJobSourceById:** Processes a specific job source by ID (triggered manually via admin).
 
 ---
 

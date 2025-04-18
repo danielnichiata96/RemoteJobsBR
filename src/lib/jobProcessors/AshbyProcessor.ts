@@ -1,20 +1,25 @@
-import { JobProcessor, StandardizedJob, ProcessedJobResult, RawJobData } from './types';
+import { JobProcessor, ProcessedJobResult, RawJobData } from './types';
+import { StandardizedJob } from '../../types/StandardizedJob';
+import { FilterConfig } from '../../types/FilterConfig';
+import { JobType, ExperienceLevel, JobSource, SalaryPeriod, HiringRegion, Prisma } from '@prisma/client';
+import { Currency } from '../../types/models';
+import { AshbyApiJob } from '../fetchers/types';
+import { parseDate } from '../utils/textUtils';
+import { stripHtml } from '../utils/textUtils';
+import { detectExperienceLevel, detectJobType, extractSkills } from '../utils/jobUtils';
+import { getCompanyLogo } from '../utils/logoUtils';
+import pino from 'pino';
 import { 
-  extractSkills, 
-  detectJobType, 
-  detectExperienceLevel,
   parseSections, 
 } from '../utils/jobUtils';
-import { stripHtml } from '../utils/textUtils';
-import pino from 'pino';
-import { JobType, ExperienceLevel, HiringRegion, JobSource, Prisma } from '@prisma/client';
-import { getCompanyLogo } from '../utils/logoUtils';
-import { AshbyApiJob } from '../fetchers/types';
+import { calculateRelevanceScore } from '../utils/JobRelevanceScorer';
 
 const logger = pino({
   name: 'ashbyProcessor',
   level: process.env.LOG_LEVEL || 'info',
 });
+
+const MAX_JOB_AGE_DAYS = 30; // Configurable?
 
 // Helper function to map Ashby employmentType to our JobType enum
 function mapAshbyEmploymentType(ashbyType?: string): JobType | undefined {
@@ -40,13 +45,14 @@ export class AshbyProcessor implements JobProcessor {
 
   async processJob(rawJob: RawJobData, sourceData?: JobSource): Promise<ProcessedJobResult> {
     const ashbyJob = rawJob as AshbyApiJob;
+    const jobLogger = logger.child({ processor: 'Ashby', jobId: ashbyJob?.id, sourceName: sourceData?.name }, { level: logger.level });
 
     try {
-      logger.debug({ jobId: ashbyJob.id, title: ashbyJob.title }, 'Processing job in AshbyProcessor');
+      jobLogger.debug({ title: ashbyJob.title }, 'Processing job in AshbyProcessor');
 
       // Basic check: Skip if job is not listed
       if (ashbyJob.isListed === false) {
-        logger.trace({ jobId: ashbyJob.id }, 'Skipping job because isListed is false.');
+        jobLogger.trace({ jobId: ashbyJob.id }, 'Skipping job because isListed is false.');
         return {
           success: false,
           error: 'Job is not listed'
@@ -56,7 +62,7 @@ export class AshbyProcessor implements JobProcessor {
       // --- Strict Remote Check ---
       // Ensure the job is marked as remote according to Ashby
       if (ashbyJob.isRemote !== true) {
-          logger.trace({ jobId: ashbyJob.id, isRemote: ashbyJob.isRemote }, 'Skipping job because isRemote is not true.');
+          jobLogger.trace({ jobId: ashbyJob.id, isRemote: ashbyJob.isRemote }, 'Skipping job because isRemote is not true.');
           return {
               success: false,
               error: 'Job is not explicitly marked as remote'
@@ -87,6 +93,28 @@ export class AshbyProcessor implements JobProcessor {
       // Attempt to get country from primary address
       const primaryCountry = ashbyJob.address?.postalAddress?.addressCountry;
 
+      // --- Relevance Score Calculation ---
+      let relevanceScore: number | null = null;
+      const sourceConfig = sourceData?.config as Prisma.JsonObject | null;
+      if (sourceConfig && sourceConfig.SCORING_SIGNALS) { // Check if scoring signals exist in config
+        try {
+          relevanceScore = calculateRelevanceScore(
+            { 
+              title: ashbyJob.title, 
+              description: cleanContent, // Use the cleaned description
+              location: ashbyJob.location // Use Ashby's location field
+            },
+            sourceConfig as unknown as FilterConfig // Cast needed, ensure config structure matches
+          );
+          jobLogger.trace({ score: relevanceScore }, 'Calculated relevance score.');
+        } catch (scoreError) {
+          jobLogger.warn({ error: scoreError }, 'Error calculating relevance score.');
+        }
+      } else {
+        jobLogger.trace('Scoring signals not found in config, skipping score calculation.');
+      }
+      // -------------------------------------
+
       const standardizedJob: StandardizedJob = {
         sourceId: ashbyJob.id,
         source: this.source,
@@ -109,6 +137,16 @@ export class AshbyProcessor implements JobProcessor {
         companyWebsite: sourceData?.companyWebsite || undefined,
         updatedAt: ashbyJob.updatedAt ? new Date(ashbyJob.updatedAt) : new Date(),
         publishedAt: ashbyJob.publishedAt ? new Date(ashbyJob.publishedAt) : new Date(), 
+        isRemote: ashbyJob.isRemote,
+        relevanceScore: relevanceScore, // Add the calculated score
+        metadataRaw: { // Add relevant Ashby fields to metadataRaw
+            employmentType: ashbyJob.employmentType,
+            team: ashbyJob.team,
+            compensationTier: ashbyJob.compensationTier,
+            department: ashbyJob.department,
+            locations: ashbyJob.locations, // Include all locations
+            address: ashbyJob.address
+        }
       };
 
       // --- Logo Fetching --- 
@@ -116,22 +154,22 @@ export class AshbyProcessor implements JobProcessor {
         const websiteForLogo = standardizedJob.companyWebsite;
         if (websiteForLogo) {
           standardizedJob.companyLogo = getCompanyLogo(websiteForLogo);
-          logger.trace({ jobId: ashbyJob.id, websiteUsed: websiteForLogo, logoUrl: standardizedJob.companyLogo }, 'Called getCompanyLogo.');
+          jobLogger.trace({ jobId: ashbyJob.id, websiteUsed: websiteForLogo, logoUrl: standardizedJob.companyLogo }, 'Called getCompanyLogo.');
         } else {
-          logger.trace({ jobId: ashbyJob.id }, 'Company website not available for logo fetching.');
+          jobLogger.trace({ jobId: ashbyJob.id }, 'Company website not available for logo fetching.');
         }
       } catch (logoError) {
-        logger.warn({ jobId: ashbyJob.id, website: standardizedJob.companyWebsite, error: logoError }, 'Error processing company website for logo URL.');
+        jobLogger.warn({ jobId: ashbyJob.id, website: standardizedJob.companyWebsite, error: logoError }, 'Error processing company website for logo URL.');
       }
 
-      logger.debug({ jobId: ashbyJob.id }, 'Successfully processed job in AshbyProcessor');
+      jobLogger.debug({ jobId: ashbyJob.id }, 'Successfully processed job in AshbyProcessor');
 
       return {
         success: true,
         job: standardizedJob
       };
     } catch (error) {
-      logger.error({ error, jobId: ashbyJob?.id, title: ashbyJob?.title }, 'Error processing job in AshbyProcessor');
+      jobLogger.error({ error, jobId: ashbyJob?.id, title: ashbyJob?.title }, 'Error processing job in AshbyProcessor');
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error processing job'

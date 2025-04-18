@@ -16,12 +16,14 @@ export interface FilterConfig {
     STRONG_NEGATIVE_RESTRICTION?: string[];
     AMBIGUOUS?: string[];
     ACCEPT_EXACT_LATAM_COUNTRIES?: string[];
+    ACCEPT_EXACT_BRAZIL_TERMS?: string[];
   };
   CONTENT_KEYWORDS?: {
     STRONG_POSITIVE_GLOBAL?: string[];
     STRONG_POSITIVE_LATAM?: string[];
     STRONG_NEGATIVE_REGION?: string[];
     STRONG_NEGATIVE_TIMEZONE?: string[];
+    ACCEPT_EXACT_BRAZIL_TERMS?: string[];
   };
   PROCESS_JOBS_UPDATED_AFTER_DATE?: string; // Optional ISO date string threshold
 }
@@ -46,13 +48,15 @@ export const FilterConfigSchema = z.object({
     STRONG_POSITIVE_LATAM: z.array(z.string()),
     STRONG_NEGATIVE_RESTRICTION: z.array(z.string()),
     AMBIGUOUS: z.array(z.string()),
-    ACCEPT_EXACT_LATAM_COUNTRIES: z.array(z.string()).optional()
+    ACCEPT_EXACT_LATAM_COUNTRIES: z.array(z.string()).optional(),
+    ACCEPT_EXACT_BRAZIL_TERMS: z.array(z.string()).optional()
   }),
   CONTENT_KEYWORDS: z.object({
     STRONG_POSITIVE_GLOBAL: z.array(z.string()),
     STRONG_POSITIVE_LATAM: z.array(z.string()),
     STRONG_NEGATIVE_REGION: z.array(z.string()),
-    STRONG_NEGATIVE_TIMEZONE: z.array(z.string())
+    STRONG_NEGATIVE_TIMEZONE: z.array(z.string()),
+    ACCEPT_EXACT_BRAZIL_TERMS: z.array(z.string()).optional()
   })
 });
 

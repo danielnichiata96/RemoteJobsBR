@@ -1,41 +1,10 @@
-import { JobType, ExperienceLevel, Currency, JobSource, HiringRegion } from '@prisma/client';
-
-// Core interface for standardized job data BEFORE final database mapping
-export interface StandardizedJob {
-  sourceId: string; // ID from the original source (e.g., Greenhouse job ID)
-  source: string; // Name of the source (e.g., 'greenhouse', 'direct')
-  title: string;
-  description: string;
-  requirements?: string;
-  responsibilities?: string;
-  benefits?: string;
-  jobType?: JobType;
-  experienceLevel?: ExperienceLevel;
-  skills?: string[];
-  tags?: string[];
-  location: string; // Raw location string from the source
-  country?: string; // Determined country (e.g., 'Worldwide', 'LATAM')
-  hiringRegion?: HiringRegion;
-  workplaceType?: string; // e.g., 'REMOTE'
-  minSalary?: number;
-  maxSalary?: number;
-  currency?: Currency;
-  salaryCycle?: string;
-  applicationUrl?: string;
-  // Removed sourceUrl and sourceLogo as they don't map directly to DB
-  companyName: string;
-  companyLogo?: string;
-  companyWebsite?: string;
-  companyEmail?: string;
-  publishedAt?: Date;
-  expiresAt?: Date;
-  updatedAt?: Date;
-}
+import { JobType, ExperienceLevel, Currency, JobSource, HiringRegion, JobStatus, SalaryPeriod } from '@prisma/client';
+import { StandardizedJob } from '../../types/StandardizedJob'; // Import the correct type
 
 // Interface for the result of processing a job by a specific processor
 export interface ProcessedJobResult {
   success: boolean;
-  job?: StandardizedJob;
+  job?: StandardizedJob; // Use the imported StandardizedJob type
   error?: string;
 }
 

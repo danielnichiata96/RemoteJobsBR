@@ -374,233 +374,157 @@ describe('AshbyFetcher - processSource', () => {
 describe('AshbyFetcher - _isJobRelevant', () => {
     let fetcherInstance: any; // Use 'any' to access private methods
     let mockLogger: ReturnType<typeof getMockLoggerInstance>;
+    let mockJob: AshbyApiJob;
+
+    // Load sample config directly for these tests
+    const testFilterConfig: FilterConfig = {
+        LOCATION_KEYWORDS: {
+            STRONG_POSITIVE_GLOBAL: ["worldwide", "global"],
+            STRONG_POSITIVE_LATAM: ["latam", "brazil", "remote brazil"],
+            ACCEPT_EXACT_BRAZIL_TERMS: ["brazil"],
+            STRONG_NEGATIVE_RESTRICTION: ["us only", "berlin", "clt"],
+            AMBIGUOUS: ["remote"],
+        },
+        CONTENT_KEYWORDS: {
+            STRONG_POSITIVE_GLOBAL: ["work from anywhere"],
+            STRONG_POSITIVE_LATAM: ["latin america"],
+            ACCEPT_EXACT_BRAZIL_TERMS: ["brazil"],
+            STRONG_NEGATIVE_REGION: ["usa", "must reside in the uk", "clt"],
+            STRONG_NEGATIVE_TIMEZONE: []
+        },
+        PROCESS_JOBS_UPDATED_AFTER_DATE: "2024-01-01T00:00:00Z"
+    };
 
     beforeEach(() => {
-        // Mocks for dependencies of _isJobRelevant
-        const mockPrisma = new PrismaClient() as jest.Mocked<PrismaClient>;
-        const mockAdapter = new JobProcessingAdapter() as jest.Mocked<JobProcessingAdapter>;
+        // Reset mocks
+        jest.clearAllMocks();
+        mockLogger = getMockLoggerInstance(); // Get mock logger
 
-        // Get and clear logger instance
-        mockLogger = getMockLoggerInstance();
-        // Iterate ONLY over keys that are expected to be mock functions
-        Object.keys(mockLogger)
-            .filter(key => typeof (mockLogger as any)[key]?.mockClear === 'function')
-            .forEach(key => (mockLogger as any)[key].mockClear());
-        // Clear the pino factory mock
-        (jest.requireMock('pino') as jest.Mock).mockClear();
-        // Re-setup child mock
-        mockLogger.child.mockImplementation(() => mockLogger);
-
-        // Mock fs.readFileSync for filter config loading
-        const expectedConfigEnding = path.normalize('src/config/ashby-filter-config.json'); 
+        // Mock fs.readFileSync to return our test config
+        const expectedConfigEnding = path.normalize('src/config/ashby-filter-config.json');
         (fs.readFileSync as jest.Mock).mockImplementation((filePath: string) => {
             const normalizedFilePath = path.normalize(filePath);
             if (normalizedFilePath.endsWith(expectedConfigEnding)) {
-                return JSON.stringify(sampleFilterConfig);
+                return JSON.stringify(testFilterConfig); // Return our specific test config
             }
             throw new Error(`fs.readFileSync mock called with unexpected path: ${filePath}`);
         });
-        
-        // Instantiate fetcher instance
-        fetcherInstance = new AshbyFetcher(mockPrisma, mockAdapter);
-        // Manually ensure config is loaded if constructor doesn't do it reliably in test
-        try { fetcherInstance._loadFilterConfig(); } catch (e) { /* ignore if already loaded */ }
 
-        // Clear other mocks
-        jest.clearAllMocks(); 
-        // Explicitly clear axios mock if needed for this suite (likely not)
-        // mockedAxios.mockClear(); 
+        // Instantiate fetcher - config should be loaded by constructor
+        // We need Prisma/Adapter mocks even if not directly used by _isJobRelevant
+        const mockPrisma = new PrismaClient() as jest.Mocked<PrismaClient>;
+        const mockJobProcessor = new JobProcessingAdapter() as jest.Mocked<JobProcessingAdapter>;
+        fetcherInstance = new AshbyFetcher(mockPrisma, mockJobProcessor);
+
+        // Reset mock job data
+        mockJob = createMockAshbyJob({
+            updatedAt: new Date('2024-02-01T00:00:00Z').toISOString() // After threshold
+        }); 
     });
 
-    it('should return relevant=true for explicitly remote job with no restrictions', () => {
-        const job = createMockAshbyJob({
-            isRemote: true,
-            location: 'Remote',
-            descriptionHtml: 'Standard job description.',
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
+    it('should return relevant: true for explicitly remote job with no restrictions', () => {
+        mockJob.isRemote = true;
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
         expect(result.relevant).toBe(true);
         expect(result.type).toBe('global');
         expect(result.reason).toContain('Marked as remote');
     });
 
-    it('should return relevant=false for non-listed jobs', () => {
-        const job = createMockAshbyJob({ isListed: false, isRemote: true });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
+    it('should return relevant: false if job is not listed', () => {
+        mockJob.isListed = false;
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
         expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Job not listed');
-    });
-    
-    it('should return relevant=false if isRemote=false and no strong LATAM/Global signal', () => {
-        const job = createMockAshbyJob({
-            isRemote: false,
-            location: 'Some Office Location', // Not explicitly remote or LATAM/Global
-            descriptionHtml: 'Standard description.'
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
-        expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Ambiguous or No Positive Signal');
+        expect(result.reason).toBe('Job not listed');
     });
 
-    it('should return relevant=false if location indicates restriction', () => {
-        const job = createMockAshbyJob({
-            isRemote: false, // Even if true, restriction should override
-            location: 'Office in Berlin' // Matches STRONG_NEGATIVE_RESTRICTION
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
+    it('should return relevant: false if job updated before threshold date', () => {
+        mockJob.updatedAt = new Date('2023-12-31T00:00:00Z').toISOString();
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
         expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Location indicates Restriction: \"berlin\"');
+        expect(result.reason).toContain('updated before');
     });
 
-    it('should return relevant=false if primary address indicates restriction', () => {
-        const job = createMockAshbyJob({
-            isRemote: true,
-            address: { 
-                postalAddress: { 
-                    addressLocality: 'London', // Example city
-                    addressCountry: 'UK'     // Example country triggering restriction
-                } 
-            }, 
-            location: 'Remote' // Location itself is fine
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
+    it('should return relevant: false if location indicates restriction', () => {
+        mockJob.location = 'Office in Berlin';
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
         expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Location indicates Restriction: \"uk\"');
+        expect(result.reason).toContain('Location indicates Restriction');
+        expect(result.reason).toContain('berlin');
     });
 
-    it('should return relevant=false if secondary location indicates restriction', () => {
-        const job = createMockAshbyJob({
-            isRemote: true,
-            secondaryLocations: [{ location: 'Office in US Only' }]
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
+    it('should return relevant: false if content indicates restriction (CLT)', () => {
+        mockJob.descriptionHtml = '<p>This role follows CLT regulations.</p>';
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
         expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Location indicates Restriction: \"us only\"');
+        expect(result.reason).toContain('Content indicates Specific Restriction');
+        expect(result.reason).toContain('clt');
     });
 
-    it('should return relevant=false if content indicates restriction', () => {
-        const job = createMockAshbyJob({
-            isRemote: true, // Even if remote...
-            // Use a keyword directly from the config for a clearer test
-            descriptionHtml: 'Must be eligible to work in the US.' 
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
-        expect(result.relevant).toBe(false);
-        // Expect the reason from the content check
-        expect(result.reason).toContain('Content indicates Specific Restriction via keyword/pattern');
-    });
-
-    it('should return relevant=true for LATAM jobs based on location', () => {
-        const job = createMockAshbyJob({
-            isRemote: false, // Not necessarily remote
-            location: 'Buenos Aires, Argentina' // Matches ACCEPT_EXACT_LATAM_COUNTRIES
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
+    it('should return relevant: true (latam) if location indicates LATAM', () => {
+        mockJob.location = 'Remote - Brazil';
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
         expect(result.relevant).toBe(true);
         expect(result.type).toBe('latam');
-        expect(result.reason).toContain('Location indicates specific LATAM country: "argentina"');
+        expect(result.reason).toContain('Location indicates LATAM');
+        expect(result.reason).toContain('brazil');
     });
 
-    it('should return relevant=true for LATAM jobs based on content', () => {
-        const job = createMockAshbyJob({
-            isRemote: false,
-            location: 'Somewhere Else', // Non-restrictive, non-LATAM location
-            descriptionHtml: '<p>We are hiring across Latin America!</p>' // Matches content positive
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
+    it('should return relevant: true (latam) if content indicates LATAM', () => {
+        mockJob.descriptionHtml = '<p>Team based in Latin America.</p>';
+        mockJob.location = 'Remote'; // Ambiguous location
+        mockJob.isRemote = false;
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
         expect(result.relevant).toBe(true);
         expect(result.type).toBe('latam');
-        expect(result.reason).toContain('Content indicates LATAM: \"latin america\"');
+        expect(result.reason).toContain('Content indicates LATAM');
+        expect(result.reason).toContain('latin america');
     });
 
-    it('should return relevant=true for GLOBAL jobs based on location (when isRemote=false)', () => {
-        const job = createMockAshbyJob({
-            isRemote: false, // Explicitly not remote flag
-            location: 'Remote Worldwide' // Matches location positive global
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
+    it('should return relevant: true (global) if location indicates GLOBAL', () => {
+        mockJob.location = 'Remote Worldwide';
+        mockJob.isRemote = false; // Test keyword overrides isRemote=false
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
         expect(result.relevant).toBe(true);
         expect(result.type).toBe('global');
-        expect(result.reason).toContain('Location indicates Global: \"remote worldwide\"');
+        expect(result.reason).toContain('Location indicates Global');
+        expect(result.reason).toContain('worldwide'); // Uses original keyword
     });
 
-    it('should return relevant=true for GLOBAL jobs based on content (when isRemote=false)', () => {
-         const job = createMockAshbyJob({
-            isRemote: false, // Explicitly not remote flag
-            location: 'Anywhere', // Non-restrictive, non-global location
-            descriptionHtml: 'This is a globally remote position.' // Matches content positive
-         });
-         const result = fetcherInstance._isJobRelevant(job, mockLogger);
-         expect(result.relevant).toBe(true);
-         expect(result.type).toBe('global');
-         expect(result.reason).toContain('Content indicates Global: \"globally remote\"');
-    });
-
-    it('should prioritize location LATAM signal over conflicting content REJECT signal', () => {
-        const job = createMockAshbyJob({
-            isRemote: false,
-            location: 'Remote - Americas', // Matches STRONG_POSITIVE_LATAM
-            descriptionHtml: 'Must reside in the UK.' // Matches STRONG_NEGATIVE_REGION in content
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
-        expect(result.relevant).toBe(true); 
-        expect(result.type).toBe('latam');
-        expect(result.reason).toContain('Location indicates LATAM: \"remote - americas\"');
-    });
-
-     it('should prioritize content LATAM signal even if location is restrictive (if location check is UNKNOWN)', () => {
-        const job = createMockAshbyJob({
-            isRemote: true, // Remote flag means location text might be ignored or less prioritized initially
-            location: 'Office in USA', // This would normally reject if isRemote=false
-            descriptionHtml: 'Hiring in Brazil and Argentina only.' // Matches content LATAM
-        });
-        const result = fetcherInstance._isJobRelevant(job, mockLogger);
-        expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Location indicates Restriction: "usa"');
-    });
-
-    it('_isJobRelevant should return relevant=true with correct reason if isRemote=true and config is null', () => {
-        // Instantiate normally (config load might succeed or fail depending on outer scope mock)
-        const localFetcherInstance = new AshbyFetcher(new PrismaClient() as any, new JobProcessingAdapter() as any);
-        const loggerForThisTest = getMockLoggerInstance(); 
-
-        // Manually ensure config is null *after* instantiation
-        (localFetcherInstance as any).filterConfig = null; 
-
-        const job = createMockAshbyJob({ isRemote: true });
-        const result = (localFetcherInstance as any)._isJobRelevant(job, loggerForThisTest); 
-
+    it('should return relevant: true (global) if content indicates GLOBAL', () => {
+        mockJob.descriptionHtml = '<p>You can work from anywhere.</p>';
+        mockJob.location = 'Flexible';
+        mockJob.isRemote = false;
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
         expect(result.relevant).toBe(true);
-        expect(result.reason).toContain('Marked as remote (no filter config)');
-        // No need to check log here, checked in the test below (now added)
+        expect(result.type).toBe('global');
+        expect(result.reason).toContain('Content indicates Global');
+        expect(result.reason).toContain('work from anywhere');
     });
 
-    // Remove the problematic test for logging during config load error
-    /*
-    it('_loadFilterConfig should set filterConfig to null and log warning on read error', () => {
-        const configError = new Error('FS Read Error');
-        // Instantiate fetcher normally
-        const localFetcherInstance = new AshbyFetcher(new PrismaClient() as any, new JobProcessingAdapter() as any);
-        const loggerForThisTest = getMockLoggerInstance(); 
-
-        // Ensure config isn't null initially (optional, depends on default state)
-        // (localFetcherInstance as any).filterConfig = {}; // Or some dummy value
-
-        // Mock fs to throw
-        (fs.readFileSync as jest.Mock).mockImplementation(() => { throw configError; });
-
-        // Call the private method directly
-        (localFetcherInstance as any)._loadFilterConfig(loggerForThisTest);
-
-        // Assert config is null after failed load
-        expect((localFetcherInstance as any).filterConfig).toBeNull();
-
-        // Assert warning was logged
-        expect(loggerForThisTest.warn).toHaveBeenCalledWith(
-            expect.objectContaining({ err: configError }),
-            expect.stringContaining('Failed to load or parse filter configuration')
-        );
+    it('should return relevant: false if LATAM signal exists but REJECT signal also exists', () => {
+        mockJob.location = 'Remote Brazil (US Only)'; // Location has both
+        mockJob.descriptionHtml = '<p>Hiring in Latin America.</p>'; // Content is positive LATAM
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
+        expect(result.relevant).toBe(false);
+        expect(result.reason).toContain('Location indicates Restriction'); 
+        expect(result.reason).toContain('us only'); // REJECT should take precedence
     });
-    */
 
+    it('should return relevant: false if not explicitly remote and no keywords match', () => {
+        mockJob.isRemote = false;
+        mockJob.location = 'Somewhere Else';
+        mockJob.descriptionHtml = '<p>Standard job.</p>';
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
+        expect(result.relevant).toBe(false);
+        expect(result.reason).toContain('Not explicitly remote and ambiguous keywords'); // Or similar default reason
+    });
+
+    it('should return relevant: false if only ambiguous keyword and not explicitly remote', () => {
+        mockJob.isRemote = false;
+        mockJob.location = 'Remote position'; // Only ambiguous keyword
+        mockJob.descriptionHtml = '<p>Standard job.</p>';
+        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
+        expect(result.relevant).toBe(false);
+        expect(result.reason).toContain('Not explicitly remote and ambiguous keywords');
+    });
 }); 

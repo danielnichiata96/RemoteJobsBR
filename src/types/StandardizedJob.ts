@@ -31,6 +31,7 @@ export interface StandardizedJob {
   hiringRegion?: HiringRegion;
   visas?: string[];
   languages?: string[];
+  relevanceScore?: number | null; // Calculated score based on relevance signals
   
   // Salary details
   minSalary?: number;

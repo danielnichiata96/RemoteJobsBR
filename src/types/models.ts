@@ -85,119 +85,107 @@ export interface Notification {
 }
 
 /** Interface básica de usuário (Base para Candidate e Company) */
-// Omit createdAt/updatedAt as they are managed by Prisma directly.
-// Align local fields (like name) with Prisma schema requirements.
 export interface User extends Omit<PrismaUser, 'createdAt' | 'updatedAt'> {
   id: string;
   email: string;
-  name: string; // Prisma requires name, so it's not optional here
-  firstName?: string | null; // Often derived from name
-  lastName?: string | null; // Often derived from name
+  name: string;
+  firstName: string | null;
+  lastName: string | null;
   role: UserRole;
-  avatarUrl?: string | null;
-  title?: string | null; // Candidate Title / Company Tagline?
-  location?: string | null;
-  bio?: string | null; // Candidate Bio / Company Description
-  phone?: string | null;
+  avatarUrl: string | null;
+  title: string | null;
+  location: string | null;
+  bio: string | null;
+  phone: string | null;
 
   // Candidate Specific (potentially moved to CandidateProfile)
-  resumeUrl?: string | null;
-  linkedinUrl?: string | null; // Can be for both Candidate and Company
-  githubUrl?: string | null; // Candidate
-  portfolioUrl?: string | null; // Candidate
-  desiredSalary?: number | null; // Candidate
-  availableForWork: boolean; // Candidate
-  preferredWorkTypes: string[]; // Candidate
-  preferredLocations: string[]; // Candidate
-  yearsOfExperience?: number | null; // Candidate
-  experienceLevel?: ExperienceLevel | null; // Candidate
-  skills: string[]; // Candidate
-  languages: any[]; // Candidate - Consider defining { language: string, proficiency: string }[]
+  resumeUrl: string | null;
+  linkedinUrl: string | null;
+  githubUrl: string | null;
+  portfolioUrl: string | null;
+  desiredSalary: number | null;
+  availableForWork: boolean;
+  preferredWorkTypes: string[];
+  preferredLocations: string[];
+  yearsOfExperience: number | null;
+  experienceLevel: ExperienceLevel | null;
+  skills: string[];
+  languages: any[];
 
   // Company Specific (potentially moved to EmployerProfile/Company)
-  description?: string | null; // Company Description (Redundant with bio? Clarify)
-  industry?: string | null; // Company
-  website?: string | null; // Company
-  logo?: string | null; // Company (Redundant with avatarUrl? Clarify)
-  size?: string | null; // Company
-  foundedYear?: number | null; // Company
-  contactName?: string | null; // Company
-  contactEmail?: string | null; // Company
-  contactPhone?: string | null; // Company (Redundant with phone? Clarify)
-  twitterUrl?: string | null; // Company
-  facebookUrl?: string | null; // Company Specific?
+  description: string | null;
+  industry: string | null;
+  website: string | null;
+  logo: string | null;
+  size: string | null;
+  foundedYear: number | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  twitterUrl: string | null;
+  facebookUrl: string | null;
 
   // Common / System Fields
   isVerified: boolean;
-  subscriptionTier?: string | null;
-  subscriptionEndsAt?: Date | string | null; // Allow string for form input flexibility
-  createdAt: Date; // Re-include from PrismaUser
-  updatedAt: Date; // Re-include from PrismaUser
+  subscriptionTier: string | null;
+  subscriptionEndsAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 
   // Relationships
-  jobs?: Job[]; // If role=COMPANY
-  savedJobs?: SavedJob[]; // If role=CANDIDATE
+  jobs?: Job[];
+  savedJobs?: SavedJob[];
   settings?: UserSettings | null;
-  socials?: UserSocials | null; // Could consolidate social URLs here
-  candidateProfile?: Candidate | null; // Link to more specific candidate data (if Candidate doesn't extend User)
-  employerProfile?: Employer | null; // Link to more specific employer data (if Company doesn't extend User)
-  applications?: Application[]; // If role=CANDIDATE or COMPANY
+  socials?: UserSocials | null;
+  candidateProfile?: Candidate | null;
+  employerProfile?: Employer | null;
+  applications?: Application[];
   notifications?: Notification[];
-  newsletters?: Newsletter[]; // User's newsletter subscriptions
+  newsletters?: Newsletter[];
 }
 
 /** Candidato: Usuário com papel CANDIDATE */
-// Consider if extending User is best or having a separate CandidateProfile linked by userId
 export interface Candidate extends User {
   role: UserRole.CANDIDATE;
-  // Add fields ONLY specific to Candidates not covered in the base User interface
-  // Example: assessmentResults?: any[];
 }
 
 /** Empresa: Usuário com papel COMPANY */
-// Consider if extending User is best or having a separate Employer/CompanyProfile linked by userId
 export interface Company extends User {
   role: UserRole.COMPANY;
-  // Add fields ONLY specific to Companies not covered in the base User interface
-  // Example: taxId?: string;
 }
 
 /** Modelo de vaga */
-// Omit fields managed by Prisma or relations, redefine if needed for clarity/override
-// Ensure local optionality matches Prisma schema (e.g., location)
-export interface Job extends Omit<PrismaJob, 'createdAt' | 'updatedAt' | 'companyId' | 'sourceId' | 'salaryMin' | 'salaryMax' | 'salaryCurrency' | 'employmentType' | 'experienceLevel'> {
+export interface Job extends Omit<PrismaJob, 'createdAt' | 'updatedAt' | 'companyId' | 'salaryMin' | 'salaryMax' | 'salaryCurrency' | 'employmentType' | 'experienceLevel'> {
   id: string;
+  source: string;
+  sourceId: string;
   title: string;
   description: string;
-  location: string | null; // Assuming Prisma allows null
-  url: string; // URL to the original job posting
-  employmentType?: JobType | null; // Align with PrismaJob.employmentType
-  experienceLevel?: ExperienceLevel | null; // Align with PrismaJob.experienceLevel
+  location: string | null;
+  url: string;
+  employmentType?: JobType | null;
+  experienceLevel?: ExperienceLevel | null;
   department?: string | null;
   skillsRequired?: string[];
-  salaryMin?: number | null; // Align with PrismaJob.salaryMin
-  salaryMax?: number | null; // Align with PrismaJob.salaryMax
-  salaryCurrency?: Currency | null; // Align with PrismaJob.salaryCurrency
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  salaryCurrency?: Currency | null;
   salaryInterval?: SalaryInterval | null;
-  companyId?: string | null; // Foreign key to User (Company)
-  sourceId?: string | null; // Foreign key to JobSource
+  companyId: string;
   status: JobStatus;
   postedAt?: Date | null;
   expiresAt?: Date | null;
-  createdAt: Date; // Re-include from PrismaJob
-  updatedAt: Date; // Re-include from PrismaJob
+  createdAt: Date;
+  updatedAt: Date;
 
-  // Added/Derived fields (Not directly in PrismaJob?)
-  logoUrl?: string | null; // Likely derived from Company relation
-  reliabilityScore?: number | null; // Calculated or from JobSource?
-  lastScrapedAt?: Date | null; // From scraping process
+  logoUrl?: string | null;
+  reliabilityScore?: number | null;
+  lastScrapedAt?: Date | null;
 
-  // Relationships
-  company?: Company | null; // Based on companyId
-  source?: JobSource | null; // Based on sourceId
+  company?: Company | null;
   applications?: Application[];
-  savedByUsers?: SavedJob[]; // Users who saved this job
-  standardizedJob?: StandardizedJob | null; // Link to processed/standardized version
+  savedByUsers?: SavedJob[];
+  standardizedJob?: StandardizedJob | null;
 }
 
 /** Candidatura a uma vaga */
@@ -206,31 +194,26 @@ export interface Application {
   jobId: string;
   candidateId: string;
   coverLetter?: string;
-  resumeUrl?: string; // URL submitted with application
+  resumeUrl?: string;
   additionalInfo?: string;
   status: ApplicationStatus;
-  feedback?: string; // Feedback from company
+  feedback?: string;
   createdAt: Date;
   updatedAt: Date;
-  readByCompany: boolean; // Has the company viewed the application?
+  readByCompany: boolean;
   interviewDate?: Date;
 
-  // Relationships
-  job?: Job; // Based on jobId
-  candidate?: Candidate; // Based on candidateId (or User)
+  job?: Job;
+  candidate?: Candidate;
 }
 
 /** Vagas salvas pelo candidato */
-// Omit keys managed by Prisma relations
 export interface SavedJob extends Omit<PrismaSavedJob, 'candidateId' | 'jobId'> {
   id: string;
-  // candidateId: string; // Implied by relation
-  // jobId: string; // Implied by relation
-  createdAt: Date; // Re-include from PrismaSavedJob
+  createdAt: Date;
 
-  // Relationships
-  candidate?: User; // Link to the User who saved the job
-  job?: Job; // Link to the Job that was saved
+  candidate?: User;
+  job?: Job;
 }
 
 /** Inscrição em newsletter */
@@ -242,31 +225,27 @@ export interface Newsletter {
   createdAt: Date;
   updatedAt: Date;
 
-  // Relationships
-  user?: User; // Link to user if they are registered
-  userId?: string | null; // Foreign key if user is registered
+  user?: User;
+  userId?: string | null;
 }
 
 /** Fonte de onde as vagas são originadas (e.g., Greenhouse board) */
-// Omit createdAt/updatedAt as they are managed by Prisma
-// Check PrismaJobSource schema for nullability (e.g., logoUrl)
 export interface JobSource extends Omit<PrismaJobSource, 'createdAt' | 'updatedAt'> {
   id: string;
-  name: string; // e.g., 'Gupy'
-  baseUrl: string; // Base URL for the source API or website
+  name: string;
+  baseUrl: string;
   description?: string | null;
-  logoUrl?: string | null; // URL to the source's logo (assuming Prisma allows null)
-  reliabilityScore?: number | null; // Score indicating data quality
-  lastScrapedAt?: Date | null; // Timestamp of the last scrape attempt
-  scrapeFrequency?: string | null; // How often to scrape? e.g., 'DAILY', 'WEEKLY'
-  isActive: boolean; // Whether this source should be scraped
-  notes?: string | null; // Internal notes about the source
-  createdAt: Date; // Re-include from PrismaJobSource
-  updatedAt: Date; // Re-include from PrismaJobSource
+  logoUrl: string | null;
+  reliabilityScore?: number | null;
+  lastScrapedAt?: Date | null;
+  scrapeFrequency?: string | null;
+  isActive: boolean;
+  notes?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 
-  // Relationships
-  jobs?: Job[]; // Jobs originating from this source
-  scrapePatterns?: ScrapePattern[]; // Patterns used for scraping (if applicable)
+  jobs?: Job[];
+  scrapePatterns?: ScrapePattern[];
 }
 
 // --- UTILITY / SUPPORTING INTERFACES ---
@@ -283,79 +262,63 @@ export interface PaginatedResponse<T> {
 export interface ListQueryOptions {
   page?: number;
   limit?: number;
-  sortBy?: string; // Field to sort by (e.g., 'createdAt')
+  sortBy?: string;
   sortOrder?: 'asc' | 'desc';
-  filter?: Record<string, any>; // Generic filter object (consider defining specific filters)
+  filter?: Record<string, any>;
 }
 
 /** Configurações do usuário */
 export interface UserSettings {
-  // id: string; // PK
-  // userId: string; // FK to User
   prefersDarkMode?: boolean;
-  emailNotifications?: boolean; // General toggle
-  // notificationFrequency?: 'INSTANT' | 'DAILY' | 'WEEKLY';
-  // Add other settings...
+  emailNotifications?: boolean;
 }
 
 /** Links de redes sociais do usuário */
 export interface UserSocials {
-  // id: string; // PK
-  // userId: string; // FK to User
   linkedin?: string | null;
   github?: string | null;
   twitter?: string | null;
   portfolio?: string | null;
-  // Add others...
 }
 
 /** Perfil específico do candidato (se não estender User) */
 export interface CandidateProfile {
-  // userId: string; // PK/FK to User
-  // Contains fields specific to Candidate not in User base
-  // Example: professionalHeadline: string;
 }
 
 /** Perfil específico da empresa (se não estender User) */
-// Also known as CompanyProfile
 export interface Employer {
-  // userId: string; // PK/FK to User
   verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
-  // Contains fields specific to Employer not in User base
-  // Example: billingAddress: string;
 }
 
 /** Formato padronizado de vaga após processamento */
 export interface StandardizedJob {
-  id?: string; // Optional: ID in our DB if saved
+  id?: string;
   title: string;
-  description: string; // Cleaned, standardized description
-  location?: string | null; // Standardized (e.g., 'Remote', 'Remote (LATAM)')
-  url: string; // Original posting URL
+  description: string;
+  location?: string | null;
+  url: string;
   employmentType?: JobType | null;
   experienceLevel?: ExperienceLevel | null;
-  skillsRequired?: string[]; // Parsed/standardized skills
+  skillsRequired?: string[];
   salaryMin?: number | null;
   salaryMax?: number | null;
   salaryCurrency?: Currency | null;
   salaryInterval?: SalaryInterval | null;
-  companyName: string; // Found/standardized company name
-  companyLogo?: string | null; // URL
-  companyWebsite?: string | null; // URL
-  postedAt?: Date | null; // Parsed date
-  isRemote?: boolean; // Flag
-  hiringRegion?: string | null; // e.g., 'LATAM', 'Global'
-  source: string; // Name of the original source (e.g., 'greenhouse')
-  sourceId: string; // Job ID from the original source
-  rawJobData?: any; // Optional: Original data blob
+  companyName: string;
+  companyLogo?: string | null;
+  companyWebsite?: string | null;
+  postedAt?: Date | null;
+  isRemote?: boolean;
+  hiringRegion?: string | null;
+  source: string;
+  sourceId: string;
+  rawJobData?: any;
 }
 
 /** Padrão de scraping para fontes não-API */
 export interface ScrapePattern {
-  id?: string; // PK if stored in DB
-  // jobSourceId?: string; // FK to JobSource
-  targetField: keyof StandardizedJob | string; // Field in StandardizedJob to populate
-  selector: string; // CSS selector
-  attribute?: string; // HTML attribute to extract (e.g., 'href'), defaults to textContent
-  // Add other details: regex, date formats, cleaning steps...
+  id?: string;
+  targetField: keyof StandardizedJob | string;
+  selector: string;
+  attribute?: string;
 } 

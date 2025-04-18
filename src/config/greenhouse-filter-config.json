@@ -38,7 +38,18 @@
       "remote - brazil",
       "remote - brasil",
       "remote (brazil)",
-      "remote (brasil)"
+      "remote (brasil)",
+      "argentina",
+      "mexico",
+      "colombia",
+      "chile",
+      "peru"
+    ],
+    "ACCEPT_EXACT_BRAZIL_TERMS": [
+       "brazil",
+       "brasil",
+       "remote brazil",
+       "remote brasil"
     ],
     "STRONG_NEGATIVE_RESTRICTION": [
       "usa", "us", "u.s", "u.s.a", "united states", "united states of america",
@@ -97,7 +108,9 @@
       "pst", "pacific time", "pt",
       "bst", "gmt",
       "cet", "cest",
-      "ist"
+      "ist",
+      "clt", 
+      "pj"
     ],
     "AMBIGUOUS": ["remote"],
     "ACCEPT_EXACT_LATAM_COUNTRIES": [
@@ -139,7 +152,18 @@
       "located in brazil",
       "preference for latam",
       "preference for south america",
-      "preference for brazil"
+      "preference for brazil",
+      "argentina",
+      "mexico",
+      "colombia",
+      "chile",
+      "peru"
+    ],
+    "ACCEPT_EXACT_BRAZIL_TERMS": [
+       "brazil",
+       "brasil",
+       "remote brazil",
+       "remote brasil"
     ],
     "STRONG_NEGATIVE_REGION": [
       "usa", "us", "u.s", "u.s.a", "united states", "united states of america",
@@ -202,9 +226,70 @@
       "in-office requirement", "office presence required", "permanent resident", "green card holder", "green card",
       "right to work in", "residency required in", "european resident", "north american resident",
       "cannot sponsor",
-      "kenntnisse des deutschen arbeitsrechts", "familiarity with uk employment law"
+      "kenntnisse des deutschen arbeitsrechts", "familiarity with uk employment law",
+      "vaga afirmativa brasil",
+      "trabalho remoto"
     ],
     "STRONG_NEGATIVE_TIMEZONE": [
     ]
+  },
+  "SCORING_SIGNALS": {
+    "positive_location": {
+      "keywords": [
+        {"term": "brazil", "weight": 10},
+        {"term": "brasil", "weight": 10},
+        {"term": "latam", "weight": 8},
+        {"term": "latin america", "weight": 8},
+        {"term": "south america", "weight": 7},
+        {"term": "americas", "weight": 6},
+        {"term": "worldwide", "weight": 5},
+        {"term": "global", "weight": 5},
+        {"term": "anywhere", "weight": 4}
+      ],
+      "patterns": [
+        {"pattern": "remote.*in\s+(brazil|brasil)", "weight": 15},
+        {"pattern": "hiring\s+in\s+(latam|latin america|south america)", "weight": 12},
+        {"pattern": "work\s+from\s+anywhere", "weight": 8}
+      ]
+    },
+    "negative_location": {
+      "keywords": [
+        {"term": "us only", "weight": -20},
+        {"term": "usa only", "weight": -20},
+        {"term": "eu only", "weight": -15},
+        {"term": "europe only", "weight": -15},
+        {"term": "uk only", "weight": -15},
+        {"term": "canada only", "weight": -15},
+        {"term": "emea only", "weight": -18},
+        {"term": "noram only", "weight": -18}
+      ],
+      "patterns": [
+        {"pattern": "must\s+reside\s+in\s+(the\s+)?(usa|u\.s\.a|united states|canada|uk|europe|eu|australia)", "weight": -25},
+        {"pattern": "(must\s+be|based|located)\s+in\s+(the\s+)?(usa|u\.s\.a|united states|canada|uk|europe|eu|australia)", "weight": -20},
+        {"pattern": "eligible\s+to\s+work\s+in\s+(the\s+)?(usa|u\.s\.a|united states|canada|uk|europe|eu)", "weight": -25},
+        {"pattern": "(us|u\.s\.|canadian|uk|eu|australian)\s+citizenship", "weight": -30}
+      ]
+    },
+    "positive_content": {
+       "keywords": [
+          {"term": "pj", "weight": 5},
+          {"term": "contrato pj", "weight": 6},
+          {"term": "pessoa juridica", "weight": 6},
+          {"term": "clt", "weight": 3}, // Lower weight as it's less common for intl?
+          {"term": "flexible timezone", "weight": 3},
+          {"term": "async", "weight": 2}
+       ],
+       "patterns": []
+    },
+    "negative_content": {
+       "keywords": [
+        {"term": "sponsorship not available", "weight": -10},
+        {"term": "no visa sponsorship", "weight": -10},
+        {"term": "unable to provide sponsorship", "weight": -10}
+       ],
+       "patterns": [
+          {"pattern": "must\s+work\s+.*(pst|pacific|est|eastern)\s+hours", "weight": -8} // Example timezone restriction
+       ]
+    }
   }
 } 

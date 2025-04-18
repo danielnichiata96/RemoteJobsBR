@@ -53,6 +53,9 @@ type MockSourceHealthData = Pick<
     latestRun: JobSourceRunStats | null;
 };
 
+// Mock setTimeout globally for timer control
+jest.useFakeTimers();
+
 // --- Test Suite ---
 describe('AdminSourceHealth Page', () => {
     let mockRouterPush: jest.Mock;
@@ -248,7 +251,8 @@ describe('AdminSourceHealth Page', () => {
 
         renderComponent();
 
-        const row = screen.getByText(sourceName).closest('tr');
+        // Wait for the table row to appear after initial loading states
+        const row = await screen.findByText(sourceName).then(el => el.closest('tr'));
         if (!row) throw new Error(`Could not find table row for source: ${sourceName}`);
         const rerunButton = within(row).getByRole('button', { name: 'Re-run' });
         expect(rerunButton).toBeEnabled();
@@ -263,11 +267,20 @@ describe('AdminSourceHealth Page', () => {
         });
 
         // Assert side effects (fetch, toast) outside act
+        // Advance timers to trigger the delayed mutate call
+        act(() => {
+            jest.advanceTimersByTime(5000); 
+        });
+
         await waitFor(() => {
             expect(global.fetch).toHaveBeenCalledWith(`/api/admin/sources/${sourceToRerunId}/rerun`, { method: 'POST' });
         });
         await waitFor(() => {
             expect(require('react-toastify').toast.success).toHaveBeenCalledWith(expect.stringContaining(successMessage));
+        });
+        // Now assert that mutate was called AFTER advancing timers
+        await waitFor(() => {
+            expect(mockSWRMutate).toHaveBeenCalled();
         });
     });
 }); 

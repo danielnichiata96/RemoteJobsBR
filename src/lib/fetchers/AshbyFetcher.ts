@@ -9,7 +9,7 @@ import { JobSourceConfig, getAshbyConfig, FilterConfig } from '../../types/JobSo
 import { StandardizedJob } from '../../types/StandardizedJob';
 import { JobFetcher, SourceStats, FetcherResult, FilterResult, AshbyApiJob } from './types'; // Use real AshbyApiJob
 import { stripHtml } from '../utils/textUtils';
-import { detectRestrictivePattern } from '../utils/filterUtils';
+import { detectRestrictivePattern, containsInclusiveSignal } from '../utils/filterUtils';
 
 export class AshbyFetcher implements JobFetcher {
     private prisma: PrismaClient;
@@ -25,14 +25,17 @@ export class AshbyFetcher implements JobFetcher {
     // Helper to load filter config
     private _loadFilterConfig(logger?: pino.Logger): void {
         const log = logger || pino({ name: 'AshbyFetcherConfigLoad', level: 'info' });
+        let configPath = ''; // Define outside try block for logging
         try {
-            const configPath = path.resolve(__dirname, '../../../src/config/ashby-filter-config.json');
+            // Revert path to point back to src/config based on tool error
+            configPath = path.resolve(__dirname, '../../config/ashby-filter-config.json'); // Revert __dirname level
             log.trace({ configPath }, `AshbyFetcher: Attempting to load filter configuration...`);
             const configFile = fs.readFileSync(configPath, 'utf-8');
             this.filterConfig = JSON.parse(configFile) as FilterConfig;
             log.info({ configPath }, `AshbyFetcher: Successfully loaded filter configuration.`);
         } catch (error: any) {
-            log.error({ err: error, configPath: path.resolve(__dirname, '../../../src/config/ashby-filter-config.json') }, `AshbyFetcher: ❌ Failed to load or parse filter configuration. Filtering keywords will not be applied.`);
+            // Ensure the logged path reflects the attempted path
+            log.error({ err: error, configPath: configPath || path.resolve(__dirname, '../../config/ashby-filter-config.json') }, `AshbyFetcher: ❌ Failed to load or parse filter configuration. Filtering keywords will not be applied.`);
             this.filterConfig = null; // Keep null assignment in case of error
         }
     }
@@ -182,45 +185,16 @@ export class AshbyFetcher implements JobFetcher {
 
     // --- Helper methods adapted from GreenhouseFetcher --- 
     // (Made private to this class for encapsulation)
-    private _includesSubstringKeyword(text: string | null | undefined, keywords: string[]): { match: boolean, keyword: string | undefined } {
-        if (!text || !keywords || keywords.length === 0) return { match: false, keyword: undefined };
-        const lowerText = text.toLowerCase().trim();
-        
-        for (const keyword of keywords) {
-            const lowerKeyword = keyword.toLowerCase().trim();
-            if (!lowerKeyword) continue; // Skip empty keywords
+    // Note: _includesSubstringKeyword and _matchesKeywordRegex are removed as filterUtils handles it now
 
-            // Use regex with word boundaries for more accurate matching
-            // Escape special regex characters in the keyword
-            const escapedKeyword = lowerKeyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-            // Create regex: (keyword) - handles beginning/end of string or non-word chars
-            const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i'); // Case-insensitive
+    // --- Ashby Specific Filtering Checks (using filterUtils) ---
 
-            if (regex.test(lowerText)) {
-                return { match: true, keyword: keyword };
-            }
-        }
-        return { match: false, keyword: undefined };
-    }
-
-    // Simplified: Use includes check like _includesSubstringKeyword for consistency
-    private _matchesKeywordRegex(text: string | null | undefined, keywords: string[]): { match: boolean, keyword: string | undefined } {
-         // Delegate to the potentially more robust includes check
-         return this._includesSubstringKeyword(text, keywords);
-    }
-
-    // --- Ashby Specific Filtering Checks ---
-
-    private _checkLocation(job: AshbyApiJob, config: FilterConfig | null, logger: pino.Logger): { decision: 'ACCEPT_GLOBAL' | 'ACCEPT_LATAM' | 'REJECT' | 'UNKNOWN', reason?: string } {
+    private _checkLocation(job: AshbyApiJob, config: FilterConfig | null, logger: pino.Logger): 
+        { decision: 'ACCEPT_GLOBAL' | 'ACCEPT_LATAM' | 'REJECT' | 'UNKNOWN', reason?: string } 
+    {
         logger.trace("Checking Location Keywords...");
 
-        // If no config, cannot perform keyword checks
-        if (!config?.LOCATION_KEYWORDS) {
-            logger.trace("No location keywords configured or config is null. Skipping location keyword checks.");
-            return { decision: 'UNKNOWN' };
-        }
-
-        // Include primary and secondary address details in the text to check
+        // Combine ALL location text fields for checking
         const addressDetails = [
             job.address?.postalAddress?.addressLocality,
             job.address?.postalAddress?.addressRegion,
@@ -235,124 +209,101 @@ export class AshbyFetcher implements JobFetcher {
         const combinedLocationText = [
             job.location,
             ...(job.secondaryLocations || []).map((l: { location?: string }) => l.location),
-            addressDetails // Add the structured address details
+            addressDetails 
         ].filter(Boolean).join('; ').toLowerCase();
 
-        logger.trace({ location: combinedLocationText }, "Combined Location Text for Analysis (including address details)");
+        logger.trace({ location: combinedLocationText }, "Combined Location Text for Analysis");
 
-        // Check for empty location text only if NOT explicitly remote
-        if (!combinedLocationText && job.isRemote !== true) {
-             logger.trace("No location text and job is not marked remote.");
-            return { decision: 'UNKNOWN' }; 
-        }
-        
-        // If the job has no location text AND is explicitly marked remote,
-        // we can potentially accept it as global *unless* content check rejects.
-        // Return UNKNOWN here to let content check run.
-        // Adjusted for type safety: explicitly check for true
-        if (!combinedLocationText && job.isRemote === true) { 
-             logger.trace("Job is remote with no location text.");
-             return { decision: 'UNKNOWN', reason: 'Remote job with no location text' };
+        // If no config or no text, decision is UNKNOWN unless explicitly remote (handled later)
+        if (!config?.LOCATION_KEYWORDS || !combinedLocationText) {
+            logger.trace("No location keywords or text found.");
+            return { decision: 'UNKNOWN' };
         }
 
-        // 1. Check for STRONG_NEGATIVE keywords (RUN THIS REGARDLESS OF isRemote)
-        const negativeMatch = this._matchesKeywordRegex(combinedLocationText, config.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || []);
-        if (negativeMatch.match) {
-            const reason = `Location indicates Restriction: "${negativeMatch.keyword}"`;
-            logger.debug({ location: combinedLocationText, keyword: negativeMatch.keyword }, reason);
+        const keywords = config.LOCATION_KEYWORDS;
+
+        // 1. Check for STRONG_NEGATIVE keywords first
+        const negativeCheck = detectRestrictivePattern(combinedLocationText, keywords.STRONG_NEGATIVE_RESTRICTION || [], logger);
+        if (negativeCheck.isRestrictive) {
+            const reason = `Location indicates Restriction: \"${negativeCheck.matchedKeyword}\"`;
+            logger.debug({ location: combinedLocationText, keyword: negativeCheck.matchedKeyword }, reason);
             return { decision: 'REJECT', reason };
         }
 
         // 2. Check for STRONG_POSITIVE_LATAM keywords
-        const latamKeywords = config.LOCATION_KEYWORDS?.STRONG_POSITIVE_LATAM || [];
-        if (latamKeywords.length > 0) {
-            const latamMatch = this._matchesKeywordRegex(combinedLocationText, latamKeywords);
-            if (latamMatch.match) {
-                const reason = `Location indicates LATAM: "${latamMatch.keyword}"`;
-                logger.trace({ location: combinedLocationText, keyword: latamMatch.keyword }, reason);
-                return { decision: 'ACCEPT_LATAM', reason };
-            }
+        const latamSignal = containsInclusiveSignal(combinedLocationText, keywords.STRONG_POSITIVE_LATAM || [], logger);
+        if (latamSignal.isInclusive) {
+            const reason = `Location indicates LATAM: \"${latamSignal.matchedKeyword}\"`;
+            logger.trace({ location: combinedLocationText, keyword: latamSignal.matchedKeyword }, reason);
+            return { decision: 'ACCEPT_LATAM', reason };
         }
 
         // 3. Check for STRONG_POSITIVE_GLOBAL keywords
-        const globalKeywords = config.LOCATION_KEYWORDS?.STRONG_POSITIVE_GLOBAL || [];
-        if (globalKeywords.length > 0) {
-            const globalMatch = this._matchesKeywordRegex(combinedLocationText, globalKeywords);
-            if (globalMatch.match) {
-                const reason = `Location indicates Global: "${globalMatch.keyword}"`;
-                logger.trace({ location: combinedLocationText, keyword: globalMatch.keyword }, reason);
-                return { decision: 'ACCEPT_GLOBAL', reason };
-            }
-        }
-        
-        // 4. Check for exact LATAM countries if config exists
-        if (config.LOCATION_KEYWORDS?.ACCEPT_EXACT_LATAM_COUNTRIES) {
-            const countries = config.LOCATION_KEYWORDS.ACCEPT_EXACT_LATAM_COUNTRIES.map(c => c.toLowerCase());
-            if (countries.some(country => combinedLocationText.includes(country))) {
-                const foundCountry = countries.find(country => combinedLocationText.includes(country));
-                const reason = `Location indicates specific LATAM country: "${foundCountry}"`;
-                 logger.trace({ location: combinedLocationText, country: foundCountry }, reason);
-                return { decision: 'ACCEPT_LATAM', reason };
-            }
+        const globalSignal = containsInclusiveSignal(combinedLocationText, keywords.STRONG_POSITIVE_GLOBAL || [], logger);
+        if (globalSignal.isInclusive) {
+            const reason = `Location indicates Global: \"${globalSignal.matchedKeyword}\"`;
+            logger.trace({ location: combinedLocationText, keyword: globalSignal.matchedKeyword }, reason);
+            return { decision: 'ACCEPT_GLOBAL', reason };
         }
 
-        // 5. Handle ambiguous 'remote' only if explicitly present in location string(s)
-        // This differs slightly from Greenhouse as Ashby has `isRemote` flag.
-        // We only consider 'remote' keyword if isRemote flag wasn't explicitly true.
-        if (!job.isRemote && combinedLocationText.includes('remote')) {
-             const ambiguousKeywords = config.LOCATION_KEYWORDS?.AMBIGUOUS || [];
-             const ambiguousPattern = new RegExp(`\b(${ambiguousKeywords.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\b`, 'gi');
-             let match;
-             const proximityWindow = 30;
-             while ((match = ambiguousPattern.exec(combinedLocationText)) !== null) {
-                 const ambiguousKeyword = match[1];
-                 const index = match.index;
-                 // Check nearby context for negative keywords
-                 const start = Math.max(0, index - proximityWindow);
-                 const end = Math.min(combinedLocationText.length, index + ambiguousKeyword.length + proximityWindow);
-                 const context = combinedLocationText.substring(start, end);
-                 const negativeNearbyMatch = this._matchesKeywordRegex(context, config.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || []);
-                 if (negativeNearbyMatch.match) {
-                     const reason = `Ambiguous term '${ambiguousKeyword}' rejected due to nearby negative '${negativeNearbyMatch.keyword}'.`;
-                     logger.debug({ location: combinedLocationText, keyword: ambiguousKeyword, negativeKeyword: negativeNearbyMatch.keyword }, reason);
-                     return { decision: 'REJECT', reason }; 
-                 } else {
-                      // If ambiguous 'remote' found and no nearby negatives, treat as Global (as isRemote=false was handled earlier)
-                     const reason = `Ambiguous keyword '${ambiguousKeyword}' confirmed as Global (isRemote=false, no nearby negatives).`;
-                     logger.trace({ location: combinedLocationText, keyword: ambiguousKeyword }, reason);
-                     return { decision: 'ACCEPT_GLOBAL', reason }; 
-                 }
-             }
+        // 4. Check for exact BRAZIL terms 
+        const brazilSignal = containsInclusiveSignal(combinedLocationText, keywords.ACCEPT_EXACT_BRAZIL_TERMS || [], logger);
+        if (brazilSignal.isInclusive) {
+            const reason = `Location indicates Brazil focus: \"${brazilSignal.matchedKeyword}\"`;
+            logger.trace({ location: combinedLocationText, keyword: brazilSignal.matchedKeyword }, reason);
+            return { decision: 'ACCEPT_LATAM', reason }; // Treat Brazil as LATAM
         }
+        
+        // 5. Check for exact LATAM countries (optional, might overlap with STRONG_POSITIVE_LATAM)
+        const latamCountriesSignal = containsInclusiveSignal(combinedLocationText, keywords.ACCEPT_EXACT_LATAM_COUNTRIES || [], logger);
+        if (latamCountriesSignal.isInclusive && !brazilSignal.isInclusive) { // Avoid double counting Brazil
+             const reason = `Location indicates specific LATAM country: \"${latamCountriesSignal.matchedKeyword}\"`;
+             logger.trace({ location: combinedLocationText, country: latamCountriesSignal.matchedKeyword }, reason);
+             return { decision: 'ACCEPT_LATAM', reason };
+        }
+
+        // 6. Handle ambiguous keywords (like 'remote')
+        // We might only trust this if job.isRemote is NOT explicitly true, 
+        // or use it as a weaker signal needing content confirmation.
+        // For simplicity, let's treat ambiguous location terms as UNKNOWN for now.
+        // const ambiguousSignal = containsInclusiveSignal(combinedLocationText, keywords.AMBIGUOUS || [], logger);
+        // if (ambiguousSignal.isInclusive) {
+        //    // Add context check logic if needed
+        // }
 
         logger.trace({ location: combinedLocationText }, "Location analysis result: UNKNOWN");
         return { decision: 'UNKNOWN' };
     }
 
-    private _checkContent(job: AshbyApiJob, config: FilterConfig | null, logger: pino.Logger): { decision: 'ACCEPT_GLOBAL' | 'ACCEPT_LATAM' | 'REJECT' | 'UNKNOWN', reason?: string } {
+    private _checkContent(job: AshbyApiJob, config: FilterConfig | null, logger: pino.Logger): 
+        { decision: 'ACCEPT_GLOBAL' | 'ACCEPT_LATAM' | 'REJECT' | 'UNKNOWN', reason?: string } 
+    {
         logger.trace("Checking Content Keywords...");
-
-        // If no config, cannot perform keyword checks
-        if (!config?.CONTENT_KEYWORDS && !config?.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION) {
-             logger.trace("No content/negative location keywords configured or config is null. Skipping content keyword checks.");
-            return { decision: 'UNKNOWN' };
-        }
 
         const content = stripHtml(job.descriptionHtml || '');
         const title = job.title || '';
-        if (!content && !title) return { decision: 'UNKNOWN' };
+        if (!content && !title) {
+            logger.trace("No content or title found.");
+            return { decision: 'UNKNOWN' };
+        }
 
         const fullContentLower = (title + ' ' + content).toLowerCase();
         logger.trace({ length: fullContentLower.length }, "Full content lower length for analysis.");
 
-        // 1. Check for STRONG_NEGATIVE keywords/patterns
-        // Ensure keywords exist before proceeding
+        // Ensure config exists for keyword checks
+        if (!config || (!config.CONTENT_KEYWORDS && !config.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION)) {
+             logger.trace("No relevant content/negative keywords configured or config is null. Skipping content keyword checks.");
+            return { decision: 'UNKNOWN' };
+        }
+
+        // Combine all relevant negative keywords
         const allNegativeKeywords = [
-            ...(config?.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || []),
-            ...(config?.CONTENT_KEYWORDS?.STRONG_NEGATIVE_REGION || []),
-            ...(config?.CONTENT_KEYWORDS?.STRONG_NEGATIVE_TIMEZONE || [])
+            ...(config.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || []),
+            ...(config.CONTENT_KEYWORDS?.STRONG_NEGATIVE_REGION || []),
+            ...(config.CONTENT_KEYWORDS?.STRONG_NEGATIVE_TIMEZONE || [])
         ];
 
+        // 1. Check for STRONG_NEGATIVE keywords/patterns
         if (allNegativeKeywords.length > 0) {
             const detectedNegative = detectRestrictivePattern(fullContentLower, allNegativeKeywords, logger);
             logger.trace({ detectedNegative }, "Result of detectRestrictivePattern in _checkContent.");
@@ -365,88 +316,37 @@ export class AshbyFetcher implements JobFetcher {
             logger.trace("No negative keywords configured to check in content.");
         }
 
-        // Only proceed if we have content keywords in the config
-        if (!config?.CONTENT_KEYWORDS) {
-            logger.trace("No content keywords configured. Skipping positive LATAM/Global content checks.");
+        // Only proceed with positive checks if CONTENT_KEYWORDS config exists
+        if (!config.CONTENT_KEYWORDS) {
+            logger.trace("No CONTENT_KEYWORDS in config. Skipping positive content checks.");
             return { decision: 'UNKNOWN' };
         }
+        const keywords = config.CONTENT_KEYWORDS;
 
-        // 2. Check for STRONG_POSITIVE_LATAM keywords
-        const latamKeywords = config.CONTENT_KEYWORDS?.STRONG_POSITIVE_LATAM || [];
-        if (latamKeywords.length > 0) {
-            const latamMatch = this._includesSubstringKeyword(fullContentLower, latamKeywords);
-            if (latamMatch.match) {
-                const reason = `Content indicates LATAM: "${latamMatch.keyword}"`;
-                logger.trace({ keyword: latamMatch.keyword }, reason);
-                const latamPattern = new RegExp(`\\b(${latamKeywords.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\\b`, 'gi');
-                let latamIdxMatch;
-                const proximityWindow = 30;
-                // Check context around LATAM match for negatives
-                while((latamIdxMatch = latamPattern.exec(fullContentLower)) !== null){
-                    // Only check context if the keyword matches the initial simple match
-                    if (latamIdxMatch[1].toLowerCase() !== latamMatch.keyword?.toLowerCase()) continue;
-
-                    const index = latamIdxMatch.index;
-                    const matchedLatamKw = latamIdxMatch[1];
-                    const start = Math.max(0, index - proximityWindow);
-                    const end = Math.min(fullContentLower.length, index + matchedLatamKw.length + proximityWindow);
-                    const context = fullContentLower.substring(start, end);
-                    // Use all negative keywords for context check
-                    if (allNegativeKeywords.length > 0) {
-                        const negativeNearbyMatch = this._includesSubstringKeyword(context, allNegativeKeywords);
-                        if(negativeNearbyMatch.match){
-                            const rejectReason = `LATAM term '${matchedLatamKw}' negated by nearby '${negativeNearbyMatch.keyword}'.`;
-                            logger.debug(rejectReason);
-                            return { decision: 'REJECT', reason: rejectReason };
-                        }
-                    }
-                }
-                // If LATAM match found and no negative context found, accept LATAM
-                return { decision: 'ACCEPT_LATAM', reason };
-            }
-        } else {
-             logger.trace("No positive LATAM keywords configured.");
+        // 2. Check for STRONG_POSITIVE_LATAM keywords (with context check maybe later)
+        const latamSignal = containsInclusiveSignal(fullContentLower, keywords.STRONG_POSITIVE_LATAM || [], logger);
+        if (latamSignal.isInclusive) {
+            const reason = `Content indicates LATAM: \"${latamSignal.matchedKeyword}\"`;
+            logger.trace({ keyword: latamSignal.matchedKeyword }, reason);
+            // TODO: Optional context check for negatives near LATAM signal?
+            return { decision: 'ACCEPT_LATAM', reason };
         }
 
-        // 3. Check for STRONG_POSITIVE_GLOBAL keywords (Simplified Logic)
-        const globalKeywords = config.CONTENT_KEYWORDS?.STRONG_POSITIVE_GLOBAL || [];
-        if (globalKeywords.length > 0) {
-            const globalMatchSimple = this._includesSubstringKeyword(fullContentLower, globalKeywords);
-            logger.trace({ globalMatchSimple }, "Result of simple global keyword check in _checkContent.");
-            if(globalMatchSimple.match){
-                const reason = `Content indicates Global: "${globalMatchSimple.keyword}"`;
-                logger.trace({ keyword: globalMatchSimple.keyword }, reason);
+        // 3. Check for STRONG_POSITIVE_GLOBAL keywords (with context check maybe later)
+        const globalSignal = containsInclusiveSignal(fullContentLower, keywords.STRONG_POSITIVE_GLOBAL || [], logger);
+        if (globalSignal.isInclusive) {
+            const reason = `Content indicates Global: \"${globalSignal.matchedKeyword}\"`;
+            logger.trace({ keyword: globalSignal.matchedKeyword }, reason);
+             // TODO: Optional context check for negatives near GLOBAL signal?
+            return { decision: 'ACCEPT_GLOBAL', reason };
+        }
 
-                // Perform context check ONLY to potentially REJECT, not to confirm acceptance
-                const globalPattern = new RegExp(`\\b(${globalKeywords.map(kw => kw.toLowerCase().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\\b`, 'gi');
-                let globalIdxMatch;
-                const proximityWindow = 30;
-                while((globalIdxMatch = globalPattern.exec(fullContentLower)) !== null){
-                    const index = globalIdxMatch.index;
-                    const matchedGlobalKw = globalIdxMatch[1];
-                    // Only check context if the matched keyword is the one from the simple check
-                    if (matchedGlobalKw.toLowerCase() !== globalMatchSimple.keyword?.toLowerCase()) continue;
-
-                    const start = Math.max(0, index - proximityWindow);
-                    const end = Math.min(fullContentLower.length, index + matchedGlobalKw.length + proximityWindow);
-                    const context = fullContentLower.substring(start, end);
-                    // Use all negative keywords for context check
-                    if (allNegativeKeywords.length > 0) {
-                        const negativeNearbyMatch = this._includesSubstringKeyword(context, allNegativeKeywords);
-                        if(negativeNearbyMatch.match){
-                            const rejectReason = `Global term '${matchedGlobalKw}' negated by nearby '${negativeNearbyMatch.keyword}'.`;
-                            logger.debug(rejectReason);
-                            // Found negative context, so reject this specific global keyword match
-                            return { decision: 'REJECT', reason: rejectReason };
-                        }
-                    }
-                }
-                // If simple match found and no negative context found for that keyword, accept.
-                logger.trace("Accepting based on simple global keyword match and lack of negative context.");
-                return { decision: 'ACCEPT_GLOBAL', reason };
-            }
-        } else {
-             logger.trace("No positive Global keywords configured.");
+        // 4. Check for exact Brazil terms
+        const brazilSignal = containsInclusiveSignal(fullContentLower, keywords.ACCEPT_EXACT_BRAZIL_TERMS || [], logger);
+        if (brazilSignal.isInclusive) {
+            const reason = `Content indicates Brazil focus: \"${brazilSignal.matchedKeyword}\"`;
+             logger.trace({ keyword: brazilSignal.matchedKeyword }, reason);
+            return { decision: 'ACCEPT_LATAM', reason }; // Treat Brazil as LATAM
         }
 
         logger.trace("Content keyword analysis result: UNKNOWN");
@@ -454,109 +354,84 @@ export class AshbyFetcher implements JobFetcher {
     }
 
     private _isJobRelevant(job: AshbyApiJob, jobLogger: pino.Logger): FilterResult {
+        // Debugging: Log input job details before filtering
+        jobLogger.debug({ 
+            jobId: job.id, 
+            title: job.title, 
+            location: job.location, 
+            isRemote: job.isRemote, 
+            descSnippet: job.descriptionHtml?.substring(0, 100) + '...' 
+        }, 'Entering _isJobRelevant');
+
         jobLogger.trace("--- Starting Ashby Relevance Check ---");
 
         // 1. Basic checks
         if (job?.isListed === false) {
             return { relevant: false, reason: 'Job not listed', type: undefined };
         }
-        // Skip jobs updated before a specific date if configured (useful for migrations)
-        // Convert job.updatedAt (ISO string) and threshold to Date objects for comparison
-        if (this.filterConfig?.PROCESS_JOBS_UPDATED_AFTER_DATE) {
+        // Skip old jobs if date threshold is set
+        if (this.filterConfig?.PROCESS_JOBS_UPDATED_AFTER_DATE && job.updatedAt) {
             try {
-                if (job.updatedAt) { // Check if job.updatedAt is defined
-                    const jobUpdatedAt = new Date(job.updatedAt);
-                    const thresholdDate = new Date(this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE);
-                    if (jobUpdatedAt < thresholdDate) {
-                         jobLogger.info({ jobId: job.id, updatedAt: job.updatedAt, threshold: this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE }, "Skipping job: updated before threshold date.");
-                        return { relevant: false, reason: `Job updated before ${this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE}`, type: undefined };
-                    }
+                const jobUpdatedAt = new Date(job.updatedAt);
+                const thresholdDate = new Date(this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE);
+                if (jobUpdatedAt < thresholdDate) {
+                     jobLogger.info({ updatedAt: job.updatedAt, threshold: this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE }, "Skipping job: updated before threshold date.");
+                    return { relevant: false, reason: `Job updated before ${this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE}`, type: undefined };
                 }
             } catch (dateError) {
                  jobLogger.error({ dateString: job.updatedAt, error: dateError }, "Error parsing job updatedAt date");
-                 // Decide how to handle parse errors - potentially skip or proceed cautiously
-                 // For now, proceed as if the check passed
             }
         }
 
-        // Config check is now handled inside _checkLocation and _checkContent
-        // We pass this.filterConfig (which might be null) to the helper functions.
-
-        // 2. Location Check
-        // Pass filterConfig, which could be null
+        // --- Run ALL checks --- 
+        // Pass filterConfig, which could be null (handled inside checks)
         const locationCheck = this._checkLocation(job, this.filterConfig, jobLogger);
         jobLogger.debug({ decision: locationCheck.decision, reason: locationCheck.reason }, "Location Check Result");
 
-        // --- Prioritize Location Decision ---
-        if (locationCheck.decision === 'REJECT') {
-            return { relevant: false, reason: locationCheck.reason || 'Location indicates Restriction' };
-        }
-        // If location gives a clear LATAM signal, accept immediately
-        if (locationCheck.decision === 'ACCEPT_LATAM') {
-             jobLogger.debug("Accepting based on strong LATAM signal from location.");
-            return { relevant: true, reason: locationCheck.reason || 'Location(LATAM)', type: 'latam' };
-        }
-
-        // --- If Location is not decisive (UNKNOWN or ACCEPT_GLOBAL), check content ---
-        // 3. Content Check
-        // Pass filterConfig, which could be null
         const contentCheck = this._checkContent(job, this.filterConfig, jobLogger);
         jobLogger.debug({ decision: contentCheck.decision, reason: contentCheck.reason }, "Content Check Result");
+
+        // Final Decision Logic:
+        // 1. Reject if either check returns REJECT.
+        if (locationCheck.decision === 'REJECT') {
+            return { relevant: false, reason: locationCheck.reason };
+        }
         if (contentCheck.decision === 'REJECT') {
-             // Content rejection overrides location UNKNOWN or ACCEPT_GLOBAL
-            return { relevant: false, reason: contentCheck.reason || 'Content indicates Restriction' };
+            return { relevant: false, reason: contentCheck.reason };
         }
 
-        // --- Final Decision Logic (If neither location nor content rejected) ---
-
-        // Prioritize Content LATAM signal if present and location wasn't ACCEPT_LATAM
-         if (contentCheck.decision === 'ACCEPT_LATAM') {
-            jobLogger.debug("Accepting based on strong LATAM signal from content.");
-            return { relevant: true, reason: contentCheck.reason || 'Content(LATAM)', type: 'latam' };
+        // 2. Accept LATAM if either check returns ACCEPT_LATAM.
+        if (locationCheck.decision === 'ACCEPT_LATAM') {
+            return { relevant: true, type: 'latam', reason: locationCheck.reason };
+        }
+        if (contentCheck.decision === 'ACCEPT_LATAM') {
+            return { relevant: true, type: 'latam', reason: contentCheck.reason };
         }
 
-        // Check for GLOBAL signals (from either location or content)
-        const isGlobalFromLocation = locationCheck.decision === 'ACCEPT_GLOBAL';
-        const isGlobalFromContent = contentCheck.decision === 'ACCEPT_GLOBAL';
+        // 3. Accept Global if either check returns ACCEPT_GLOBAL (and LATAM wasn't accepted).
+        if (locationCheck.decision === 'ACCEPT_GLOBAL') {
+            return { relevant: true, type: 'global', reason: locationCheck.reason };
+        }
+        if (contentCheck.decision === 'ACCEPT_GLOBAL') {
+            return { relevant: true, type: 'global', reason: contentCheck.reason };
+        }
 
-        // Handle explicit 'isRemote' flag
-        if (job.isRemote === true) {
-            jobLogger.debug("Job marked as remote and passed restriction checks.");
-             let globalReason = 'Marked as remote';
-            // Give preference to more specific GLOBAL reasons if found
-            if (isGlobalFromLocation) globalReason = locationCheck.reason || 'Location(Global)';
-            else if (isGlobalFromContent) globalReason = contentCheck.reason || 'Content(Global)';
-            // If no config was loaded, the decisions would be UNKNOWN, use default reason
-            else if (locationCheck.decision === 'UNKNOWN' && contentCheck.decision === 'UNKNOWN' && !this.filterConfig) {
-                 globalReason = 'Marked as remote (no filter config)';
+        // 4. Fallback to isRemote only if BOTH checks are UNKNOWN.
+        if (locationCheck.decision === 'UNKNOWN' && contentCheck.decision === 'UNKNOWN') {
+            jobLogger.trace({ isRemote: job.isRemote }, 'No strong location/content signals. Falling back to isRemote flag.');
+            if (job.isRemote === true) {
+                return { relevant: true, type: 'global', reason: 'Marked as remote' };
+            } else {
+                return { relevant: false, reason: 'Not explicitly remote and ambiguous keywords' };
             }
-            return { relevant: true, reason: globalReason, type: 'global' };
         }
 
-        // If not explicitly remote, but location/content checks found a GLOBAL signal
-        if (isGlobalFromLocation || isGlobalFromContent) {
-            let globalReason = 'Unknown Global Signal';
-             if (isGlobalFromLocation) globalReason = locationCheck.reason || 'Location(Global)';
-             else if (isGlobalFromContent) globalReason = contentCheck.reason || 'Content(Global)';
-             jobLogger.info({ finalReason: globalReason }, "Final Decision: ACCEPT_GLOBAL based on location/content signals (isRemote=false/null).");
-             return { relevant: true, reason: globalReason, type: 'global' };
-        }
-
-        // --- Final Fallback ---
-        // If we reached here:
-        // - No REJECT decisions were made.
-        // - No ACCEPT_LATAM decisions were made.
-        // - No ACCEPT_GLOBAL decisions were made (either via config keywords or explicit isRemote flag).
-        // - Checks might have returned UNKNOWN (e.g., no config, or ambiguous results).
-
-        // If config was null and checks were UNKNOWN, the job is only relevant if isRemote was true (handled above).
-        if (!this.filterConfig && locationCheck.decision === 'UNKNOWN' && contentCheck.decision === 'UNKNOWN') {
-             jobLogger.debug("Final Decision: Job is not relevant (Not explicitly remote and no filter config loaded).");
-             return { relevant: false, reason: 'Not remote (no filter config)', type: undefined };
-        }
-
-        // If config *was* loaded, but we still ended up here, it means the job is ambiguous or doesn't meet criteria.
-        jobLogger.debug("Final Decision: Job is not relevant (Ambiguous or No Positive Signal).");
-        return { relevant: false, reason: 'Ambiguous or No Positive Signal', type: undefined };
+        // Default case if checks resulted in a mix not covered above (e.g., one UNKNOWN, one not triggering accept/reject)
+        // Consider a scenario: location=UNKNOWN, content=ACCEPT_GLOBAL -> Should be ACCEPT_GLOBAL
+        // Consider a scenario: location=ACCEPT_LATAM, content=UNKNOWN -> Should be ACCEPT_LATAM
+        // The current sequential checks handle these scenarios.
+        // If we reach here, it implies no strong accept/reject signal was definitive.
+        jobLogger.trace({ locationDecision: locationCheck.decision, contentDecision: contentCheck.decision }, 'Job did not meet explicit accept/reject criteria and did not fallback to isRemote. Defaulting to irrelevant.');
+        return { relevant: false, reason: 'Not explicitly remote and ambiguous keywords' };
     }
 } 

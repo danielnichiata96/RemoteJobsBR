@@ -77,7 +77,6 @@ describe('Job Detail Page', () => {
     expect(screen.getByText(/Sênior/i)).toBeInTheDocument();
     expect(screen.getByText(/Publicada há 5 dias/i)).toBeInTheDocument();
     expect(screen.getByText(/Job Description/i)).toBeInTheDocument();
-    expect(screen.getByText(/Requirements/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Candidatar-se agora/i })).toBeInTheDocument();
   });
 

@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 import { JobSource } from '../../types/models';
 import { JobSourceType } from '../../types/JobSource';
 import { getCompanyLogo, extractDomain } from '../../../src/lib/utils/logoUtils';
+import * as scorerUtils from '../../../src/lib/utils/JobRelevanceScorer';
 
 // --- Mocks ---
 
@@ -92,6 +93,11 @@ jest.mock('../../../src/lib/utils/logoUtils', () => ({
     })
 }));
 
+// Mock JobRelevanceScorer
+jest.mock('../../../src/lib/utils/JobRelevanceScorer', () => ({
+  calculateRelevanceScore: jest.fn(),
+}));
+
 // --- Test Suite ---
 
 const createMockJobSource = (overrides: Partial<JobSource> = {}): JobSource => ({
@@ -113,6 +119,7 @@ describe('GreenhouseProcessor', () => {
   let processor: GreenhouseProcessor;
   let mockPrisma: PrismaClient;
   let mockLogger: any;
+  const mockedScorerUtils = scorerUtils as jest.Mocked<typeof scorerUtils>;
 
   // Cast the mock module AFTER top-level mock is defined
   const mockedJobUtils = jobUtils as jest.Mocked<typeof jobUtils>; 
@@ -154,18 +161,21 @@ describe('GreenhouseProcessor', () => {
             return hostname.replace(/^www\./, '');
         } catch { return null; }
     });
+
+    mockedScorerUtils.calculateRelevanceScore.mockReturnValue(99);
   });
 
   // --- Test Data Definition ---
   const basicRawJob: GreenhouseJob = {
     id: 123,
     title: 'Basic Engineer',
-    updated_at: new Date().toISOString(),
+    updated_at: new Date('2024-02-01T00:00:00Z').toISOString(),
+    published_at: new Date('2024-01-01T00:00:00Z').toISOString(),
     location: { name: 'Remote' },
     content: '<p>Basic job content</p>',
     absolute_url: 'https://jobs.greenhouse.io/basic/123',
-    metadata: [],
-    offices: [],
+    metadata: [{ name: 'ReqID', value: 'R123' }],
+    offices: [{ id: 10, name: 'HQ' }],
     departments: [{ id: 1, name: 'Engineering', child_ids: [], parent_id: null }],
     company: { name: 'Basic Corp' },
   };
@@ -173,14 +183,30 @@ describe('GreenhouseProcessor', () => {
   const mockSourceDataBasic = createMockJobSource({ name: 'Basic Corp', companyWebsite: 'https://basic.example.com'});
 
   describe('processJob', () => {
-    it('should process a basic GreenhouseJob correctly', async () => {
+    it('should process a basic GreenhouseJob correctly and calculate score', async () => {
       mockedJobUtils.isRemoteJob.mockReturnValue(true);
+      const mockSourceDataWithScoring = createMockJobSource({
+        ...mockSourceDataBasic,
+        config: { ...mockSourceDataBasic.config, SCORING_SIGNALS: { /* mock signals */ } }
+      });
 
-      const result = await processor.processJob(basicRawJob, mockSourceDataBasic);
+      const result = await processor.processJob(basicRawJob, mockSourceDataWithScoring);
 
       expect(result.success).toBe(true);
       expect(result.job).toBeDefined();
       const job = result.job!;
+
+      expect(mockedScorerUtils.calculateRelevanceScore).toHaveBeenCalledTimes(1);
+      expect(mockedScorerUtils.calculateRelevanceScore).toHaveBeenCalledWith(
+        { 
+          title: basicRawJob.title, 
+          description: "Basic job content", 
+          location: basicRawJob.location.name 
+        },
+        mockSourceDataWithScoring.config
+      );
+
+      expect(job.relevanceScore).toBe(99);
 
       expect(job.source).toBe('greenhouse');
       expect(job.sourceId).toBe('123');
@@ -198,9 +224,11 @@ describe('GreenhouseProcessor', () => {
       expect(job.requirements).toBe('Default Parsed Requirements');
       expect(job.responsibilities).toBe('Default Parsed Responsibilities');
       expect(job.benefits).toBe('Default Parsed Benefits');
+      expect(job.metadataRaw).toEqual(basicRawJob.metadata);
+      expect(job.publishedAt).toEqual(new Date(basicRawJob.published_at));
     });
 
-    it('should process an EnhancedGreenhouseJob correctly, using pre-processed fields', async () => {
+    it('should process an EnhancedGreenhouseJob correctly and calculate score', async () => {
         const enhancedRawJob: EnhancedGreenhouseJob = {
           ...basicRawJob,
           id: 456,
@@ -218,25 +246,50 @@ describe('GreenhouseProcessor', () => {
           country: 'Brazil',
           workplaceType: 'REMOTE',
           publishedAt: new Date('2024-01-15T00:00:00Z'),
+          published_at: new Date('2024-01-15T00:00:00Z').toISOString(),
+          updated_at: new Date('2024-01-20T00:00:00Z').toISOString(),
       };
-       const mockSourceDataEnhanced = createMockJobSource({ name: 'Enhanced Corp', companyWebsite: 'https://enhanced.corp' }); 
+       const mockSourceDataEnhancedWithScoring = createMockJobSource({ 
+           name: 'Enhanced Corp', 
+           companyWebsite: 'https://enhanced.corp',
+           config: { ...mockSourceDataBasic.config, SCORING_SIGNALS: { /* mock signals */ } } 
+       });
 
-      const result = await processor.processJob(enhancedRawJob, mockSourceDataEnhanced);
+      mockedJobUtils.isRemoteJob.mockReturnValue(true);
+      mockedJobUtils.parseSections.mockReturnValue({
+          description: 'Default Parsed Description',
+          requirements: enhancedRawJob.requirements,
+          responsibilities: enhancedRawJob.responsibilities,
+          benefits: enhancedRawJob.benefits
+      });
+
+      const result = await processor.processJob(enhancedRawJob, mockSourceDataEnhancedWithScoring);
 
       expect(result.success).toBe(true);
       expect(result.job).toBeDefined();
       const job = result.job!;
 
+      expect(mockedScorerUtils.calculateRelevanceScore).toHaveBeenCalledTimes(1);
+      expect(mockedScorerUtils.calculateRelevanceScore).toHaveBeenCalledWith(
+        { 
+          title: enhancedRawJob.title, 
+          description: basicRawJob.content,
+          location: enhancedRawJob.location.name 
+        },
+        mockSourceDataEnhancedWithScoring.config
+      );
+      expect(job.relevanceScore).toBe(99);
+
       expect(job.sourceId).toBe('456');
       expect(job.title).toBe('Enhanced Engineer');
-      expect(job.description).toBe('<p>Basic job content</p>'); 
+      expect(job.description).toBe(basicRawJob.content);
       expect(job.requirements).toBe('Enhanced Requirements');
       expect(job.responsibilities).toBe('Enhanced Responsibilities');
       expect(job.benefits).toBe('Enhanced Benefits');
       expect(job.applicationUrl).toBe(enhancedRawJob.absolute_url);
-      expect(job.companyName).toBe(mockSourceDataEnhanced.name);
-      expect(job.companyWebsite).toBe(mockSourceDataEnhanced.companyWebsite);
-      expect(getCompanyLogo).toHaveBeenCalledWith(mockSourceDataEnhanced.companyWebsite);
+      expect(job.companyName).toBe(mockSourceDataEnhancedWithScoring.name);
+      expect(job.companyWebsite).toBe(mockSourceDataEnhancedWithScoring.companyWebsite);
+      expect(getCompanyLogo).toHaveBeenCalledWith(mockSourceDataEnhancedWithScoring.companyWebsite);
       expect(job.companyLogo).toBe('https://img.logo.dev/enhanced.corp?token=pk_f4m8WG-wQOeM90skJ8dV6Q');
       expect(job.jobType).toBe(JobType.CONTRACT);
       expect(job.experienceLevel).toBe(ExperienceLevel.SENIOR);
@@ -244,17 +297,43 @@ describe('GreenhouseProcessor', () => {
       expect(job.tags).toEqual(['enhancedTag']);
       expect(job.hiringRegion).toBe(HiringRegion.LATAM);
       expect(job.location).toBe('Remote');
+      expect(job.country).toBe('Brazil');
+      expect(job.workplaceType).toBe('REMOTE');
+      expect(job.publishedAt).toEqual(enhancedRawJob.publishedAt);
+      expect(job.metadataRaw).toEqual(enhancedRawJob.metadata);
+      expect(mockedJobUtils.extractSkills).not.toHaveBeenCalled();
+      expect(mockedJobUtils.detectJobType).not.toHaveBeenCalled();
+      expect(mockedJobUtils.detectExperienceLevel).not.toHaveBeenCalled();
+      expect(mockedJobUtils.parseSections).not.toHaveBeenCalled();
     });
 
-    it('should return success: false if a basic job is not remote', async () => {
-        mockedJobUtils.isRemoteJob.mockReturnValue(false);
+    it('should return failure and NOT calculate score if job is not remote', async () => {
+      mockedJobUtils.isRemoteJob.mockReturnValue(false);
+      const mockSourceDataWithScoring = createMockJobSource({
+          ...mockSourceDataBasic,
+          config: { ...mockSourceDataBasic.config, SCORING_SIGNALS: { /* mock signals */ } }
+      });
 
-        const result = await processor.processJob(basicRawJob, mockSourceDataBasic);
+      const result = await processor.processJob(basicRawJob, mockSourceDataWithScoring);
 
-        expect(result.success).toBe(false);
-        expect(result.error).toBe('Job is not remote or has location restrictions');
-        expect(result.job).toBeUndefined();
-        expect(mockedJobUtils.isRemoteJob).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Job is not remote or has location restrictions');
+      expect(result.job).toBeUndefined();
+      expect(mockedScorerUtils.calculateRelevanceScore).not.toHaveBeenCalled();
+    });
+
+    it('should process job but return null score if SCORING_SIGNALS are missing in config', async () => {
+      mockedJobUtils.isRemoteJob.mockReturnValue(true);
+      const mockSourceWithoutScoring = createMockJobSource(mockSourceDataBasic);
+
+      const result = await processor.processJob(basicRawJob, mockSourceWithoutScoring);
+
+      expect(result.success).toBe(true);
+      expect(result.job).toBeDefined();
+      const job = result.job!;
+
+      expect(mockedScorerUtils.calculateRelevanceScore).not.toHaveBeenCalled();
+      expect(job.relevanceScore).toBeNull();
     });
 
     it('should handle errors during processing and return success: false', async () => {
@@ -272,6 +351,85 @@ describe('GreenhouseProcessor', () => {
             expect.objectContaining({ error: processingError, jobId: basicRawJob.id }),
             'Error processing job in GreenhouseProcessor'
         );
+    });
+
+    it('should process an EnhancedGreenhouseJob correctly and calculate score', async () => {
+        const enhancedRawJob: EnhancedGreenhouseJob = {
+          ...basicRawJob,
+          id: 456,
+          title: 'Software Engineer, Backend',
+          absolute_url: 'https://jobs.greenhouse.io/enhanced/456',
+          _determinedHiringRegionType: 'latam',
+          company: { name: 'Greenhouse Inc.', website: 'https://enhanced.corp' },
+          requirements: 'Enhanced Requirements',
+          responsibilities: 'Enhanced Responsibilities',
+          benefits: 'Enhanced Benefits',
+          skills: ['enhancedSkill'],
+          tags: ['enhancedTag'],
+          jobType: JobType.FULL_TIME,
+          experienceLevel: ExperienceLevel.MID,
+          country: 'Brazil',
+          workplaceType: 'REMOTE',
+          publishedAt: new Date('2024-01-20T00:00:00.000Z'),
+          published_at: new Date('2024-01-15T00:00:00Z').toISOString(),
+          updated_at: new Date('2024-01-20T00:00:00Z').toISOString(),
+      };
+       const mockSourceDataEnhancedWithScoring = createMockJobSource({ 
+           name: 'Greenhouse Inc.', 
+           companyWebsite: 'https://enhanced.corp',
+           config: { ...mockSourceDataBasic.config, SCORING_SIGNALS: { /* mock signals */ } } 
+       });
+
+      mockedJobUtils.isRemoteJob.mockReturnValue(true);
+      mockedJobUtils.parseSections.mockReturnValue({
+          description: 'Default Parsed Description',
+          requirements: enhancedRawJob.requirements,
+          responsibilities: enhancedRawJob.responsibilities,
+          benefits: enhancedRawJob.benefits
+      });
+
+      const result = await processor.processJob(enhancedRawJob, mockSourceDataEnhancedWithScoring);
+
+      expect(result.success).toBe(true);
+      expect(result.job).toBeDefined();
+      const job = result.job!;
+
+      expect(mockedScorerUtils.calculateRelevanceScore).toHaveBeenCalledTimes(1);
+      expect(mockedScorerUtils.calculateRelevanceScore).toHaveBeenCalledWith(
+        { 
+          title: enhancedRawJob.title, 
+          description: basicRawJob.content,
+          location: enhancedRawJob.location.name 
+        },
+        mockSourceDataEnhancedWithScoring.config
+      );
+      expect(job.relevanceScore).toBe(99);
+
+      expect(job.sourceId).toBe('456');
+      expect(job.title).toBe('Software Engineer, Backend');
+      expect(job.description).toBe(basicRawJob.content);
+      expect(job.requirements).toBe('Enhanced Requirements');
+      expect(job.responsibilities).toBe('Enhanced Responsibilities');
+      expect(job.benefits).toBe('Enhanced Benefits');
+      expect(job.applicationUrl).toBe(enhancedRawJob.absolute_url);
+      expect(job.companyName).toBe(mockSourceDataEnhancedWithScoring.name);
+      expect(job.companyWebsite).toBe(mockSourceDataEnhancedWithScoring.companyWebsite);
+      expect(getCompanyLogo).toHaveBeenCalledWith(mockSourceDataEnhancedWithScoring.companyWebsite);
+      expect(job.companyLogo).toBe('https://img.logo.dev/enhanced.corp?token=pk_f4m8WG-wQOeM90skJ8dV6Q');
+      expect(job.jobType).toBe(JobType.FULL_TIME);
+      expect(job.experienceLevel).toBe(ExperienceLevel.MID);
+      expect(job.skills).toEqual(['enhancedSkill']);
+      expect(job.tags).toEqual(['enhancedTag']);
+      expect(job.hiringRegion).toBe(HiringRegion.LATAM);
+      expect(job.location).toBe('Remote');
+      expect(job.country).toBe('Brazil');
+      expect(job.workplaceType).toBe('REMOTE');
+      expect(job.publishedAt).toEqual(enhancedRawJob.publishedAt);
+      expect(job.metadataRaw).toEqual(enhancedRawJob.metadata);
+      expect(mockedJobUtils.extractSkills).not.toHaveBeenCalled();
+      expect(mockedJobUtils.detectJobType).not.toHaveBeenCalled();
+      expect(mockedJobUtils.detectExperienceLevel).not.toHaveBeenCalled();
+      expect(mockedJobUtils.parseSections).not.toHaveBeenCalled();
     });
   });
 }); 

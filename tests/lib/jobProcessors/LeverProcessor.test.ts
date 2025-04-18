@@ -1,7 +1,8 @@
 import { LeverProcessor } from '@/lib/jobProcessors/LeverProcessor'; // Adjust path as needed
-import { JobSource, JobType, ExperienceLevel, SalaryPeriod } from '@prisma/client';
+import { JobSource, JobType, ExperienceLevel, Currency, SalaryPeriod } from '@prisma/client';
 import pino from 'pino';
 import { LeverApiPosting } from '@/lib/fetchers/types';
+import * as scorerUtils from '@/lib/utils/JobRelevanceScorer'; // Import scorer utils
 
 // Mock utilities used by the processor
 jest.mock('@/lib/utils/textUtils', () => ({
@@ -36,6 +37,11 @@ jest.mock('pino', () => {
     return pinoMock;
 });
 
+// Mock JobRelevanceScorer
+jest.mock('@/lib/utils/JobRelevanceScorer', () => ({
+  calculateRelevanceScore: jest.fn(),
+}));
+
 // Import mocked functions for verification
 import { stripHtml } from '@/lib/utils/textUtils';
 import { detectExperienceLevel, detectJobType, extractSkills } from '@/lib/utils/jobUtils';
@@ -43,9 +49,9 @@ import { detectExperienceLevel, detectJobType, extractSkills } from '@/lib/utils
 describe('LeverProcessor', () => {
     let leverProcessor: LeverProcessor;
     let mockLogger: jest.Mocked<pino.Logger>;
-    // Keep mockChildLogger but understand it points to the *same* object as mockLogger with this mock
     let mockChildLogger: jest.Mocked<pino.Logger>; 
     let mockSource: JobSource;
+    const mockedScorerUtils = scorerUtils as jest.Mocked<typeof scorerUtils>; // Cast mock
 
     // Base mock raw job for convenience
     const baseRawJob: LeverApiPosting = {
@@ -92,6 +98,7 @@ describe('LeverProcessor', () => {
         (detectExperienceLevel as jest.Mock).mockClear().mockReturnValue('TEST_LEVEL');
         (detectJobType as jest.Mock).mockClear().mockReturnValue('TEST_TYPE');
         (extractSkills as jest.Mock).mockClear().mockReturnValue(['test-skill']);
+        mockedScorerUtils.calculateRelevanceScore.mockReturnValue(88); // Default mock score
     });
 
     it('should instantiate correctly', () => {
@@ -99,13 +106,16 @@ describe('LeverProcessor', () => {
         expect(leverProcessor.source).toBe('lever');
     });
 
-    it('processJob should return a mapped job for valid input', async () => {
+    it('processJob should return a mapped job and calculate score for valid input', async () => {
         const rawJob = { ...baseRawJob };
-        // Define expected appended content based on baseRawJob.content.lists
+        const mockSourceWithScoring = { 
+            ...mockSource, 
+            config: { ...mockSource.config, SCORING_SIGNALS: { /* mock signals */ } }
+        };
         const appendedListContentExpected = `<br><hr><br><h3>Requirements</h3><li>Requirement 1</li>`;
         const expectedDescription = rawJob.description + appendedListContentExpected;
         
-        const result = await leverProcessor.processJob(rawJob, mockSource, mockLogger);
+        const result = await leverProcessor.processJob(rawJob, mockSourceWithScoring);
 
         // Check calls on the child/shared logger instance
         expect(mockChildLogger.trace).toHaveBeenCalledWith('Starting Lever job processing...');
@@ -114,6 +124,20 @@ describe('LeverProcessor', () => {
         expect(result).not.toBeNull();
         expect(result.success).toBe(true);
         expect(result.job).toBeDefined();
+
+        // Verify scorer was called
+        expect(mockedScorerUtils.calculateRelevanceScore).toHaveBeenCalledTimes(1);
+        expect(mockedScorerUtils.calculateRelevanceScore).toHaveBeenCalledWith(
+          { 
+            title: rawJob.text, 
+            description: expectedDescription,
+            location: rawJob.categories?.location 
+          },
+          mockSourceWithScoring.config // Pass the config with signals
+        );
+
+        // Verify score is included in the result
+        expect(result.job?.relevanceScore).toBe(88); // Matches default mock score
 
         // Check properties on result.job
         expect(result.job?.title).toBe('Software Engineer');
@@ -126,12 +150,79 @@ describe('LeverProcessor', () => {
         expect(result.job?.updatedAt).toEqual(new Date(rawJob.updatedAt));
         expect(result.job?.status).toBe('ACTIVE');
         expect(result.job?.isRemote).toBe(true);
+        expect(result.job?.metadataRaw).toEqual({
+            categories: rawJob.categories,
+            tags: undefined,
+            workplaceType: rawJob.workplaceType
+        });
 
         // Check utility function calls
         expect(stripHtml).toHaveBeenCalledWith('Requirements'); 
         expect(detectExperienceLevel).toHaveBeenCalledWith('Software Engineer Job description Requirement 1'); // Approx text
         expect(detectJobType).not.toHaveBeenCalled(); // Because it uses categories.commitment
         expect(extractSkills).toHaveBeenCalledWith('Software Engineer Job description Requirement 1'); // Approx text
+    });
+
+    it('processJob should skip scoring if SCORING_SIGNALS are missing in config', async () => {
+        const rawJob = { ...baseRawJob };
+        // Mock source WITHOUT scoring signals
+        const mockSourceWithoutScoring = { ...mockSource, config: { companyIdentifier: 'test-lever-co' } }; 
+
+        const result = await leverProcessor.processJob(rawJob, mockSourceWithoutScoring);
+
+        expect(result.success).toBe(true);
+        expect(result.job).toBeDefined();
+
+        // Verify scorer was NOT called
+        expect(mockedScorerUtils.calculateRelevanceScore).not.toHaveBeenCalled();
+        // Verify score is null
+        expect(result.job?.relevanceScore).toBeNull();
+    });
+
+    it('processJob should return success: false and NOT score if job is too old', async () => {
+        const MAX_JOB_AGE_DAYS = 90; // Assuming this constant exists or defining it
+        const oldDate = new Date();
+        oldDate.setDate(oldDate.getDate() - (MAX_JOB_AGE_DAYS + 1));
+        const rawJob = { ...baseRawJob, createdAt: oldDate.getTime() }; 
+        // Include scoring signals to ensure check happens before scoring
+        const mockSourceWithScoring = { 
+            ...mockSource, 
+            config: { ...mockSource.config, SCORING_SIGNALS: { /* mock signals */ } }
+        };
+        
+        const result = await leverProcessor.processJob(rawJob, mockSourceWithScoring);
+
+        expect(result.success).toBe(false);
+        expect(result.job).toBeUndefined();
+        expect(result.error).toContain('older than');
+        // Verify scorer NOT called
+        expect(mockedScorerUtils.calculateRelevanceScore).not.toHaveBeenCalled();
+    });
+
+    it('processJob should NOT score if job is determined not to be remote', async () => {
+        // Job with no remote indicators
+        const rawJob = { 
+            ...baseRawJob, 
+            workplaceType: 'on-site' as const, 
+            categories: { location: 'London' } 
+        }; 
+        // Include scoring signals
+        const mockSourceWithScoring = { 
+            ...mockSource, 
+            config: { ...mockSource.config, SCORING_SIGNALS: { /* mock signals */ } }
+        };
+
+        const result = await leverProcessor.processJob(rawJob, mockSourceWithScoring);
+
+        expect(result.success).toBe(true); 
+        expect(result.job).toBeDefined();
+        expect(result.job?.isRemote).toBe(false);
+        
+        // Verify scorer was NOT called for non-remote job
+        expect(mockedScorerUtils.calculateRelevanceScore).not.toHaveBeenCalled(); 
+
+        // Score SHOULD be null even if scorer is incorrectly called.
+        expect(result.job?.relevanceScore).toBeNull(); 
     });
 
     it('processJob should correctly determine remote status', async () => {
@@ -221,22 +312,23 @@ describe('LeverProcessor', () => {
         let result = await leverProcessor.processJob(rawJobWithSalary, mockSource, mockLogger); 
         expect(result.success).toBe(true);
         // TODO: Revisit this assertion - Currently failing with undefined for unknown reasons
-        // expect(result.job?.salaryMin).toBe(80000);
-        // expect(result.job?.salaryMax).toBe(120000);
-        // expect(result.job?.salaryCurrency).toBe('USD');
-        expect(result.job?.salaryPeriod).toBe('YEARLY'); 
+        expect(result.job?.salaryMin).toBe(80000);
+        expect(result.job?.salaryMax).toBe(120000);
+        expect(result.job?.currency).toBe(Currency.USD);
+        expect(result.job?.salaryPeriod).toBe(SalaryPeriod.YEARLY);
 
         let rawJobMonthly = { ...baseRawJob, salaryRange: { min: 5000, max: 7000, currency: 'BRL', interval: 'Monthly' } };
         let resultMonthly = await leverProcessor.processJob(rawJobMonthly, mockSource, mockLogger);
         expect(resultMonthly.success).toBe(true);
-        expect(resultMonthly.job?.salaryPeriod).toBe('MONTHLY'); 
+        expect(resultMonthly.job?.currency).toBe(Currency.BRL);
+        expect(resultMonthly.job?.salaryPeriod).toBe(SalaryPeriod.MONTHLY);
 
         let rawJobNoSalary = { ...baseRawJob, salaryRange: undefined };
         let resultNoSalary = await leverProcessor.processJob(rawJobNoSalary, mockSource, mockLogger);
         expect(resultNoSalary.success).toBe(true);
         expect(resultNoSalary.job?.salaryMin).toBeUndefined();
         expect(resultNoSalary.job?.salaryMax).toBeUndefined();
-        expect(resultNoSalary.job?.salaryCurrency).toBeNull();
+        expect(resultNoSalary.job?.currency).toBeUndefined();
         expect(resultNoSalary.job?.salaryPeriod).toBeUndefined();
     });
     */

@@ -1,14 +1,31 @@
 import { JobProcessor, ProcessedJobResult } from "./types";
 import { StandardizedJob } from "../../types/StandardizedJob";
-import { JobSource, JobType, ExperienceLevel } from "@prisma/client";
+import { FilterConfig } from "../../types/FilterConfig"; // Import FilterConfig
+import { JobSource, JobType, ExperienceLevel, SalaryPeriod } from "@prisma/client";
 import pino from "pino";
 import { LeverApiPosting } from "../fetchers/types"; // Import Lever API type
 import { stripHtml } from "../utils/textUtils";
 import { detectExperienceLevel, detectJobType, extractSkills } from "../utils/jobUtils";
+import { calculateRelevanceScore } from '../utils/JobRelevanceScorer'; // Import the scorer
+import { Currency } from '../../types/models'; // Import Currency from models
+import { Prisma } from '@prisma/client';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 const MAX_JOB_AGE_DAYS = 30; // Filter jobs older than 30 days
+
+// Helper function to map string to Currency enum
+function mapStringToCurrency(currencyString: string | null | undefined): Currency | undefined {
+    if (!currencyString) {
+        return undefined;
+    }
+    const upperCaseCurrency = currencyString.toUpperCase();
+    if (upperCaseCurrency in Currency) {
+        return Currency[upperCaseCurrency as keyof typeof Currency];
+    }
+    logger.warn({ currencyString }, 'Unsupported currency string encountered');
+    return undefined; // Return undefined if string doesn't match enum
+}
 
 export class LeverProcessor implements JobProcessor {
     source: string = 'lever'; // Identifier for this processor
@@ -58,6 +75,8 @@ export class LeverProcessor implements JobProcessor {
 
     private _mapToStandardizedJob(rawJob: LeverApiPosting, sourceData: JobSource): StandardizedJob {
         
+        const jobLogger = logger.child({ processor: 'Lever', jobId: rawJob?.id, sourceName: sourceData?.name }, { level: logger.level });
+
         // Use official top-level description field (HTML) as base, fallback to empty
         let baseDescriptionHtml = rawJob.description || ''; 
         
@@ -103,14 +122,14 @@ export class LeverProcessor implements JobProcessor {
 
         let minSalary: number | null = null;
         let maxSalary: number | null = null;
-        let salaryCurrency: string | null = null; 
+        let salaryCurrencyString: string | null = null; // Keep original string processing
         let salaryCycle: string | null = null;
         if (rawJob.salaryRange) {
             minSalary = rawJob.salaryRange.min;
             maxSalary = rawJob.salaryRange.max;
             const rawCurrency = rawJob.salaryRange.currency?.toUpperCase();
             if (rawCurrency && typeof rawCurrency === 'string' && rawCurrency.length > 0) { 
-                salaryCurrency = rawCurrency; 
+                salaryCurrencyString = rawCurrency; // Store the string
             } else if (rawCurrency) {
                 logger.warn({ rawCurrency, jobId: rawJob.id }, 'Unexpected salary currency format encountered');
             }
@@ -135,6 +154,31 @@ export class LeverProcessor implements JobProcessor {
             }
         }
 
+        // --- Relevance Score Calculation (Only if remote and signals exist) ---
+        let relevanceScore: number | null = null;
+        const sourceConfig = sourceData?.config as Prisma.JsonObject | null; // Prisma type
+        if (isRemote && sourceConfig && sourceConfig.SCORING_SIGNALS) {
+            jobLogger.trace('Job is remote and scoring signals found, attempting calculation...');
+            try {
+                relevanceScore = calculateRelevanceScore(
+                    {
+                        title: rawJob.text,
+                        description: finalDescriptionHtml, // Use the combined HTML description
+                        location: rawJob.categories?.location
+                    },
+                    sourceConfig as unknown as FilterConfig // Cast needed
+                );
+                jobLogger.trace({ score: relevanceScore }, 'Calculated relevance score.');
+            } catch (scoreError) {
+                jobLogger.warn({ error: scoreError }, 'Error calculating relevance score.');
+            }
+        } else {
+            jobLogger.trace({ isRemote, hasSignals: !!(sourceConfig && sourceConfig.SCORING_SIGNALS) }, 'Skipping score calculation (not remote or no signals).');
+        }
+        // -----------------------------------------------------------------
+
+        const mappedCurrency = mapStringToCurrency(salaryCurrencyString); // Map string to enum
+
         return {
             title: rawJob.text,
             companyName: sourceData.name, 
@@ -151,8 +195,8 @@ export class LeverProcessor implements JobProcessor {
             skills: extractSkills(fullTextForAnalysis),
             minSalary: minSalary ?? undefined,
             maxSalary: maxSalary ?? undefined,
-            currency: salaryCurrency,
-            salaryCycle: salaryCycle ?? undefined,
+            currency: mappedCurrency, // Assign the mapped enum value or undefined
+            salaryCycle: salaryCycle ?? undefined, // TODO: Map this to SalaryPeriod enum as well?
             // Add other potential missing fields with defaults or nulls
             status: 'ACTIVE', // Default to ACTIVE
             companyLogo: sourceData.logoUrl ?? undefined, // Use logo from sourceData if available, default undefined
@@ -162,6 +206,12 @@ export class LeverProcessor implements JobProcessor {
             visas: [], // Default
             languages: [], // Default
             hiringRegion: undefined, // Default undefined
+            relevanceScore: relevanceScore, // Add the calculated score
+            metadataRaw: { // Add relevant Lever fields to metadataRaw
+                categories: rawJob.categories,
+                tags: rawJob.tags,
+                workplaceType: rawJob.workplaceType
+            }
         };
     }
 

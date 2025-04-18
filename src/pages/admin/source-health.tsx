@@ -105,7 +105,7 @@ const AdminSourceHealth: NextPage = (props) => { // Removed unused props
             }
 
             // Don't use optimistic update for toggle, rely on mutate
-            await mutate(SWR_KEY); // Revalidate to get definitive state
+            await mutate(); // Revalidate to get definitive state (SWR_KEY is implicit)
 
             const newState = !currentState;
             logger.info({ sourceId, newState }, 'Source status toggled successfully.');
@@ -115,7 +115,7 @@ const AdminSourceHealth: NextPage = (props) => { // Removed unused props
             logger.error({ error, sourceId }, 'Error toggling source status');
             toast.error(`Error: ${error.message || 'Could not toggle source status.'}`);
             // Revalidate on error to ensure consistency
-            await mutate(SWR_KEY);
+            await mutate(); // Revalidate on error (SWR_KEY is implicit)
         } finally {
             setIsToggling(prev => ({ ...prev, [sourceId]: false }));
         }

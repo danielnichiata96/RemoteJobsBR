@@ -1,4 +1,6 @@
-import { JobProcessor, StandardizedJob, ProcessedJobResult, EnhancedGreenhouseJob, GreenhouseJob } from './types';
+import { JobProcessor, ProcessedJobResult, EnhancedGreenhouseJob, GreenhouseJob } from './types';
+import { StandardizedJob } from '../../types/StandardizedJob';
+import { FilterConfig } from '../../types/FilterConfig';
 import { 
   extractSkills, 
   detectJobType, 
@@ -11,6 +13,7 @@ import pino from 'pino';
 import { JobType, ExperienceLevel, HiringRegion, JobSource, Prisma } from '@prisma/client';
 import { extractDomain, getCompanyLogo } from '../utils/logoUtils';
 import { detectRestrictivePattern } from '../utils/filterUtils';
+import { calculateRelevanceScore } from '../utils/JobRelevanceScorer';
 
 const logger = pino({
   name: 'greenhouseProcessor',
@@ -104,6 +107,27 @@ export class GreenhouseProcessor implements JobProcessor {
       // Ensure config is treated as JSON object for boardToken access
       const sourceConfig = sourceData?.config as Prisma.JsonObject | null;
 
+      // --- Relevance Score Calculation ---
+      let relevanceScore: number | null = null;
+      if (sourceConfig && sourceConfig.SCORING_SIGNALS) { // Check if scoring signals exist in config
+        try {
+          relevanceScore = calculateRelevanceScore(
+            { 
+              title: rawJob.title, 
+              description: cleanContent, // Use the cleaned content
+              location: rawJob.location.name 
+            },
+            sourceConfig as unknown as FilterConfig // Cast needed, ensure config structure matches
+          );
+          logger.trace({ jobId: rawJob.id, score: relevanceScore }, 'Calculated relevance score.');
+        } catch (scoreError) {
+          logger.warn({ jobId: rawJob.id, error: scoreError }, 'Error calculating relevance score.');
+        }
+      } else {
+        logger.trace({ jobId: rawJob.id }, 'Scoring signals not found in config, skipping score calculation.');
+      }
+      // -------------------------------------
+
       const standardizedJob: StandardizedJob = {
         sourceId: `${rawJob.id}`,
         source: this.source,
@@ -112,26 +136,28 @@ export class GreenhouseProcessor implements JobProcessor {
         requirements: sections.requirements,
         responsibilities: sections.responsibilities,
         benefits: sections.benefits,
-        // Use pre-defined values if available, otherwise detect
         jobType: enhancedJob.jobType || detectJobType(cleanContent),
         experienceLevel: enhancedJob.experienceLevel || detectExperienceLevel(cleanContent),
         skills: enhancedJob.skills || skills,
-        tags: enhancedJob.tags || [...skills], // Use skills as tags if not provided
-        // Use the determined region, falling back if necessary
-        hiringRegion: determinedRegion, // Assign the potentially undefined value
+        tags: enhancedJob.tags || [...skills],
+        hiringRegion: determinedRegion,
         location: rawJob.location.name,
-        country: enhancedJob.country || 'Worldwide', // Default for remote jobs
+        country: enhancedJob.country || 'Worldwide',
         workplaceType: enhancedJob.workplaceType || 'REMOTE',
         applicationUrl: rawJob.absolute_url,
-        // Map to flat company properties
         companyName: sourceData?.name || enhancedJob.company?.name || '',
-        // Use boardToken from sourceData.config safely
         companyEmail: `${sourceConfig?.boardToken || 'unknown'}@greenhouse.placeholder.com`,
-        // Assign undefined instead of null for optional string fields
         companyLogo: undefined,
         companyWebsite: sourceData?.companyWebsite || enhancedJob.company?.website || undefined,
-        updatedAt: new Date(rawJob.updated_at), // Include updatedAt
-        publishedAt: new Date(rawJob.updated_at) // Use updated_at as publishedAt for now
+        updatedAt: new Date(rawJob.updated_at),
+        // Prioritize enhancedJob.publishedAt > rawJob.published_at > rawJob.updated_at
+        publishedAt: enhancedJob.publishedAt 
+            ? new Date(enhancedJob.publishedAt) 
+            : (rawJob.published_at ? new Date(rawJob.published_at) : new Date(rawJob.updated_at)),
+        isRemote: true,
+        relevanceScore: relevanceScore,
+        // Pass original metadata if available, default to empty object
+        metadataRaw: rawJob.metadata ?? {}
       };
 
       // --- Logo Fetching (using logo.dev) ---

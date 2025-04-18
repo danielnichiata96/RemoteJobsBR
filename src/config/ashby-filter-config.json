@@ -1,0 +1,163 @@
+{
+    "REMOTE_METADATA_FIELDS": {},
+    "LOCATION_KEYWORDS": {
+        "STRONG_POSITIVE_GLOBAL": [
+            "remote worldwide", 
+            "global remote", 
+            "fully remote", 
+            "remote - global",
+            "remote (global)",
+            "remote - worldwide",
+            "remote (worldwide)",
+            "remote - anywhere",
+            "remote, anywhere",
+            "remote (anywhere)",
+            "anywhere (remote)",
+            "work from anywhere"
+        ],
+        "STRONG_POSITIVE_LATAM": [
+            "remote latam", 
+            "remote - latam", 
+            "remote (latam)",
+            "remote latin america",
+            "remote - latin america",
+            "remote (latin america)",
+            "remote south america",
+            "remote - south america",
+            "remote (south america)",
+            "remote brazil",
+            "remote brasil",
+            "remote - americas",
+            "remote (americas)",
+            "americas remote",
+            "remote - brazil",
+            "remote - brasil",
+            "remote (brazil)",
+            "remote (brasil)",
+            "argentina",
+            "mexico",
+            "colombia",
+            "chile",
+            "peru"
+        ],
+        "ACCEPT_EXACT_BRAZIL_TERMS": [
+           "brazil",
+           "brasil",
+           "remote brazil",
+           "remote brasil"
+        ],
+        "STRONG_NEGATIVE_RESTRICTION": ["us only", "uk only", "berlin", "romania", "based in us", "located in the us", "usa", "u.s.", "uk", "clt", "pj"],
+        "AMBIGUOUS": ["remote", "flexible"],
+        "ACCEPT_EXACT_LATAM_COUNTRIES": ["brazil", "argentina"]
+    },
+    "CONTENT_KEYWORDS": {
+        "STRONG_POSITIVE_GLOBAL": [
+            "work from anywhere", 
+            "globally remote", 
+            "worldwide",
+            "fully distributed team",
+            "fully remote team",
+            "work from anywhere in the world",
+            "remote first company",
+            "remote-first",
+            "work from your home anywhere",
+            "distributed team",
+            "async work",
+            "location independent",
+            "no location restrictions"
+        ],
+        "STRONG_POSITIVE_LATAM": [
+            "latin america", 
+            "latam", 
+            "south america", 
+            "brazil", 
+            "brasil",
+            "americas timezone",
+            "latin american",
+            "americas region",
+            "south american",
+            "based in latam",
+            "based in south america",
+            "based in brazil",
+            "located in latam",
+            "located in south america",
+            "located in brazil",
+            "preference for latam",
+            "preference for south america",
+            "preference for brazil",
+            "argentina",
+            "mexico",
+            "colombia",
+            "chile",
+            "peru"
+        ],
+         "ACCEPT_EXACT_BRAZIL_TERMS": [
+           "brazil",
+           "brasil",
+           "remote brazil",
+           "remote brasil" 
+        ],
+        "STRONG_NEGATIVE_REGION": ["eligible to work in the us", "must reside in the uk", "based in london", "usa", "u.s.", "us residency", "clt", "pj"],
+        "STRONG_NEGATIVE_TIMEZONE": ["pst timezone", "cet timezone"]
+    },
+    "SCORING_SIGNALS": {
+        "positive_location": {
+            "keywords": [
+                {"term": "brazil", "weight": 10},
+                {"term": "brasil", "weight": 10},
+                {"term": "latam", "weight": 8},
+                {"term": "latin america", "weight": 8},
+                {"term": "south america", "weight": 7},
+                {"term": "americas", "weight": 6},
+                {"term": "worldwide", "weight": 5},
+                {"term": "global", "weight": 5},
+                {"term": "anywhere", "weight": 4}
+            ],
+            "patterns": [
+                {"pattern": "remote.*in\s+(brazil|brasil)", "weight": 15},
+                {"pattern": "hiring\s+in\s+(latam|latin america|south america)", "weight": 12},
+                {"pattern": "work\s+from\s+anywhere", "weight": 8}
+            ]
+        },
+        "negative_location": {
+            "keywords": [
+                {"term": "us only", "weight": -20},
+                {"term": "usa only", "weight": -20},
+                {"term": "eu only", "weight": -15},
+                {"term": "europe only", "weight": -15},
+                {"term": "uk only", "weight": -15},
+                {"term": "canada only", "weight": -15},
+                {"term": "emea only", "weight": -18},
+                {"term": "noram only", "weight": -18}
+            ],
+            "patterns": [
+                {"pattern": "must\s+reside\s+in\s+(the\s+)?(usa|u\.s\.a|united states|canada|uk|europe|eu|australia)", "weight": -25},
+                {"pattern": "(must\s+be|based|located)\s+in\s+(the\s+)?(usa|u\.s\.a|united states|canada|uk|europe|eu|australia)", "weight": -20},
+                {"pattern": "eligible\s+to\s+work\s+in\s+(the\s+)?(usa|u\.s\.a|united states|canada|uk|europe|eu)", "weight": -25},
+                {"pattern": "(us|u\.s\.|canadian|uk|eu|australian)\s+citizenship", "weight": -30}
+            ]
+        },
+        "positive_content": {
+            "keywords": [
+                {"term": "pj", "weight": 5},
+                {"term": "contrato pj", "weight": 6},
+                {"term": "pessoa juridica", "weight": 6},
+                {"term": "clt", "weight": 3},
+                {"term": "flexible timezone", "weight": 3},
+                {"term": "async", "weight": 2}
+            ],
+            "patterns": []
+        },
+        "negative_content": {
+            "keywords": [
+                {"term": "sponsorship not available", "weight": -10},
+                {"term": "no visa sponsorship", "weight": -10},
+                {"term": "unable to provide sponsorship", "weight": -10}
+            ],
+            "patterns": [
+                {"pattern": "must\s+work\s+.*(pst|pacific|est|eastern)\s+hours", "weight": -8}
+            ]
+        }
+    },
+    "PROCESS_JOBS_UPDATED_AFTER_DATE": "2023-01-01T00:00:00Z" 
+} 

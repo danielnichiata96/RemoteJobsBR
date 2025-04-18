@@ -5,6 +5,7 @@ import { JobSource, JobType, ExperienceLevel, HiringRegion } from '@prisma/clien
 import * as jobUtils from '../../../src/lib/utils/jobUtils';
 import * as textUtils from '../../../src/lib/utils/textUtils';
 import * as logoUtils from '../../../src/lib/utils/logoUtils';
+import * as scorerUtils from '../../../src/lib/utils/JobRelevanceScorer'; // Import scorer utils
 
 // --- Mocks ---
 
@@ -17,6 +18,8 @@ jest.mock('pino', () => {
         warn: jest.fn(),
         error: jest.fn(),
         trace: jest.fn(),
+        // Add the child mock that returns the same instance (or a new mock if needed)
+        child: jest.fn(() => mockLogger), 
     };
     // Return a factory function that returns this specific instance
     return jest.fn(() => mockLogger);
@@ -25,7 +28,8 @@ jest.mock('pino', () => {
 // Function to get the *actual* mock logger instance used by the processor
 const getMockLoggerInstance = () => {
     const pinoMockFactory = jest.requireMock('pino') as jest.Mock;
-    return pinoMockFactory(); // This will return the instance created within the mock factory
+    // Call the factory to get the instance it returns
+    return pinoMockFactory(); 
 };
 
 // Mock other utilities
@@ -33,10 +37,16 @@ jest.mock('../../../src/lib/utils/jobUtils');
 jest.mock('../../../src/lib/utils/textUtils');
 jest.mock('../../../src/lib/utils/logoUtils');
 
+// Mock JobRelevanceScorer
+jest.mock('../../../src/lib/utils/JobRelevanceScorer', () => ({
+  calculateRelevanceScore: jest.fn(),
+}));
+
 // Get references to the mocks AFTER they are mocked
 const mockJobUtils = jest.requireMock('../../../src/lib/utils/jobUtils') as jest.Mocked<typeof import('../../../src/lib/utils/jobUtils')>;
 const mockTextUtils = jest.requireMock('../../../src/lib/utils/textUtils') as jest.Mocked<typeof import('../../../src/lib/utils/textUtils')>;
 const mockLogoUtils = jest.requireMock('../../../src/lib/utils/logoUtils') as jest.Mocked<typeof import('../../../src/lib/utils/logoUtils')>;
+const mockedScorerUtils = scorerUtils as jest.Mocked<typeof scorerUtils>; // Cast mock
 
 // --- Test Helpers ---
 
@@ -83,7 +93,11 @@ describe('AshbyProcessor', () => {
     beforeEach(() => {
         // Clear the mocks on the instance created inside the jest.mock factory.
         const loggerInstanceUsedByProcessor = getMockLoggerInstance();
-        Object.values(loggerInstanceUsedByProcessor).forEach((mockFn: any) => mockFn.mockClear());
+        Object.values(loggerInstanceUsedByProcessor).forEach((mockFn: any) => {
+            if (jest.isMockFunction(mockFn)) { // Check if it's a mock function before clearing
+                mockFn.mockClear();
+            }
+        });
         // Also clear the factory mock itself
         (jest.requireMock('pino') as jest.Mock).mockClear();
 
@@ -109,15 +123,33 @@ describe('AshbyProcessor', () => {
         mockJobUtils.detectJobType.mockReturnValue(JobType.FULL_TIME);
         mockJobUtils.detectExperienceLevel.mockReturnValue(ExperienceLevel.MID_LEVEL);
         mockLogoUtils.getCompanyLogo.mockReturnValue('https://logo.clearbit.com/source-company.com');
+        mockedScorerUtils.calculateRelevanceScore.mockReturnValue(77); // Default mock score
     });
 
-    it('should successfully process a valid remote job', async () => {
-        const result = await processor.processJob(mockRawJob, mockSource);
+    it('should successfully process a valid remote job and calculate score', async () => {
+        const mockSourceWithScoring = createMockJobSource({
+            config: { ...mockSource.config, SCORING_SIGNALS: { /* mock signals */ } }
+        });
+        const result = await processor.processJob(mockRawJob, mockSourceWithScoring);
 
         expect(result.success).toBe(true);
         expect(result.error).toBeUndefined();
         const job = result.job as StandardizedJob;
 
+        // Verify scorer call
+        expect(mockedScorerUtils.calculateRelevanceScore).toHaveBeenCalledTimes(1);
+        expect(mockedScorerUtils.calculateRelevanceScore).toHaveBeenCalledWith(
+          {
+            title: mockRawJob.title,
+            description: 'Default job description. Requirements Req 1 Responsibilities Resp 1 Benefits Ben 1',
+            location: mockRawJob.location
+          },
+          mockSourceWithScoring.config
+        );
+        // Verify score in result
+        expect(job.relevanceScore).toBe(77);
+
+        // Verify standard fields and metadataRaw
         expect(job).toBeDefined();
         expect(job.sourceId).toBe(mockRawJob.id);
         expect(job.source).toBe('ashby');
@@ -148,33 +180,64 @@ describe('AshbyProcessor', () => {
         expect(mockJobUtils.detectJobType).not.toHaveBeenCalled(); // Since 'FullTime' was mapped
         expect(mockJobUtils.detectExperienceLevel).toHaveBeenCalled();
         expect(mockLogoUtils.getCompanyLogo).toHaveBeenCalledWith('https://source-company.com');
+        expect(job.metadataRaw).toEqual({
+            employmentType: mockRawJob.employmentType,
+            team: mockRawJob.team,
+            compensationTier: mockRawJob.compensationTier,
+            department: mockRawJob.department,
+            locations: mockRawJob.locations,
+            address: mockRawJob.address
+        });
     });
 
-    it('should return failure if job is not listed', async () => {
+    it('should return failure and NOT calculate score if job is not listed', async () => {
         mockRawJob = createMockAshbyJob({ isListed: false });
-        const result = await processor.processJob(mockRawJob, mockSource);
+        const mockSourceWithScoring = createMockJobSource({ config: { SCORING_SIGNALS: {} } });
+        const result = await processor.processJob(mockRawJob, mockSourceWithScoring);
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('Job is not listed');
         expect(result.job).toBeUndefined();
+        expect(mockedScorerUtils.calculateRelevanceScore).not.toHaveBeenCalled();
     });
 
-    it('should return failure if job is not remote', async () => {
+    it('should return failure and NOT calculate score if job is not remote', async () => {
         mockRawJob = createMockAshbyJob({ isRemote: false });
-        const result = await processor.processJob(mockRawJob, mockSource);
+        const mockSourceWithScoring = createMockJobSource({ config: { SCORING_SIGNALS: {} } });
+        const result = await processor.processJob(mockRawJob, mockSourceWithScoring);
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('Job is not explicitly marked as remote');
         expect(result.job).toBeUndefined();
+        expect(mockedScorerUtils.calculateRelevanceScore).not.toHaveBeenCalled();
     });
 
-     it('should return failure if job isRemote is undefined', async () => {
+    it('should return failure and NOT calculate score if job isRemote is undefined', async () => {
         mockRawJob = createMockAshbyJob({ isRemote: undefined });
-        const result = await processor.processJob(mockRawJob, mockSource);
+        const mockSourceWithScoring = createMockJobSource({ config: { SCORING_SIGNALS: {} } });
+        const result = await processor.processJob(mockRawJob, mockSourceWithScoring);
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('Job is not explicitly marked as remote');
         expect(result.job).toBeUndefined();
+        expect(mockedScorerUtils.calculateRelevanceScore).not.toHaveBeenCalled();
+    });
+
+    it('should process job but return null score if SCORING_SIGNALS are missing in config', async () => {
+        // Config WITHOUT scoring signals
+        const mockSourceWithoutScoring = createMockJobSource({ config: { jobBoardName: 'test-board' } }); 
+        mockRawJob = createMockAshbyJob(); // Ensure job is valid
+
+        const result = await processor.processJob(mockRawJob, mockSourceWithoutScoring);
+
+        expect(result.success).toBe(true);
+        expect(result.job).toBeDefined();
+        const job = result.job!;
+
+        // Verify scorer was NOT called
+        expect(mockedScorerUtils.calculateRelevanceScore).not.toHaveBeenCalled();
+        // Verify score is null
+        expect(job.relevanceScore).toBeNull();
     });
 
     it('should map LATAM region correctly', async () => {
@@ -190,7 +253,6 @@ describe('AshbyProcessor', () => {
         expect(result.success).toBe(true);
         expect((result.job as StandardizedJob).hiringRegion).toBeUndefined();
     });
-
 
     it('should map various employment types correctly', async () => {
         const types: { ashby: string | undefined, expected: JobType }[] = [

@@ -1,4 +1,4 @@
-import { detectRestrictivePattern } from '../../../src/lib/utils/filterUtils';
+import { detectRestrictivePattern, containsInclusiveSignal } from '@/lib/utils/filterUtils';
 import pino from 'pino';
 
 // Mock logger to prevent console output during tests
@@ -105,5 +105,94 @@ describe('detectRestrictivePattern', () => {
 
     test('should correctly detect standalone "Switzerland" even if not in a structural pattern', () => {
         expect(detectRestrictivePattern('Remote | Switzerland | Europe', commonNegativeKeywords, mockLogger).isRestrictive).toBe(true);
+    });
+});
+
+describe('containsInclusiveSignal', () => {
+    const positiveKeywords = [
+        'Global', 
+        'Worldwide', 
+        'LATAM', 
+        'Latin America', 
+        'Brazil',
+        'remote brazil'
+    ];
+
+    it('should return true and the keyword for a basic match', () => {
+        const text = 'This job is open Worldwide';
+        const result = containsInclusiveSignal(text, positiveKeywords, mockLogger);
+        expect(result.isInclusive).toBe(true);
+        expect(result.matchedKeyword).toBe('Worldwide');
+    });
+
+    it('should be case-insensitive', () => {
+        const text = 'Location: latam region';
+        const result = containsInclusiveSignal(text, positiveKeywords, mockLogger);
+        expect(result.isInclusive).toBe(true);
+        expect(result.matchedKeyword).toBe('LATAM'); // Returns original casing
+    });
+
+    it('should handle keywords with punctuation or at end/start', () => {
+        expect(containsInclusiveSignal('Remote (Global).', positiveKeywords, mockLogger))
+            .toEqual({ isInclusive: true, matchedKeyword: 'Global' });
+        expect(containsInclusiveSignal('Global is the scope.', positiveKeywords, mockLogger))
+            .toEqual({ isInclusive: true, matchedKeyword: 'Global' });
+        expect(containsInclusiveSignal('Hiring: Brazil!', positiveKeywords, mockLogger))
+             .toEqual({ isInclusive: true, matchedKeyword: 'Brazil' });
+    });
+
+     it('should handle multi-word keywords', () => {
+        expect(containsInclusiveSignal('Open to Latin America', positiveKeywords, mockLogger))
+            .toEqual({ isInclusive: true, matchedKeyword: 'Latin America' });
+         expect(containsInclusiveSignal('We offer remote brazil roles.', positiveKeywords, mockLogger))
+            .toEqual({ isInclusive: true, matchedKeyword: 'remote brazil' });
+    });
+
+    it('should return false if no keywords match', () => {
+        const text = 'Based in Europe';
+        const result = containsInclusiveSignal(text, positiveKeywords, mockLogger);
+        expect(result.isInclusive).toBe(false);
+        expect(result.matchedKeyword).toBeUndefined();
+    });
+
+    it('should return false for partial word matches', () => {
+        const text = 'This job is globalized';
+        const result = containsInclusiveSignal(text, positiveKeywords, mockLogger);
+        expect(result.isInclusive).toBe(false);
+        expect(result.matchedKeyword).toBeUndefined();
+    });
+
+    it('should return false for empty text or keywords', () => {
+        expect(containsInclusiveSignal('', positiveKeywords, mockLogger))
+            .toEqual({ isInclusive: false });
+        expect(containsInclusiveSignal(null, positiveKeywords, mockLogger))
+            .toEqual({ isInclusive: false });
+        expect(containsInclusiveSignal(undefined, positiveKeywords, mockLogger))
+            .toEqual({ isInclusive: false });
+        expect(containsInclusiveSignal('Some text', [], mockLogger))
+             .toEqual({ isInclusive: false });
+         expect(containsInclusiveSignal('Some text', ['', '  '], mockLogger))
+             .toEqual({ isInclusive: false });
+    });
+
+    it('should handle special regex characters in keywords', () => {
+        const keywordsWithRegexChars = ['Remote (Americas)', 'Global+Plus'];
+        
+        // Test using `createKeywordPattern` directly from filterUtils
+        const { createKeywordPattern } = require('@/lib/utils/filterUtils');
+        
+        // Using modified test approach that accounts for how the regex patterns are created
+        expect(containsInclusiveSignal('Location: Remote (Americas)', keywordsWithRegexChars, mockLogger))
+            .toEqual({ isInclusive: true, matchedKeyword: 'Remote (Americas)' });
+            
+        expect(containsInclusiveSignal('Scope: Global+Plus.', keywordsWithRegexChars, mockLogger))
+            .toEqual({ isInclusive: true, matchedKeyword: 'Global+Plus' });
+            
+        // Test character escaping directly
+        const regexWithParens = createKeywordPattern('Remote (Americas)');
+        expect(regexWithParens.test('Location: Remote (Americas)')).toBe(true);
+        
+        const regexWithPlus = createKeywordPattern('Global+Plus');
+        expect(regexWithPlus.test('Scope: Global+Plus.')).toBe(true);
     });
 }); 

@@ -54,6 +54,7 @@ model User {
   resetTokens        PasswordResetToken[]
   savedJobs          SavedJob[]
   sessions           Session[]
+  clicks             ClickTracking[]
   @@index([normalizedCompanyName])
 }
 
@@ -92,51 +93,58 @@ model VerificationToken {
 }
 
 model Job {
-  id               String          @id @default(cuid())
-  source           String          @default("direct")  // "direct", "greenhouse", "linkedin", etc.
-  sourceId         String?         // Original ID from the source
-  sourceLogo       String?         // Logo URL from the source
-  sourceUrl        String?         // Original job URL
+  id               String  @id @default(cuid())
+  source           String // e.g., 'greenhouse', 'lever', 'ashby'
+  sourceId         String // The job ID from the original source system
+  sourceLogo       String?
+  sourceUrl        String?
   companyId        String
   title            String
-  normalizedTitle  String?         @db.Text
-  description      String?         @db.Text
-  requirements     String?         @db.Text
+  normalizedTitle  String
+  normalizedCompanyName String
+  description      String?
+  requirements     String?
   responsibilities String?
-  benefits         String?         @db.Text
-  jobType          JobType?
-  experienceLevel  ExperienceLevel?
-  skills           String[]        @default([])
-  tags             String[]        @default([])
+  benefits         String?
+  skills           String[]
+  tags             String[] @default([])
   location         String?
   country          String?
-  workplaceType    String          @default("REMOTE")
-  minSalary        Float?
-  maxSalary        Float?
-  hiringRegion     HiringRegion?   // Add hiring region filter
-  currency         String?         @default("BRL")
-  salaryCycle      String?
-  showSalary       Boolean         @default(false)
-  status           JobStatus       @default(ACTIVE)
-  visas            String[]
-  languages        String[]
+  isRemote         Boolean @default(false)
+  jobType          JobType @default(FULL_TIME)
+  experienceLevel  ExperienceLevel @default(MID)
+  workplaceType    WorkplaceType? @default(REMOTE)
   applicationUrl   String?
   applicationEmail String?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  minSalary        Float?
+  maxSalary        Float?
+  currency         String?
+  salaryCycle      SalaryPeriod?
+  showSalary       Boolean @default(false)
   publishedAt      DateTime?
-  expiresAt        DateTime?
-  viewCount        Int             @default(0)
-  clickCount       Int             @default(0)
-  company          User            @relation("CompanyJobs", fields: [companyId], references: [id])
-  savedBy          SavedJob[]
-  technologies     Technology[]
-  greenhouseId     String?         @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  status           JobStatus @default(ACTIVE)
+  visas            String[]
+  languages        String[]
+  hiringRegion     HiringRegion? // Added to store the derived region (e.g., LATAM, WORLDWIDE)
+  relevanceScore   Float?
 
+  company          User            @relation("CompanyJobs", fields: [companyId], references: [id])
+  savedBy          SavedJob[]      @relation("SavedJobs")
+  clicks           ClickTracking[] @relation("JobClicks")
+  technologies     Technology[]
+  jobSource        JobSource       @relation(fields: [sourceId], references: [id])
+
+  // Ensure this is your unique constraint for same job from same source
   @@unique([source, sourceId])
-  @@index([publishedAt])
   @@index([companyId])
-  @@index([companyId, normalizedTitle, status])
+  @@index([status])
+  @@index([createdAt])
+  // Consider adding indexes on normalized columns for pg_trgm search performance
+  // You'd typically add this via raw SQL migration after enabling the extension:
+  // CREATE INDEX job_normalized_title_trgm_idx ON "Job" USING GIN ("normalizedTitle" gin_trgm_ops);
+  // CREATE INDEX job_normalized_company_name_trgm_idx ON "Job" USING GIN ("normalizedCompanyName" gin_trgm_ops);
 }
 
 model SavedJob {
@@ -145,7 +153,7 @@ model SavedJob {
   candidateId String
   createdAt   DateTime @default(now())
   candidate   User     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job         Job      @relation("SavedJobs", fields: [jobId], references: [id], onDelete: Cascade)
 
   @@unique([candidateId, jobId])
 }
@@ -271,4 +279,33 @@ enum HiringRegion {
   BRAZIL
 }
 
+enum WorkplaceType {
+  REMOTE
+  HYBRID
+  ON_SITE
+  UNKNOWN
+}
+
+enum SalaryPeriod {
+  HOURLY
+  WEEKLY
+  MONTHLY
+  YEARLY
+  PROJECT
+  UNKNOWN
+}
+
 // --- Enums ---
+
+model ClickTracking {
+  id        String   @id @default(cuid())
+  jobId     String
+  userId    String?
+  clickedAt DateTime @default(now())
+
+  job       Job      @relation("JobClicks", fields: [jobId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([userId])
+}

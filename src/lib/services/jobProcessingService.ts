@@ -1,8 +1,10 @@
 import { prisma } from '../prisma';
 import { StandardizedJob } from '../../types/StandardizedJob';
 import pino from 'pino';
-import { Prisma, PrismaClient, HiringRegion, JobType, ExperienceLevel, JobStatus, UserRole } from '@prisma/client';
-import { normalizeForDeduplication } from '../utils/textUtils'; // Import normalization function
+import { Prisma, PrismaClient, HiringRegion, JobType, ExperienceLevel, JobStatus, UserRole, SalaryPeriod, WorkplaceType } from '@prisma/client';
+import { Currency } from '../../types/models';
+import { normalizeStringForSearch, normalizeCompanyName } from '../utils/string'; // Import NEW normalization functions
+import { z } from 'zod'; // Import Zod
 
 const logger = pino({
   transport: {
@@ -14,6 +16,53 @@ const logger = pino({
     }
   }
 });
+
+// --- Adjusted Zod schema (more lenient for testing) --- 
+const standardizedJobSchema = z.object({
+  sourceId: z.string().min(1),
+  source: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().optional(), 
+  requirements: z.string().optional(),
+  responsibilities: z.string().optional(),
+  benefits: z.string().optional(),
+  jobType: z.nativeEnum(JobType).optional(),
+  experienceLevel: z.nativeEnum(ExperienceLevel).optional(),
+  skills: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  location: z.string().optional(), 
+  country: z.string().optional(),
+  workplaceType: z.nativeEnum(WorkplaceType).optional(),
+  isRemote: z.boolean().optional(), 
+  hiringRegion: z.nativeEnum(HiringRegion).optional(),
+  visas: z.array(z.string()).optional(),
+  languages: z.array(z.string()).optional(),
+  minSalary: z.number().optional(),
+  maxSalary: z.number().optional(),
+  currency: z.nativeEnum(Currency).optional(),
+  salaryPeriod: z.nativeEnum(SalaryPeriod).optional(),
+  applicationUrl: z.string().url().min(1).optional(),
+  companyName: z.string().min(1),
+  companyLogo: z.string().optional(),
+  companyWebsite: z.string().url().optional(),
+  companyEmail: z.string().email().optional(),
+  locationRaw: z.string().optional(),
+  metadataRaw: z.any().optional(),
+  jobType2: z.enum(['global', 'latam']).optional(),
+  publishedAt: z.date().optional(),
+  expiresAt: z.date().optional(),
+  updatedAt: z.date().optional(),
+  status: z.nativeEnum(JobStatus).optional(),
+  relevanceScore: z.number().nullish(), // Allow number or null/undefined
+}).refine(data => data.isRemote !== undefined || data.workplaceType !== undefined, {
+    message: "Either isRemote or workplaceType must be defined",
+    path: ["isRemote", "workplaceType"], 
+});
+// --- End Adjusted Zod Schema --- 
+
+// Constants for similarity thresholds (Lowered)
+const TITLE_SIMILARITY_THRESHOLD = 0.7;
+const COMPANY_SIMILARITY_THRESHOLD = 0.8;
 
 // Helper function to map jobType2 string to HiringRegion enum
 function mapJobType2ToHiringRegion(jobType2?: 'global' | 'latam'): HiringRegion | null {
@@ -35,225 +84,267 @@ export class JobProcessingService {
   }
 
   /**
-   * Saves or updates a job in the database based on its source and sourceId.
-   * Creates the associated company if it doesn't exist.
-   *
-   * @param job The standardized job data to save or update.
-   * @returns Promise<boolean> True if the job was successfully saved or updated, false otherwise.
+   * Finds potential duplicate jobs based on title and company name similarity using pg_trgm.
+   * Uses Prisma.sql for better type safety and query building.
    */
-  public async saveOrUpdateJob(job: StandardizedJob): Promise<boolean> {
-    // Check for required fields from StandardizedJob
-    if (!job || !job.source || !job.sourceId || !job.title || !job.applicationUrl) {
-        this.logger.error({ jobData: job }, 'Job data is missing essential fields (source, sourceId, title, applicationUrl). Skipping save.');
-        return false;
-    }
-
-    this.logger.debug({ source: job.source, sourceId: job.sourceId, title: job.title }, 'Processing job...');
+  private async findPotentialDuplicates(
+    normalizedTitle: string,
+    normalizedCompanyName: string,
+    excludeSource: string,
+    excludeSourceId: string
+  ): Promise<{ id: string, title: string, company_name: string, title_similarity: number, company_similarity: number }[]> {
+    const activeStatus = JobStatus.ACTIVE;
+    const companyRole = UserRole.COMPANY;
 
     try {
-      // Normalize company name to ensure consistency
-      const rawCompanyName = job.companyName?.trim() || '';
-      
+      // Note: Using Prisma.sql for parameters
+      const potentialDuplicates = await this.prisma.$queryRaw<{
+        id: string,
+        title: string,
+        company_name: string,
+        title_similarity: number,
+        company_similarity: number
+      }[]>`
+        SELECT
+          j.id,
+          j.title,
+          c.name as company_name,
+          similarity(j."normalizedTitle", ${normalizedTitle}) as title_similarity,
+          similarity(c."normalizedCompanyName", ${normalizedCompanyName}) as company_similarity
+        FROM "Job" j
+        JOIN "User" c ON j."companyId" = c.id
+        WHERE
+          j.status = ${activeStatus}::"JobStatus" AND -- Cast enum
+          c.role = ${companyRole}::"UserRole" AND -- Cast enum
+          (
+            j."normalizedTitle" % ${normalizedTitle} OR
+            c."normalizedCompanyName" % ${normalizedCompanyName}
+          ) AND
+          similarity(j."normalizedTitle", ${normalizedTitle}) >= ${TITLE_SIMILARITY_THRESHOLD} AND
+          similarity(c."normalizedCompanyName", ${normalizedCompanyName}) >= ${COMPANY_SIMILARITY_THRESHOLD} AND
+          NOT (j.source = ${excludeSource} AND j."sourceId" = ${excludeSourceId})
+        ORDER BY title_similarity DESC, company_similarity DESC
+        LIMIT 5;
+      `;
+      return potentialDuplicates;
+    } catch (error) {
+      this.logger.error({ 
+        error,
+        normalizedTitle,
+        normalizedCompanyName,
+        excludeSource,
+        excludeSourceId
+      }, 'Error executing raw SQL query for finding duplicates.');
+      return []; 
+    }
+  }
+
+  /**
+   * Saves or updates a job, handles company creation/linking, and logs potential duplicates.
+   * Uses findUnique + update/create instead of upsert for clarity.
+   */
+  public async saveOrUpdateJob(job: StandardizedJob): Promise<boolean> {
+    // --- Use Comprehensive Zod Validation --- 
+    const validationResult = standardizedJobSchema.safeParse(job);
+    if (!validationResult.success) {
+      this.logger.warn({
+        jobSource: job?.source,
+        jobSourceId: job?.sourceId,
+        jobTitle: job?.title,
+        validationErrors: validationResult.error.flatten().fieldErrors // Log flattened errors
+      }, 'Job data failed standardized validation. Skipping save.');
+      return false;
+    }
+    // --- Explicitly type validJobData using z.infer --- 
+    const validJobData: z.infer<typeof standardizedJobSchema> = validationResult.data;
+    
+    this.logger.trace({ source: validJobData.source, sourceId: validJobData.sourceId, title: validJobData.title }, 'Processing job (passed validation)...');
+
+    // --- Normalize Key Fields EARLY --- 
+    const normalizedTitleForDb = normalizeStringForSearch(validJobData.title);
+    const rawCompanyName = validJobData.companyName.trim();
+    const normalizedCompanyNameForDb = normalizeCompanyName(rawCompanyName);
+
+    if (!normalizedTitleForDb || !normalizedCompanyNameForDb) {
+      this.logger.warn({
+        jobSource: validJobData.source,
+        jobSourceId: validJobData.sourceId,
+        title: validJobData.title,
+        companyName: validJobData.companyName,
+      }, 'Skipping job due to empty normalized title or company name after normalization.');
+      return false;
+    }
+
+    try {
       // --- 1. Find or Create Company ---
       let company = await this.prisma.user.findFirst({
-        where: {
-          name: rawCompanyName, 
-          role: UserRole.COMPANY 
-        },
+        where: { normalizedCompanyName: normalizedCompanyNameForDb, role: UserRole.COMPANY },
       });
-
-      // Calculate normalized name AFTER finding/creating
-      const normalizedCompanyName = normalizeForDeduplication(rawCompanyName);
-
+      if (!company) {
+         company = await this.prisma.user.findFirst({ where: { name: rawCompanyName, role: UserRole.COMPANY } });
+      }
       if (!company) {
         this.logger.info({ companyName: rawCompanyName }, 'Company not found, creating new company...');
         try {
-          const placeholderEmail = `${rawCompanyName.toLowerCase().replace(/[^a-z0-9]/g, '')}_${job.source}@jobsource.example.com`; 
-          
+          const placeholderEmail = `${normalizedCompanyNameForDb.replace(/[^a-z0-9]/g, '')}_${validJobData.source}@jobsource.example.com`; 
           company = await this.prisma.user.create({
             data: {
               email: placeholderEmail,
-              name: rawCompanyName, // Save raw name
-              normalizedCompanyName: normalizedCompanyName, // Save normalized name
+              name: rawCompanyName,
+              normalizedCompanyName: normalizedCompanyNameForDb,
               role: UserRole.COMPANY,
-              logo: job.companyLogo,
-              website: job.companyWebsite,
+              logo: validJobData.companyLogo,
+              website: validJobData.companyWebsite,
               industry: 'Technology',
               isVerified: false,
             },
           });
           this.logger.info({ companyId: company.id, companyName: rawCompanyName }, 'Company created successfully.');
         } catch (createError: any) {
-           if (createError.code === 'P2002') { 
-                this.logger.warn({ companyName: rawCompanyName, error: createError.message }, 'Company creation failed (P2002 - likely race condition). Attempting find again with slight delay...');
-                
-                // Add a small delay before retrying the find
-                await new Promise(resolve => setTimeout(resolve, 100)); // e.g., 100ms delay
-
-                company = await this.prisma.user.findFirst({
-                    where: {
-                      name: rawCompanyName,
-                      role: UserRole.COMPANY
-                    },
-                });
-
-                if (!company) {
-                    // Optional: Retry find one more time after another delay?
-                    // await new Promise(resolve => setTimeout(resolve, 200));
-                    // company = await this.prisma.user.findFirst({...});
-                    // if (!company) {
-                    this.logger.error({ companyName: rawCompanyName }, 'Still could not find company after P2002 error and retry. Skipping job.');
-                    return false;
-                    // }
-                }
-                
-                this.logger.info({ companyId: company.id, companyName: rawCompanyName }, 'Found company after P2002 error and retry.');
-                // Ensure normalized name is set if found after error
-                if (company && !company.normalizedCompanyName) {
-                    await this.prisma.user.update({
-                         where: { id: company.id },
-                         data: { normalizedCompanyName: normalizedCompanyName },
-                    });
-                 }
-
-           } else {
-                // Handle other unexpected errors during company creation
-                this.logger.error({ companyName: rawCompanyName, errorCode: createError.code, error: createError }, 'Unexpected error failed to create company. Skipping job.');
-                return false; // Do not proceed if creation failed unexpectedly
-           }
+          if (createError.code === 'P2002') {
+            this.logger.warn({ companyName: rawCompanyName, error: createError.message }, 'Company creation failed (P2002 - likely race condition). Attempting find again with slight delay...');
+            await new Promise(resolve => setTimeout(resolve, 100));
+            company = await this.prisma.user.findFirst({ where: { name: rawCompanyName, role: UserRole.COMPANY } });
+            if (!company) {
+              this.logger.error({ companyName: rawCompanyName }, 'Still could not find company after P2002 error and retry. Skipping job.');
+              return false;
+            }
+            this.logger.info({ companyId: company.id, companyName: rawCompanyName }, 'Found company after P2002 error and retry.');
+            if (!company.normalizedCompanyName) {
+              await this.prisma.user.update({ where: { id: company.id }, data: { normalizedCompanyName: normalizedCompanyNameForDb } });
+            }
+          } else {
+            this.logger.error({ companyName: rawCompanyName, errorCode: createError.code, error: createError }, 'Unexpected error failed to create company. Skipping job.');
+            return false;
+          }
         }
       } else {
-        this.logger.debug({ companyId: company.id, companyName: rawCompanyName }, 'Company found.');
-        
-        // Combine potential updates for existing company
+        this.logger.trace({ companyId: company.id, companyName: rawCompanyName }, 'Company found.');
         const dataToUpdate: Partial<Prisma.UserUpdateInput> = {};
         let shouldUpdate = false;
-
-        // Check if normalized name needs update
-        const calculatedNormalizedName = normalizeForDeduplication(rawCompanyName);
-        if (!company.normalizedCompanyName || company.normalizedCompanyName !== calculatedNormalizedName) {
-            dataToUpdate.normalizedCompanyName = calculatedNormalizedName;
+        if (!company.normalizedCompanyName || company.normalizedCompanyName !== normalizedCompanyNameForDb) {
+            dataToUpdate.normalizedCompanyName = normalizedCompanyNameForDb;
             shouldUpdate = true;
-            this.logger.trace({ companyId: company.id }, 'Adding missing/mismatched normalized company name to update.');
         }
-
-        // Check if logo needs update
-        if (!company.logo && job.companyLogo) {
-           dataToUpdate.logo = job.companyLogo;
+        if (!company.logo && validJobData.companyLogo) {
+           dataToUpdate.logo = validJobData.companyLogo;
            shouldUpdate = true;
-           this.logger.trace({ companyId: company.id }, 'Adding missing company logo to update.');
         }
-        
-        // Perform update only if needed
         if (shouldUpdate) {
-            this.logger.debug({ companyId: company.id, data: Object.keys(dataToUpdate) }, 'Updating existing company data...');
-            await this.prisma.user.update({
-                where: { id: company.id },
-                data: dataToUpdate,
-            });
+            await this.prisma.user.update({ where: { id: company.id }, data: dataToUpdate });
         }
       }
+      const companyId = company.id; 
 
-      // --- 1.5 Check for Duplicates ---
-      const normalizedJobTitle = normalizeForDeduplication(job.title);
-      this.logger.trace({ companyId: company.id, normalizedJobTitle }, 'Checking for duplicate job...');
-      
-      const existingJob = await this.prisma.job.findFirst({
-          where: {
-              companyId: company.id,
-              normalizedTitle: normalizedJobTitle,
-              status: JobStatus.ACTIVE, // Only check against active jobs
-          }
-      });
-
-      // Log the value RIGHT BEFORE the check
-      this.logger.debug({ existingJobValue: existingJob }, 'Value before IF check'); // Comment out diagnostic log
-
-      // Explicitly check the boolean value
-      if (existingJob) {
+      // --- 1.5 Check for Potential Duplicates (using pg_trgm) ---
+      this.logger.trace({ 
+          normalizedTitle: normalizedTitleForDb,
+          normalizedCompany: normalizedCompanyNameForDb,
+          source: validJobData.source,
+          sourceId: validJobData.sourceId
+      }, 'Checking for potential duplicates using similarity...');
+      const potentialDuplicates = await this.findPotentialDuplicates(
+          normalizedTitleForDb,
+          normalizedCompanyNameForDb,
+          validJobData.source,
+          validJobData.sourceId
+      );
+      if (potentialDuplicates.length > 0) {
           this.logger.warn({
-              existingJobId: existingJob.id,
-              incomingSource: job.source,
-              incomingSourceId: job.sourceId,
-              normalizedJobTitle,
-              companyName: rawCompanyName
-          }, 'Duplicate job detected. Skipping save, updating existing job timestamp.');
-
-          // Update the timestamp of the existing job to show it was seen again
-          await this.prisma.job.update({
-              where: { id: existingJob.id },
-              data: { updatedAt: new Date() }
-          });
-          // Add debug log to confirm execution path
-          // this.logger.debug({ existingJobId: existingJob.id }, 'Existing job timestamp updated.'); // Comment out diagnostic log
-
-          return false; // Indicate job was not saved/updated due to duplication
+              incomingJob: { 
+                  title: validJobData.title,
+                  company: rawCompanyName, 
+                  source: validJobData.source, 
+                  sourceId: validJobData.sourceId 
+              },
+              potentialDuplicates: potentialDuplicates.map(dup => ({ 
+                  id: dup.id, 
+                  title: dup.title, 
+                  company: dup.company_name, 
+                  titleSimilarity: dup.title_similarity,
+                  companySimilarity: dup.company_similarity
+              }))
+          }, `Potential duplicate(s) found for job. Currently only logging.`);
       }
 
-      // --- 2. Prepare Job Data (with Defaults) ---
-      const mappedHiringRegion = mapJobType2ToHiringRegion(job.jobType2); // Map the value
+      // --- 2. Prepare Job Data --- 
+      const hiringRegionFromJobType = mapJobType2ToHiringRegion(validJobData.jobType2);
+      const determinedHiringRegion = validJobData.hiringRegion || hiringRegionFromJobType || undefined;
 
-      const jobDataForDb = {
-        title: job.title,
-        description: job.description || '',
-        requirements: job.requirements || 'Não especificado',
-        responsibilities: job.responsibilities || 'Não especificado',
-        benefits: job.benefits,
-        // Restore direct enum usage for defaults
-        jobType: job.jobType || JobType.FULL_TIME,
-        experienceLevel: job.experienceLevel || ExperienceLevel.MID,
-        skills: job.skills || [],
-        location: job.location,
-        country: job.country || 'Worldwide',
-        workplaceType: job.workplaceType || 'REMOTE', 
-        applicationUrl: job.applicationUrl,
-        minSalary: job.minSalary,
-        maxSalary: job.maxSalary,
-        currency: job.currency,
-        salaryCycle: job.salaryCycle,
-        showSalary: !!(job.minSalary && job.maxSalary),
-        publishedAt: job.publishedAt || new Date(),
-        updatedAt: new Date(),
-        status: JobStatus.ACTIVE,
-        companyId: company.id,
-        source: job.source,
-        sourceId: job.sourceId,
-        normalizedTitle: normalizedJobTitle, // Add normalized title to data
-        visas: [],
-        languages: [],
-        hiringRegion: mappedHiringRegion, // Uses the helper function's result
+      const jobData = {
+        title: validJobData.title,
+        description: validJobData.description,
+        requirements: validJobData.requirements,
+        responsibilities: validJobData.responsibilities,
+        benefits: validJobData.benefits,
+        location: validJobData.location,
+        country: validJobData.country,
+        isRemote: validJobData.isRemote,
+        jobType: validJobData.jobType || JobType.UNKNOWN, // Default if undefined
+        experienceLevel: validJobData.experienceLevel || ExperienceLevel.UNKNOWN, // Default
+        workplaceType: validJobData.workplaceType || WorkplaceType.UNKNOWN, // Default
+        applicationUrl: validJobData.applicationUrl,
+        // applicationEmail: validJobData.companyEmail, // Consider if this should be job-specific
+        minSalary: validJobData.minSalary,
+        maxSalary: validJobData.maxSalary,
+        currency: validJobData.currency,
+        salaryPeriod: validJobData.salaryPeriod,
+        publishedAt: validJobData.publishedAt,
+        status: JobStatus.ACTIVE, // Set to active when saving/updating
+        skills: validJobData.skills || [],
+        tags: validJobData.tags || [],
+        visas: validJobData.visas || [],
+        languages: validJobData.languages || [],
+        hiringRegion: determinedHiringRegion,
+        companyId: companyId,
+        source: validJobData.source,
+        sourceId: validJobData.sourceId,
+        normalizedTitle: normalizedTitleForDb, // Use pre-normalized
+        normalizedCompanyName: normalizedCompanyNameForDb, // Use pre-normalized
+        relevanceScore: validJobData.relevanceScore, // Include the relevance score
+        // Ensure updatedAt is handled by Prisma automatically or set manually if needed
       };
 
-      // --- 3. Upsert Job ---
-      this.logger.trace({ jobDataForDb }, 'Attempting to upsert job...'); // Log data before upsert
-      const upsertResult = await this.prisma.job.upsert({
-        where: { source_sourceId: { source: job.source, sourceId: job.sourceId } }, // Use unique constraint
-        update: jobDataForDb, // Reverted: Update with new data (original behavior)
-        create: jobDataForDb, // Create if not exists
+      // --- 3. Find Existing Job --- 
+      const existingJob = await this.prisma.job.findUnique({
+        where: { 
+          source_sourceId: { 
+            source: validJobData.source, 
+            sourceId: validJobData.sourceId, 
+          },
+        },
       });
-      this.logger.trace({ upsertResult }, 'Upsert operation completed.');
 
-      // Uncommenting final log
-      this.logger.info({ jobId: upsertResult.id, source: job.source, sourceId: job.sourceId }, 'Job processed and saved/updated successfully.');
+      // --- 4. Update or Create Job --- 
+      if (existingJob) {
+        // --- Update Existing Job ---
+        this.logger.trace({ jobId: existingJob.id }, 'Updating existing job...');
+        await this.prisma.job.update({
+            where: { id: existingJob.id },
+            data: jobData,
+        });
+        this.logger.info({ jobId: existingJob.id, source: validJobData.source, sourceId: validJobData.sourceId }, 'Job updated successfully.');
+
+      } else {
+        // --- Create New Job ---
+        this.logger.trace('Creating new job...');
+        const newJob = await this.prisma.job.create({
+            data: jobData,
+        });
+        this.logger.info({ jobId: newJob.id, source: validJobData.source, sourceId: validJobData.sourceId }, 'Job created successfully.');
+      }
+
       return true;
 
     } catch (error) {
       // Improved Error Logging
       const logPayload: any = { 
-          source: job.source, 
-          sourceId: job.sourceId, 
-          title: job.title,
+          source: validJobData?.source, // Use validated data if available
+          sourceId: validJobData?.sourceId, 
+          title: validJobData?.title,
           errorName: error instanceof Error ? error.name : 'UnknownErrorType',
           errorMessage: error instanceof Error ? error.message : String(error),
       };
-      // Remove specific Prisma error check for simplicity in testing environment
-      /* 
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        logPayload.prismaCode = error.code;
-        logPayload.prismaMeta = error.meta;
-        logPayload.prismaStack = error.stack?.substring(0, 500) + '...'; // Limit stack trace length
-      }
-      */
       this.logger.error(logPayload, 'Error processing job in service');
       return false;
     }
