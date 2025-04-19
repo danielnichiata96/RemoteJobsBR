@@ -63,7 +63,7 @@ LLM should update this file based on conversational progress.
 *   [x] **Types:** Fix optional/nullable properties (`title`, `experienceLevel`, `sourceId`, `logoUrl`) in interfaces within `src/types/models.ts`. (Completed - 2024-08-17)
 *   [x] **Testing/LeverProcessor:** Investigate and fix failing salary mapping test in `tests/lib/jobProcessors/LeverProcessor.test.ts`. (Completed - 2024-08-19)
 *   [ ] **Config:** Fix AshbyFetcher attempting to load config from incorrect path (`src/config/` instead of `config/`). (Reverted fix, path seems correct in src/config/ - 2024-08-19)
-*   [ ] **Investigate Fetch Warnings:** Check remaining warnings during `npm run fetch-jobs`, specifically "Job older than 30 days" and "JobProcessingService failed to save/update the job". Determine if these are expected behavior (e.g., age filter) or indicate underlying issues in processing/saving logic. (Added YYYY-MM-DD)
+*   [ ] **Investigate Fetch Warnings:** Check remaining warnings during `npm run fetch-jobs`, specifically "Job older than 30 days" and "JobProcessingService failed to save/update the job". Determine if these are expected behavior (e.g., age filter) or indicate underlying issues in processing/saving logic. (Added 2024-08-19)
 
 ## Next Tasks To Consider
 *   [x] **Admin/Monitoring:** Criar Painel de Saúde das Fontes (`JobSource Health Dashboard`).
