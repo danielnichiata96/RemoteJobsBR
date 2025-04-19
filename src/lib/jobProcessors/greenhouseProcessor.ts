@@ -1,6 +1,5 @@
 import { JobProcessor, ProcessedJobResult, EnhancedGreenhouseJob, GreenhouseJob } from './types';
-import { StandardizedJob } from '../../types/StandardizedJob';
-import { FilterConfig } from '../../types/FilterConfig';
+import { StandardizedJob, JobAssessmentStatus } from '../../types/StandardizedJob';
 import { 
   extractSkills, 
   detectJobType, 
@@ -14,6 +13,12 @@ import { JobType, ExperienceLevel, HiringRegion, JobSource, Prisma } from '@pris
 import { extractDomain, getCompanyLogo } from '../utils/logoUtils';
 import { detectRestrictivePattern } from '../utils/filterUtils';
 import { calculateRelevanceScore } from '../utils/JobRelevanceScorer';
+import { WorkplaceType } from '@prisma/client';
+
+// Extend the type for the incoming job object to include the assessment status
+interface GreenhouseJobWithAssessment extends GreenhouseJob {
+  _assessmentStatus?: JobAssessmentStatus;
+}
 
 const logger = pino({
   name: 'greenhouseProcessor',
@@ -117,7 +122,7 @@ export class GreenhouseProcessor implements JobProcessor {
               description: cleanContent, // Use the cleaned content
               location: rawJob.location.name 
             },
-            sourceConfig as unknown as FilterConfig // Cast needed, ensure config structure matches
+            sourceConfig as Prisma.JsonObject // Removed FilterConfig cast, ensure structure matches
           );
           logger.trace({ jobId: rawJob.id, score: relevanceScore }, 'Calculated relevance score.');
         } catch (scoreError) {
@@ -143,7 +148,7 @@ export class GreenhouseProcessor implements JobProcessor {
         hiringRegion: determinedRegion,
         location: rawJob.location.name,
         country: enhancedJob.country || 'Worldwide',
-        workplaceType: enhancedJob.workplaceType || 'REMOTE',
+        workplaceType: WorkplaceType.REMOTE,
         applicationUrl: rawJob.absolute_url,
         companyName: sourceData?.name || enhancedJob.company?.name || '',
         companyEmail: `${sourceConfig?.boardToken || 'unknown'}@greenhouse.placeholder.com`,
@@ -156,6 +161,7 @@ export class GreenhouseProcessor implements JobProcessor {
             : (rawJob.published_at ? new Date(rawJob.published_at) : new Date(rawJob.updated_at)),
         isRemote: true,
         relevanceScore: relevanceScore,
+        assessmentStatus: enhancedJob._assessmentStatus,
         // Pass original metadata if available, default to empty object
         metadataRaw: rawJob.metadata ?? {}
       };

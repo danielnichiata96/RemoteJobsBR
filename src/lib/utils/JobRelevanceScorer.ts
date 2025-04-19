@@ -1,6 +1,7 @@
-import { StandardizedJob } from '../types/StandardizedJob';
-import { FilterConfig } from '../types/FilterConfig'; // Assuming FilterConfig type exists
-import { normalizeText } from './textUtils'; // Assuming textUtils exists for normalization
+import { StandardizedJob } from '../../types/StandardizedJob';
+import { normalizeForDeduplication } from './textUtils'; // Import the existing normalization function
+// import { FilterConfig } from '../types/FilterConfig'; // Removed - Config passed as object
+// import { normalizeText } from './textUtils'; // Removed - Function doesn't exist
 
 interface JobDataForScoring {
   title: string;
@@ -18,23 +19,25 @@ interface JobDataForScoring {
  */
 export function calculateRelevanceScore(
   jobData: JobDataForScoring,
-  config: FilterConfig
-): number {
+  config: any // Changed FilterConfig type to any
+): number | null {
+  if (!config?.SCORING_SIGNALS) {
+    // Optional: Log a warning if signals are missing?
+    return null; // Or throw an error?
+  }
+
   let score = 0;
   const signals = config.SCORING_SIGNALS;
 
-  if (!signals) {
-    // Optional: Log a warning if signals are missing?
-    return 0; // Or throw an error?
-  }
-
-  // Combine text fields for easier searching. Normalize them.
-  const combinedText = normalizeText(
+  // Combine relevant text fields for broader matching
+  const combinedText = normalizeForDeduplication(
     `${jobData.title || ''} ${jobData.description || ''} ${jobData.location || ''}`
   );
-  const locationText = normalizeText(jobData.location || '');
-  const descriptionText = normalizeText(jobData.description || '');
-  const titleText = normalizeText(jobData.title || '');
+  const locationText = normalizeForDeduplication(jobData.location || '');
+  const descriptionText = normalizeForDeduplication(jobData.description || '');
+  const titleText = normalizeForDeduplication(jobData.title || '');
+
+  let textToSearch = combinedText; // Declare outside the loop
 
   // --- Process Scoring Signals --- 
 
@@ -49,28 +52,30 @@ export function calculateRelevanceScore(
     if (!category) continue;
 
     // Process keywords
-    if (category.keywords) {
+    if (category.keywords && category.keywords.length > 0) {
       for (const keyword of category.keywords) {
-        // Decide which text field(s) to check based on category
-        // For location signals, prioritize location field?
-        // For content signals, prioritize description/title?
-        // Simple approach: check combined text for now.
-        // TODO: Refine which text fields are checked per category/keyword type?
-        const normalizedTerm = normalizeText(keyword.term);
-        if (combinedText.includes(normalizedTerm)) {
+        const normalizedTerm = normalizeForDeduplication(keyword.term);
+        textToSearch = combinedText; // Default to combined text (reuse outer variable)
+
+        // For location signals, prioritize location field
+        if (category.locationPriority) {
+          textToSearch = locationText;
+        }
+
+        if (textToSearch.includes(normalizedTerm)) {
           score += keyword.weight;
         }
       }
     }
 
     // Process patterns (Regex)
-    if (category.patterns) {
+    if (category.patterns && category.patterns.length > 0) {
       for (const pattern of category.patterns) {
         try {
           // Case-insensitive regex
           const regex = new RegExp(pattern.pattern, 'i'); 
           // TODO: Refine which text fields are checked per category/pattern type?
-          if (regex.test(combinedText)) {
+          if (regex.test(textToSearch)) {
             score += pattern.weight;
           }
         } catch (error) {

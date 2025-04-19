@@ -11,6 +11,7 @@ import { FilterConfig } from '../../../src/types/JobSource'; // Corrected path
 import { containsInclusiveSignal } from '../../../src/lib/utils/filterUtils'; // Corrected path
 import { stripHtml } from '../../../src/lib/utils/textUtils'; // Corrected path
 import { PrismaClient } from '@prisma/client';
+import { JobAssessmentStatus } from '../../../src/types/StandardizedJob'; // Import the enum
 
 // Mocks
 
@@ -272,260 +273,174 @@ describe('LeverFetcher', () => {
         // The errorMessage in the result should capture the first processing error
         expect(result.errorMessage).toBe('Job job1 (Remote Engineer): Failed to process'); 
     });
-});
 
-// Helper to create a minimal JobSource object for tests
-const createMockLeverJobSource = (configOverrides = {}): JobSource => ({
-    id: 'lever-test-src-1',
-    name: 'Test Lever Source',
-    type: 'lever',
-    config: { companyIdentifier: 'test-company', ...configOverrides },
-    isEnabled: true,
-    lastFetched: null,
-    companyWebsite: null,
-    logoUrl: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-});
+    describe('_isJobRelevant', () => {
+        let jobLogger: jest.Mocked<pino.Logger>;
 
-// Helper function to create mock LeverApiPosting data
-const createMockLeverJob = (overrides: Partial<LeverApiPosting>): LeverApiPosting => ({
-    id: `job_${Math.random().toString(36).substring(2, 15)}`,
-    text: 'Software Engineer', // Job Title
-    workplaceType: 'remote', // Default to remote
-    categories: { // Often contains location/commitment
-        location: 'Remote', // Default ambiguous location
-        commitment: 'Full-time',
-        // Add other relevant categories if needed
-    },
-    description: 'Default description.', // Plain text description
-    descriptionHtml: '<p>Default description.</p>',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    hostedUrl: 'https://jobs.lever.co/test-company/jobid',
-    applyUrl: 'https://jobs.lever.co/test-company/jobid/apply',
-    // Add other fields as needed based on Lever API structure
-    ...overrides,
-    // Ensure nested structures are handled
-    categories: { 
-        location: overrides.categories?.location || 'Remote',
-        commitment: overrides.categories?.commitment || 'Full-time',
-        ...(overrides.categories || {}), // Spread other potential categories
-    },
-    content: { 
-        description: overrides.content?.description || overrides.description || 'Default content description.',
-        descriptionHtml: overrides.content?.descriptionHtml || overrides.descriptionHtml || '<p>Default content description.</p>',
-        lists: overrides.content?.lists || [],
-        // Add other content fields if necessary
-        ...(overrides.content || {}),
-    }
-});
-
-// Sample Filter Config (using the same as Ashby for consistency)
-const testFilterConfig: FilterConfig = {
-    LOCATION_KEYWORDS: {
-        STRONG_POSITIVE_GLOBAL: ["worldwide", "global"],
-        STRONG_POSITIVE_LATAM: ["latam", "brazil", "remote brazil"],
-        ACCEPT_EXACT_BRAZIL_TERMS: ["brazil"],
-        ACCEPT_EXACT_LATAM_COUNTRIES: ["argentina"], // Added for testing
-        STRONG_NEGATIVE_RESTRICTION: ["us only", "berlin", "clt", "london"],
-        AMBIGUOUS: ["remote"],
-    },
-    CONTENT_KEYWORDS: {
-        STRONG_POSITIVE_GLOBAL: ["work from anywhere"],
-        STRONG_POSITIVE_LATAM: ["latin america"],
-        ACCEPT_EXACT_BRAZIL_TERMS: ["brazil"],
-        STRONG_NEGATIVE_REGION: ["usa", "must reside in the uk", "clt", "california"],
-        STRONG_NEGATIVE_TIMEZONE: []
-    },
-    PROCESS_JOBS_UPDATED_AFTER_DATE: "2024-01-01T00:00:00Z"
-};
-
-// --- NEW Test Suite for _isJobRelevant ---
-describe('LeverFetcher - _isJobRelevant', () => {
-    let fetcherInstance: any; // Use 'any' to access private methods
-    let mockLogger: ReturnType<typeof getMockLoggerInstance>;
-    let mockJob: LeverApiPosting;
-
-    beforeEach(() => {
-        // Reset mocks
-        jest.clearAllMocks();
-        mockLogger = getMockLoggerInstance(); // Use helper to get mock logger
-
-        // Reset and configure the top-level fs.readFileSync mock
-        (fs.readFileSync as jest.Mock).mockReset();
-        const expectedConfigEnding = path.normalize('src/config/lever-filter-config.json');
-        (fs.readFileSync as jest.Mock).mockImplementation((filePath: string) => {
-            const normalizedFilePath = path.normalize(filePath);
-            if (normalizedFilePath.endsWith(expectedConfigEnding)) {
-                return JSON.stringify(testFilterConfig); // Return our specific test config
-            }
-            // Log unexpected paths for debugging during tests
-            console.warn(`Mock fs.readFileSync called with unexpected path: ${filePath} (normalized: ${normalizedFilePath})`);
-            throw new Error(`fs.readFileSync mock called with unexpected path: ${filePath}`);
+        beforeEach(() => {
+            // Reset filter util mocks for each relevance test
+            (detectRestrictivePattern as jest.Mock).mockReset().mockReturnValue({ isRestrictive: false });
+            (containsInclusiveSignal as jest.Mock).mockReset().mockReturnValue({ isInclusive: false });
+            
+            // Create a fresh mock logger for each test
+            jobLogger = getMockLoggerInstance();
         });
 
-        // Mock filter utils dependencies for this suite
-        (detectRestrictivePattern as jest.Mock).mockReset();
-        (containsInclusiveSignal as jest.Mock).mockReset();
-        (stripHtml as jest.Mock).mockReset();
-
-        // Set default implementations for filter utils mocks within this suite
-        (detectRestrictivePattern as jest.Mock).mockImplementation((text, keywords) => {
-            const lowerText = text.toLowerCase();
-            for (const keyword of keywords) {
-                if (lowerText.includes(keyword.toLowerCase())) {
-                    return { isRestrictive: true, matchedKeyword: keyword };
-                }
-            }
-            return { isRestrictive: false };
-        });
-        (containsInclusiveSignal as jest.Mock).mockImplementation((text, keywords) => {
-            const lowerText = text.toLowerCase();
-            for (const keyword of keywords) {
-                if (lowerText.includes(keyword.toLowerCase())) {
-                    return { isInclusive: true, matchedKeyword: keyword };
-                }
-            }
-            return { isInclusive: false };
-        });
-        (stripHtml as jest.Mock).mockImplementation((html) => {
-            if (!html) return '';
-            return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        it('should return IRRELEVANT if workplaceType is on-site', () => {
+            const job = createMockLeverJob({ workplaceType: 'on-site' });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.IRRELEVANT);
         });
 
-        // Instantiate fetcher
-        const mockPrisma = new PrismaClient() as jest.Mocked<PrismaClient>;
-        const mockAdapter = new JobProcessingAdapter() as jest.Mocked<JobProcessingAdapter>;
-        fetcherInstance = new LeverFetcher(mockPrisma, mockAdapter);
-
-        // Reset mock job data
-        mockJob = createMockLeverJob({
-            createdAt: new Date('2024-02-01T00:00:00Z').toISOString() // After threshold
+        it('should return RELEVANT if workplaceType is remote and no negative signals', () => {
+            const job = createMockLeverJob({ workplaceType: 'remote' });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.RELEVANT);
         });
+
+        it('should return IRRELEVANT if location indicates restriction', () => {
+            (detectRestrictivePattern as jest.Mock).mockImplementation((text: string, keywords: string[]) => {
+                 // Simulate restriction found in location check context
+                 if (text.includes('berlin')) return { isRestrictive: true, matchedKeyword: 'berlin' };
+                 return { isRestrictive: false };
+            });
+            const job = createMockLeverJob({ workplaceType: 'remote', categories: { location: 'Remote Berlin' } });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.IRRELEVANT);
+        });
+
+        it('should return IRRELEVANT if content indicates restriction', () => {
+            (detectRestrictivePattern as jest.Mock).mockImplementation((text: string, keywords: string[]) => {
+                // Simulate restriction found ONLY in content check context
+                if (text.includes('usa only')) return { isRestrictive: true, matchedKeyword: 'usa only' };
+                return { isRestrictive: false };
+            });
+            const job = createMockLeverJob({ workplaceType: 'remote', descriptionPlain: 'Must be usa only applicant' });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.IRRELEVANT);
+        });
+
+        it('should return RELEVANT if LATAM signal found in location', () => {
+            (containsInclusiveSignal as jest.Mock).mockImplementation((text: string, keywords: string[]) => {
+                // Simulate LATAM signal found ONLY in location check context
+                if (text.includes('latam') && keywords.includes('latam')) return { isInclusive: true, matchedKeyword: 'latam' };
+                return { isInclusive: false };
+            });
+            const job = createMockLeverJob({ workplaceType: 'remote', categories: { location: 'Remote LATAM'} });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.RELEVANT);
+        });
+        
+        it('should return RELEVANT if Global signal found in content', () => {
+             (containsInclusiveSignal as jest.Mock).mockImplementation((text: string, keywords: string[]) => {
+                // Simulate Global signal found ONLY in content check context
+                if (text.includes('worldwide') && keywords.includes('worldwide')) return { isInclusive: true, matchedKeyword: 'worldwide' };
+                return { isInclusive: false };
+            });
+            const job = createMockLeverJob({ workplaceType: 'remote', descriptionPlain: 'Open worldwide' });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.RELEVANT);
+        });
+
+        // --- NEEDS_REVIEW Tests --- 
+        it('should return NEEDS_REVIEW if workplaceType is hybrid and no strong signals', () => {
+            const job = createMockLeverJob({ workplaceType: 'hybrid', categories: { location: 'Hybrid Anywhere' }, descriptionPlain: 'Standard role' });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.NEEDS_REVIEW);
+        });
+
+        it('should return NEEDS_REVIEW if workplaceType is null and no strong signals', () => {
+            const job = createMockLeverJob({ workplaceType: null as any, categories: { location: 'Some Office' }, descriptionPlain: 'Generic job description' });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.NEEDS_REVIEW);
+        });
+        
+         it('should return NEEDS_REVIEW if workplaceType is unknown and no strong signals', () => {
+            const job = createMockLeverJob({ workplaceType: 'unknown' as any, categories: { location: 'Somewhere' }, descriptionPlain: 'Apply now' });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.NEEDS_REVIEW);
+        });
+
+        it('should return RELEVANT if workplaceType is hybrid BUT has strong LATAM signal', () => {
+             (containsInclusiveSignal as jest.Mock).mockImplementation((text: string, keywords: string[]) => {
+                if (keywords.includes('latam') && text.includes('latam')) return { isInclusive: true, matchedKeyword: 'latam' };
+                return { isInclusive: false };
+            });
+            const job = createMockLeverJob({ workplaceType: 'hybrid', categories: { location: 'Hybrid LATAM' } });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.RELEVANT);
+        });
+        
+         it('should return RELEVANT if workplaceType is undefined BUT has strong GLOBAL signal in content', () => {
+             (containsInclusiveSignal as jest.Mock).mockImplementation((text: string, keywords: string[]) => {
+                if (text.includes('global role') && keywords.includes('global')) return { isInclusive: true, matchedKeyword: 'global' };
+                return { isInclusive: false };
+            });
+            const job = createMockLeverJob({ workplaceType: undefined, descriptionPlain: 'This is a global role.' });
+            const result = (leverFetcher as any)._isJobRelevant(job, jobLogger);
+            expect(result).toBe(JobAssessmentStatus.RELEVANT);
+        });
+
+    }); // End describe _isJobRelevant
+
+    // --- Helper Functions --- 
+
+    const testFilterConfig: FilterConfig = {
+    // Basic config for testing, adjust as needed
+        PROCESS_JOBS_UPDATED_AFTER_DATE: undefined,
+        LOCATION_KEYWORDS: {
+            STRONG_NEGATIVE_RESTRICTION: ['berlin', 'us only', 'on-site'],
+            STRONG_POSITIVE_LATAM: ['latam', 'latin america', 'brasil'],
+            STRONG_POSITIVE_GLOBAL: ['global', 'worldwide', 'anywhere'],
+            ACCEPT_EXACT_BRAZIL_TERMS: ['brasil'],
+            ACCEPT_EXACT_LATAM_COUNTRIES: [],
+            AMBIGUOUS: ['remote'],
+        },
+        CONTENT_KEYWORDS: {
+            STRONG_NEGATIVE_REGION: ['us citizen', 'usa only'],
+            STRONG_NEGATIVE_TIMEZONE: ['pacific time', 'pst'],
+            STRONG_POSITIVE_LATAM: ['latam', 'pj'],
+            STRONG_POSITIVE_GLOBAL: ['global', 'international'],
+            ACCEPT_EXACT_BRAZIL_TERMS: ['clt', 'brasil'],
+        },
+        REMOTE_METADATA_FIELDS: {},
+        EXPLICIT_REJECTION_KEYWORDS: []
+    };
+
+    const createMockLeverJobSource = (configOverrides = {}): JobSource => ({
+        id: 'lever-test-src-1',
+        name: 'Test Lever Source',
+        type: 'lever',
+        companyWebsite: 'https://lever.co',
+        isEnabled: true,
+        logoUrl: 'https://lever.co/logo.png',
+        config: { companyIdentifier: 'test-company', ...configOverrides } as any,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastFetched: null,
+        runStats: [], // Add missing property
+        jobs: [],     // Add missing property
     });
 
-    it('should return relevant: false for explicitly on-site job', () => {
-        mockJob.workplaceType = 'on-site';
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(false);
-        expect(result.reason).toBe('Explicitly on-site');
+    const createMockLeverJob = (overrides: Partial<LeverApiPosting>): LeverApiPosting => ({
+        id: 'default-id-' + Math.random(),
+        text: 'Default Test Job',
+        hostedUrl: 'https://jobs.lever.co/test-company/default-id',
+        applyUrl: 'https://jobs.lever.co/test-company/default-id/apply',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        categories: {
+            commitment: 'Full-time',
+            location: 'Remote',
+            team: 'Engineering'
+        },
+        description: '<p>Default description</p>',
+        descriptionPlain: 'Default description',
+        lists: [],
+        tags: [],
+        workplaceType: 'remote',
+        salaryRange: undefined, // Ensure salaryRange exists, can be overridden
+        ...overrides,
     });
 
-    it('should return relevant: false if job created before threshold date', () => {
-        mockJob.createdAt = new Date('2023-12-31T00:00:00Z').toISOString();
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Job created before');
-    });
-
-    it('should return relevant: false if location category indicates restriction', () => {
-        mockJob.categories = { ...mockJob.categories, location: 'Office in Berlin' };
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Location/Commitment indicates Restriction');
-        expect(result.reason).toContain('berlin');
-    });
-
-    it('should return relevant: false if content indicates restriction (CLT)', () => {
-        mockJob.description = 'This role follows CLT regulations.';
-        mockJob.descriptionHtml = '<p>This role follows CLT regulations.</p>';
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Content indicates Specific Restriction');
-        expect(result.reason).toContain('clt');
-    });
-
-    it('should return relevant: false for hybrid job with no positive signals', () => {
-        mockJob.workplaceType = 'hybrid';
-        mockJob.categories = { ...mockJob.categories, location: 'Flexible Office' };
-        mockJob.description = 'Standard hybrid role.';
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(false);
-        expect(result.reason).toBe('Hybrid with no positive signals');
-    });
-
-    it('should return relevant: true (latam) if location category indicates LATAM', () => {
-        mockJob.categories = { ...mockJob.categories, location: 'Remote - Brazil' };
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(true);
-        expect(result.type).toBe('latam');
-        expect(result.reason).toContain('Location/Commitment indicates LATAM');
-        expect(result.reason).toContain('brazil');
-    });
-
-    it('should return relevant: true (latam) if specific LATAM country is in location', () => {
-        mockJob.categories = { ...mockJob.categories, location: 'Remote - Argentina' };
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(true);
-        expect(result.type).toBe('latam');
-        expect(result.reason).toContain('specific LATAM country');
-        expect(result.reason).toContain('argentina');
-    });
-
-    it('should return relevant: true (latam) if content indicates LATAM', () => {
-        mockJob.description = 'Team based in Latin America.';
-        mockJob.workplaceType = 'hybrid'; // Test content overrides hybrid
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(true);
-        expect(result.type).toBe('latam');
-        expect(result.reason).toContain('Content indicates LATAM');
-        expect(result.reason).toContain('latin america');
-    });
-
-    it('should return relevant: true (global) if location category indicates GLOBAL', () => {
-        mockJob.categories = { ...mockJob.categories, location: 'Remote Worldwide' };
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(true);
-        expect(result.type).toBe('global');
-        expect(result.reason).toContain('Location/Commitment indicates Global');
-        expect(result.reason).toContain('worldwide');
-    });
-
-    it('should return relevant: true (global) if content indicates GLOBAL', () => {
-        mockJob.description = 'You can work from anywhere.';
-        mockJob.workplaceType = 'hybrid';
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(true);
-        expect(result.type).toBe('global');
-        expect(result.reason).toContain('Content indicates Global');
-        expect(result.reason).toContain('work from anywhere');
-    });
-
-    it('should return relevant: false if REJECT signal exists in location (overrides LATAM content)', () => {
-        mockJob.categories = { ...mockJob.categories, location: 'Office in London' };
-        mockJob.description = 'Hiring in Latin America.';
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Location/Commitment indicates Restriction');
-        expect(result.reason).toContain('london'); // REJECT should take precedence
-    });
-
-    it('should return relevant: false if REJECT signal exists in content (overrides LATAM location)', () => {
-        mockJob.categories = { ...mockJob.categories, location: 'Remote - Brazil' };
-        mockJob.description = 'Must reside in California.';
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(false);
-        expect(result.reason).toContain('Content indicates Specific Restriction');
-        expect(result.reason).toContain('california');
-    });
-
-    it('should return relevant: true (global) if workplaceType is remote and no other signals', () => {
-        mockJob.workplaceType = 'remote';
-        mockJob.categories = { ...mockJob.categories, location: 'Flexible Location' };
-        mockJob.description = 'Standard job description.';
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(true);
-        expect(result.type).toBe('global');
-        expect(result.reason).toContain('Marked as remote');
-    });
-
-    it('should return relevant: false if no signals and workplaceType is not remote or on-site', () => {
-        mockJob.workplaceType = undefined; // Or null, or some other value
-        mockJob.categories = { ...mockJob.categories, location: 'Somewhere' };
-        mockJob.description = 'Standard job description.';
-        const result = fetcherInstance._isJobRelevant(mockJob, mockLogger);
-        expect(result.relevant).toBe(false);
-        expect(result.reason).toBe('No definitive signals or remote type');
-    });
-}); 
+}); // End describe LeverFetcher

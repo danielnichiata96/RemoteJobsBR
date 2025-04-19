@@ -86,6 +86,7 @@ export default async function handler(
     const whereClause: Prisma.JobWhereInput = {
       status: JobStatus.ACTIVE,
       // Default to LATAM, WORLDWIDE, or NULL hiring region
+      // Temporarily comment out the OR condition to isolate the error
       OR: [
         { hiringRegion: HiringRegion.LATAM },
         { hiringRegion: HiringRegion.WORLDWIDE },
@@ -191,10 +192,7 @@ export default async function handler(
         break;
       case 'relevance':
       default:
-        orderBy = [
-          { viewCount: 'desc' },
-          { createdAt: 'desc' }
-        ];
+        orderBy = { createdAt: 'desc' };
         break;
     }
 
@@ -229,7 +227,6 @@ export default async function handler(
       },
       createdAt: true,
       publishedAt: true,
-      viewCount: true,
       _count: {
         select: {
           savedBy: true
@@ -238,52 +235,53 @@ export default async function handler(
     };
 
     // Executar TODAS as consultas (findMany, count, aggregations) em paralelo usando a MESMA whereClause
-    const transactionResults = await prisma.$transaction([
+    // Separate findMany, count, and raw query into a transaction
+    const [jobs, totalCount, technologyAggs] = await prisma.$transaction([
       prisma.job.findMany({
-        where: whereClause, // Uses the fully constructed whereClause
+        where: whereClause, // Restore where conditions
         select: jobSelectClause,
-        orderBy,
+        orderBy, // Restore orderBy
         skip,
         take: limit,
       }),
       prisma.job.count({
-        where: whereClause, // CORRECTED: Use the EXACT same whereClause for counting
-      }),
-      prisma.job.groupBy({ // Aggregation query for jobType, experienceLevel
-        by: ['jobType', 'experienceLevel'],
-        where: whereClause, // Also use the same clause for relevant aggregations
-        _count: { _all: true },
-        having: {
-          jobType: { not: null },
-          experienceLevel: { not: null }
-        },
+        where: whereClause, // Restore where conditions for count too
       }),
       // Raw query for Technology aggregation (skills array)
-      // TODO: Simplify WHERE clause for tech aggregation to avoid SQL syntax errors from dynamic filters.
-      //       Currently aggregates across ALL active jobs, ignoring other filters for this specific aggregation.
-      //       Consider a safer/more precise filtering method if needed later.
       prisma.$queryRaw<Array<{ technology: string, count: bigint }>>`
          SELECT unnest(skills) as technology, count(*)
          FROM "Job"
-         -- Filter for active jobs AND jobs with non-empty skills arrays BEFORE grouping/unnesting
          WHERE "status" = 'ACTIVE' AND skills IS NOT NULL AND array_length(skills, 1) > 0
-         GROUP BY unnest(skills) -- Use the original expression
-         -- Keep only skills that appear at least once
+         GROUP BY unnest(skills)
          HAVING count(*) > 0 
-         ORDER BY count(*) DESC -- Use count(*)
+         ORDER BY count(*) DESC
          LIMIT 20;`
     ]);
+
+    // Run groupBy query separately AFTER the transaction
+    const jobTypeExperienceAggs = await prisma.job.groupBy({ 
+        by: ['jobType', 'experienceLevel'],
+        where: whereClause, // Use the same where clause for consistency
+        _count: { _all: true },
+        /* // Temporarily remove the having clause
+        having: {
+          jobType: { not: null }, 
+          experienceLevel: { not: null }
+        },
+        */
+    });
     
-    // Process results
-    const [jobs, totalCount, jobTypeExperienceAggs, technologyAggs] = transactionResults;
+    // Process results 
+    // const [jobs, totalCount, /* jobTypeExperienceAggs, */ technologyAggs] = transactionResults;
     
     // Process aggregations
     const processedAggregations: FilterAggregations = {
-       jobTypes: {},
-       experienceLevels: {},
+       jobTypes: {}, // Will be populated now
+       experienceLevels: {}, // Will be populated now
        technologies: {}
     };
 
+    // Restore processing for jobTypeExperienceAggs
     // Process groupBy results for jobTypes and experienceLevels
     (jobTypeExperienceAggs as Array<{ jobType: JobType | null, experienceLevel: ExperienceLevel | null, _count: { _all: number }}>).forEach(group => {
         if (group.jobType) {

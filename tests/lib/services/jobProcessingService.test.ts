@@ -3,7 +3,7 @@ import { JobProcessingService } from '../../../src/lib/services/jobProcessingSer
 // Keep pino mock
 // import pino from 'pino'; // Comment out import if removing mock
 import pino from 'pino'; // Restore import
-import { StandardizedJob } from '../../../src/types/StandardizedJob';
+import { StandardizedJob, JobAssessmentStatus } from '../../../src/types/StandardizedJob';
 import { PrismaClient, JobType, ExperienceLevel, HiringRegion, JobStatus, UserRole, SalaryPeriod, WorkplaceType } from '@prisma/client'; // Import the actual type (removed Currency)
 import { Currency as AppCurrency } from '../../../src/types/models'; // Correct import for Currency enum
 import { normalizeCompanyName, normalizeStringForSearch } from '../../../src/lib/utils/string';
@@ -27,18 +27,24 @@ jest.mock('pino', () => {
   return jest.fn(() => mockLog);
 });
 
-// Mock @prisma/client (keep as is for enums)
+// Mock @prisma/client (including new JobStatus values)
 jest.mock('@prisma/client', () => ({
   __esModule: true,
   UserRole: { COMPANY: 'COMPANY', CANDIDATE: 'CANDIDATE' },
-  JobStatus: { ACTIVE: 'ACTIVE', CLOSED: 'CLOSED', DRAFT: 'DRAFT' },
+  JobStatus: { 
+    ACTIVE: 'ACTIVE', 
+    CLOSED: 'CLOSED', 
+    DRAFT: 'DRAFT', 
+    PENDING_REVIEW: 'PENDING_REVIEW', // Add new status
+    REJECTED: 'REJECTED' // Add new status
+  },
   JobType: { FULL_TIME: 'FULL_TIME', PART_TIME: 'PART_TIME', CONTRACT: 'CONTRACT' },
   ExperienceLevel: { ENTRY: 'ENTRY', MID: 'MID', SENIOR: 'SENIOR' },
   HiringRegion: { WORLDWIDE: 'WORLDWIDE', LATAM: 'LATAM', USA: 'USA' },
   SalaryPeriod: { YEARLY: 'YEARLY', MONTHLY: 'MONTHLY', WEEKLY: 'WEEKLY' },
   WorkplaceType: { REMOTE: 'REMOTE', HYBRID: 'HYBRID', IN_PERSON: 'IN_PERSON' },
-  // Keep PrismaClient mock, remove Currency mock from here as it's imported separately
   PrismaClient: jest.fn(), 
+  Prisma: { JsonNull: {} }, // Mock Prisma.JsonNull if needed
 }));
 
 // Mock setTimeout globally for timer control
@@ -160,41 +166,43 @@ describe('JobProcessingService', () => {
 
   // --- saveOrUpdateJob Tests ---
   describe('saveOrUpdateJob', () => {
-    let mockStandardizedJob: StandardizedJob;
+    let mockStandardizedJob: Omit<StandardizedJob, 'status'> & { assessmentStatus: JobAssessmentStatus }; // Use Omit to type without status
 
     beforeEach(() => {
-      // Create a more complete and schema-compliant mock job for general use
+      // Base mock job setup, WITHOUT status, WITH explicit undefined for some optionals
       mockStandardizedJob = {
         sourceId: 'test-123',
         source: 'testSource',
         title: 'Test Engineer',
-        applicationUrl: 'https://test.com/apply',
         companyName: 'Test Company Inc.',
         description: 'Minimal Desc',
-        relevanceScore: 80, 
-        status: JobStatus.ACTIVE,
+        isRemote: true,
+        assessmentStatus: JobAssessmentStatus.RELEVANT,
+        applicationUrl: 'https://test.com/apply',
+        relevanceScore: 80,
         publishedAt: new Date('2024-03-10T10:00:00Z'),
         updatedAt: new Date('2024-03-10T11:00:00Z'),
-        isRemote: true, // Satisfies refine check in schema
-        workplaceType: WorkplaceType.REMOTE, // Provide one to be safe
-        companyWebsite: 'https://test.com', // Example website
-        companyLogo: 'https://test.com/logo.png', // Example logo
-        location: 'Remote', // Example location
-        jobType: JobType.FULL_TIME, // Example type
-        experienceLevel: ExperienceLevel.MID, // Example level
-        skills: ['test', 'jest'], // Example skills
-        requirements: undefined,
-        responsibilities: undefined,
-        benefits: undefined,
-        tags: undefined,
+        workplaceType: WorkplaceType.REMOTE,
+        location: 'Remote',
+        skills: [],
+        tags: [],
+        // Add explicit undefined for potentially problematic optional fields
+        jobType: undefined,
+        experienceLevel: undefined,
         country: undefined,
         hiringRegion: undefined,
-        visas: undefined,
-        languages: undefined,
         minSalary: undefined,
         maxSalary: undefined,
         currency: undefined,
-        salaryCycle: undefined,
+        salaryPeriod: undefined,
+        companyLogo: undefined,
+        companyWebsite: undefined,
+        // Add others if needed...
+        requirements: undefined,
+        responsibilities: undefined,
+        benefits: undefined,
+        visas: undefined,
+        languages: undefined,
         companyEmail: undefined,
         locationRaw: undefined,
         metadataRaw: undefined,
@@ -202,20 +210,11 @@ describe('JobProcessingService', () => {
         expiresAt: undefined,
       };
 
-      // Setup default mocks on the injected client
-      mockPrismaClient.user.findFirst.mockResolvedValue({
-        id: 'company-1', 
-        name: 'Test Company Inc.',
-        normalizedCompanyName: 'test company inc',
-        logo: 'https://test.com/logo.png',
-        companyWebsite: 'https://test.com',
-        role: UserRole.COMPANY
-      });
-      mockPrismaClient.job.upsert.mockResolvedValue({ id: 'job-123', companyId: 'company-1'});
-      mockPrismaClient.job.findFirst.mockResolvedValue(null); // Default: No duplicate
-      mockPrismaClient.job.update.mockResolvedValue({});
+      // Default Prisma mocks
+      mockPrismaClient.user.findFirst.mockResolvedValue({ id: 'company-1', name: 'Test Company Inc.', normalizedCompanyName: 'test company inc', role: UserRole.COMPANY });
+      mockPrismaClient.job.upsert.mockResolvedValue({ id: 'job-123', companyId: 'company-1'} as any);
+      mockPrismaClient.job.findFirst.mockResolvedValue(null); // No duplicates by default
       mockPrismaClient.user.create.mockResolvedValue({ id: 'company-new', name: 'Test Company Inc.', normalizedCompanyName: 'test company inc', role: UserRole.COMPANY});
-      mockPrismaClient.user.update.mockResolvedValue({});
     });
 
     // Helper to run Zod validation within tests
@@ -232,42 +231,42 @@ describe('JobProcessingService', () => {
     };
 
     it('should save job successfully when company exists and HAS logo/normalized name', async () => {
-      // Arrange: Define a COMPLETE and VALID mock for THIS test
-      const simpleValidJob: StandardizedJob = {
+      // Arrange: Define mock WITHOUT status, WITH explicit undefineds
+      const simpleValidJob: Omit<StandardizedJob, 'status'> & { assessmentStatus: JobAssessmentStatus } = {
           sourceId: 'gh-success-1',
           source: 'greenhouse',
           title: 'Valid Simple Job',
           applicationUrl: 'https://valid.co/apply',
           companyName: 'Valid Co',
-          isRemote: true, // Required by refine
+          isRemote: true,
           description: 'Valid Desc',
           relevanceScore: 90,
+          assessmentStatus: JobAssessmentStatus.RELEVANT,
           skills: ['valid-skill'],
-          status: JobStatus.ACTIVE,
           publishedAt: new Date(),
           updatedAt: new Date(),
           companyWebsite: 'https://valid.co', 
           companyLogo: 'https://valid.co/logo.png',
           location: 'Remote',
-          workplaceType: WorkplaceType.REMOTE, // Provide one or the other
+          workplaceType: WorkplaceType.REMOTE, 
           jobType: JobType.FULL_TIME,
           experienceLevel: ExperienceLevel.MID,
-          country: 'USA', // Example optional
-          minSalary: undefined, // Explicitly undefined for optional
-          maxSalary: undefined, // Explicitly undefined for optional
-          currency: undefined,
-          salaryCycle: undefined,
+          country: 'USA',
           tags: [],
-          metadataRaw: { test: 1 },
-          // Add other optional fields as undefined or null if needed by schema/logic
-          companyEmail: undefined,
-          locationRaw: undefined,
-          benefits: undefined,
+          // Explicitly set other optionals to undefined for consistency
+          minSalary: undefined,
+          maxSalary: undefined,
+          currency: undefined,
+          salaryPeriod: undefined,
           requirements: undefined,
           responsibilities: undefined,
+          benefits: undefined,
           hiringRegion: undefined,
           visas: undefined,
           languages: undefined,
+          companyEmail: undefined,
+          locationRaw: undefined,
+          metadataRaw: undefined,
           jobType2: undefined,
           expiresAt: undefined,
       };
@@ -426,7 +425,7 @@ describe('JobProcessingService', () => {
           updatedAt: new Date(Date.now() - 100000) 
       }; 
       // Use a job that passes validation for the input
-      const inputJobForDuplicateTest: StandardizedJob = {
+      const inputJobForDuplicateTest: Omit<StandardizedJob, 'status'> & { assessmentStatus: JobAssessmentStatus } = {
           sourceId: 'test-123',
           source: 'testSource',
           title: 'Test Engineer',
@@ -435,7 +434,22 @@ describe('JobProcessingService', () => {
           isRemote: true, 
           description: 'Minimal Desc',
           relevanceScore: 80,
+          assessmentStatus: JobAssessmentStatus.RELEVANT,
           location: 'Remote', // Add missing location field
+          // Explicitly set other optionals to undefined
+          skills: undefined,
+          tags: undefined,
+          jobType: undefined,
+          experienceLevel: undefined,
+          country: undefined,
+          workplaceType: undefined,
+          hiringRegion: undefined,
+          minSalary: undefined,
+          maxSalary: undefined,
+          currency: undefined,
+          salaryPeriod: undefined,
+          companyLogo: undefined,
+          companyWebsite: undefined,
       };
       const normalizedCompanyNameForTest = normalizeCompanyName(inputJobForDuplicateTest.companyName!);
 
@@ -758,5 +772,76 @@ describe('JobProcessingService', () => {
         }),
       }));
     });
+
+    // --- NEW Tests for Status Mapping --- 
+    it('should save job with status ACTIVE when assessmentStatus is RELEVANT', async () => {
+      const relevantJob = { 
+          ...mockStandardizedJob, 
+          assessmentStatus: JobAssessmentStatus.RELEVANT 
+      };
+      await jobProcessingService.saveOrUpdateJob(relevantJob);
+
+      expect(mockPrismaClient.job.upsert).toHaveBeenCalledTimes(1);
+      const upsertArgs = mockPrismaClient.job.upsert.mock.calls[0][0];
+      expect(upsertArgs.create.status).toBe(JobStatus.ACTIVE);
+      expect(upsertArgs.update.status).toBe(JobStatus.ACTIVE);
+    });
+
+    it('should save job with status CLOSED when assessmentStatus is IRRELEVANT', async () => {
+      const irrelevantJob = { 
+          ...mockStandardizedJob, 
+          assessmentStatus: JobAssessmentStatus.IRRELEVANT 
+      };
+      await jobProcessingService.saveOrUpdateJob(irrelevantJob);
+
+      expect(mockPrismaClient.job.upsert).toHaveBeenCalledTimes(1);
+      const upsertArgs = mockPrismaClient.job.upsert.mock.calls[0][0];
+      expect(upsertArgs.create.status).toBe(JobStatus.CLOSED);
+      expect(upsertArgs.update.status).toBe(JobStatus.CLOSED);
+    });
+
+    it('should save job with status PENDING_REVIEW when assessmentStatus is NEEDS_REVIEW', async () => {
+      const needsReviewJob = { 
+          ...mockStandardizedJob, 
+          assessmentStatus: JobAssessmentStatus.NEEDS_REVIEW 
+      };
+      await jobProcessingService.saveOrUpdateJob(needsReviewJob);
+
+      expect(mockPrismaClient.job.upsert).toHaveBeenCalledTimes(1);
+      const upsertArgs = mockPrismaClient.job.upsert.mock.calls[0][0];
+      expect(upsertArgs.create.status).toBe(JobStatus.PENDING_REVIEW);
+      expect(upsertArgs.update.status).toBe(JobStatus.PENDING_REVIEW);
+    });
+
+    it('should save job with status PENDING_REVIEW when assessmentStatus is undefined', async () => {
+      const undefinedStatusJob = { 
+          ...mockStandardizedJob, 
+          assessmentStatus: undefined 
+      };
+      await jobProcessingService.saveOrUpdateJob(undefinedStatusJob);
+
+      expect(mockPrismaClient.job.upsert).toHaveBeenCalledTimes(1);
+      const upsertArgs = mockPrismaClient.job.upsert.mock.calls[0][0];
+      expect(upsertArgs.create.status).toBe(JobStatus.PENDING_REVIEW);
+      expect(upsertArgs.update.status).toBe(JobStatus.PENDING_REVIEW);
+      expect(loggerMock.warn).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('AssessmentStatus missing, defaulting JobStatus to PENDING_REVIEW'));
+    });
+
+    // Optional: Test updating status (e.g., from PENDING_REVIEW to ACTIVE)
+    it('should update status to ACTIVE if assessment changes from NEEDS_REVIEW to RELEVANT', async () => {
+        // Mock existing job as PENDING_REVIEW (though upsert handles this implicitly)
+        const relevantJob = { 
+          ...mockStandardizedJob, 
+          assessmentStatus: JobAssessmentStatus.RELEVANT 
+        };
+        
+        await jobProcessingService.saveOrUpdateJob(relevantJob);
+
+        expect(mockPrismaClient.job.upsert).toHaveBeenCalledTimes(1);
+        const upsertArgs = mockPrismaClient.job.upsert.mock.calls[0][0];
+        // The key is that the update block sets the status correctly
+        expect(upsertArgs.update.status).toBe(JobStatus.ACTIVE); 
+    });
+
   });
 }); 

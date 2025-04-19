@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { JobProcessingAdapter } from '../adapters/JobProcessingAdapter';
 import { JobSourceConfig, getAshbyConfig, FilterConfig } from '../../types/JobSource'; // Import FilterConfig
-import { StandardizedJob } from '../../types/StandardizedJob';
+import { StandardizedJob, JobAssessmentStatus } from '../../types/StandardizedJob';
 import { JobFetcher, SourceStats, FetcherResult, FilterResult, AshbyApiJob } from './types'; // Use real AshbyApiJob
 import { stripHtml } from '../utils/textUtils';
 import { detectRestrictivePattern, containsInclusiveSignal } from '../utils/filterUtils';
@@ -112,20 +112,25 @@ export class AshbyFetcher implements JobFetcher {
             await pMap(apiJobs.filter(job => job && job.id), async (job) => {
                 const jobLogger = sourceLogger.child({ jobId: job.id, jobTitle: job.title });
                 try {
-                    // Use the implemented _isJobRelevant
-                    const relevanceResult = this._isJobRelevant(job, jobLogger);
-                    if (relevanceResult.relevant) {
-                        stats.relevant++;
-                        jobLogger.trace(
-                            { reason: relevanceResult.reason, type: relevanceResult.type },
-                            `➡️ Relevant job found`
-                        );
-                        
-                        // Pass the determined type to the processor if needed
-                        const enhancedJob = {
-                            ...job,
-                            _determinedHiringRegionType: relevanceResult.type
-                        };
+                    // Use the implemented _isJobRelevant, returns JobAssessmentStatus
+                    const assessmentStatus = this._isJobRelevant(job, jobLogger);
+                    
+                    // Add assessment status to the job object
+                    const enhancedJob = {
+                        ...job,
+                        _assessmentStatus: assessmentStatus,
+                        // Assume RELEVANT/NEEDS_REVIEW map to global for now
+                        _determinedHiringRegionType: (assessmentStatus === JobAssessmentStatus.RELEVANT || assessmentStatus === JobAssessmentStatus.NEEDS_REVIEW) ? 'global' : undefined
+                    };
+
+                    // Process if RELEVANT or NEEDS_REVIEW
+                    if (assessmentStatus === JobAssessmentStatus.RELEVANT || assessmentStatus === JobAssessmentStatus.NEEDS_REVIEW) {
+                        if (assessmentStatus === JobAssessmentStatus.RELEVANT) {
+                            stats.relevant++;
+                            jobLogger.trace({ reason: 'Relevant job found' }, `➡️ Relevant job found`);
+                        } else {
+                             jobLogger.trace({ reason: 'Job needs review' }, `⚠️ Job marked for review`);
+                        }
                         
                         const saved = await this.jobProcessor.processRawJob('ashby', enhancedJob, source);
 
@@ -135,8 +140,8 @@ export class AshbyFetcher implements JobFetcher {
                         } else {
                             jobLogger.trace('Adapter reported job not saved (processor failure, duplicate, irrelevant post-processing, or save issue).');
                         }
-                    } else {
-                        jobLogger.trace({ reason: relevanceResult.reason }, `Job skipped as irrelevant`);
+                    } else { // IRRELEVANT
+                        jobLogger.trace({ reason: 'Job skipped as irrelevant' }, `Job skipped as irrelevant`);
                     }
                 } catch (jobError: any) {
                     stats.errors++;
@@ -353,85 +358,65 @@ export class AshbyFetcher implements JobFetcher {
         return { decision: 'UNKNOWN' };
     }
 
-    private _isJobRelevant(job: AshbyApiJob, jobLogger: pino.Logger): FilterResult {
-        // Debugging: Log input job details before filtering
-        jobLogger.debug({ 
-            jobId: job.id, 
-            title: job.title, 
-            location: job.location, 
-            isRemote: job.isRemote, 
-            descSnippet: job.descriptionHtml?.substring(0, 100) + '...' 
-        }, 'Entering _isJobRelevant');
+    private _isJobRelevant(job: AshbyApiJob, jobLogger: pino.Logger): JobAssessmentStatus {
+        jobLogger.trace('--- Starting Relevance Check ---');
 
-        jobLogger.trace("--- Starting Ashby Relevance Check ---");
-
-        // 1. Basic checks
-        if (job?.isListed === false) {
-            return { relevant: false, reason: 'Job not listed', type: undefined };
+        // Basic Checks
+        if (job.isListed === false) {
+            jobLogger.trace('Job not listed, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT;
         }
-        // Skip old jobs if date threshold is set
-        if (this.filterConfig?.PROCESS_JOBS_UPDATED_AFTER_DATE && job.updatedAt) {
-            try {
-                const jobUpdatedAt = new Date(job.updatedAt);
-                const thresholdDate = new Date(this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE);
-                if (jobUpdatedAt < thresholdDate) {
-                     jobLogger.info({ updatedAt: job.updatedAt, threshold: this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE }, "Skipping job: updated before threshold date.");
-                    return { relevant: false, reason: `Job updated before ${this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE}`, type: undefined };
-                }
-            } catch (dateError) {
-                 jobLogger.error({ dateString: job.updatedAt, error: dateError }, "Error parsing job updatedAt date");
-            }
+        if (job.isRemote !== true) {
+            jobLogger.trace('Job not explicitly remote, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT;
         }
 
-        // --- Run ALL checks --- 
-        // Pass filterConfig, which could be null (handled inside checks)
+        // --- Filter Config Check ---
+        if (!this.filterConfig) {
+            jobLogger.warn('Filter config not loaded. Assuming job is relevant based on basic checks.');
+            // If no config, we can only rely on isRemote=true, default to RELEVANT
+            return JobAssessmentStatus.RELEVANT;
+        }
+
+        // --- Run Location and Content Checks using loaded config ---
         const locationCheck = this._checkLocation(job, this.filterConfig, jobLogger);
-        jobLogger.debug({ decision: locationCheck.decision, reason: locationCheck.reason }, "Location Check Result");
-
         const contentCheck = this._checkContent(job, this.filterConfig, jobLogger);
-        jobLogger.debug({ decision: contentCheck.decision, reason: contentCheck.reason }, "Content Check Result");
 
-        // Final Decision Logic:
-        // 1. Reject if either check returns REJECT.
+        // --- Decision Logic (Prioritize REJECT, then LATAM, then GLOBAL) ---
         if (locationCheck.decision === 'REJECT') {
-            return { relevant: false, reason: locationCheck.reason };
+            jobLogger.trace({ reason: locationCheck.reason }, 'Location check indicates REJECT, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT;
         }
         if (contentCheck.decision === 'REJECT') {
-            return { relevant: false, reason: contentCheck.reason };
+            jobLogger.trace({ reason: contentCheck.reason }, 'Content check indicates REJECT, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT;
         }
 
-        // 2. Accept LATAM if either check returns ACCEPT_LATAM.
-        if (locationCheck.decision === 'ACCEPT_LATAM') {
-            return { relevant: true, type: 'latam', reason: locationCheck.reason };
+        // --- No specific NEEDS_REVIEW check for Ashby based on workplace type ---
+        // Ashby API provides a clearer isRemote boolean.
+        // Ambiguity leading to NEEDS_REVIEW would need different criteria here.
+
+        // --- Accept if LATAM or GLOBAL signal found ---
+        if (locationCheck.decision === 'ACCEPT_LATAM' || contentCheck.decision === 'ACCEPT_LATAM') {
+            jobLogger.trace({ 
+                locationReason: locationCheck.decision === 'ACCEPT_LATAM' ? locationCheck.reason : 'N/A', 
+                contentReason: contentCheck.decision === 'ACCEPT_LATAM' ? contentCheck.reason : 'N/A'
+            }, 'LATAM signal found, marking as RELEVANT.');
+            return JobAssessmentStatus.RELEVANT;
         }
-        if (contentCheck.decision === 'ACCEPT_LATAM') {
-            return { relevant: true, type: 'latam', reason: contentCheck.reason };
+        if (locationCheck.decision === 'ACCEPT_GLOBAL' || contentCheck.decision === 'ACCEPT_GLOBAL') {
+            jobLogger.trace({ 
+                locationReason: locationCheck.decision === 'ACCEPT_GLOBAL' ? locationCheck.reason : 'N/A', 
+                contentReason: contentCheck.decision === 'ACCEPT_GLOBAL' ? contentCheck.reason : 'N/A'
+            }, 'Global signal found, marking as RELEVANT.');
+            return JobAssessmentStatus.RELEVANT;
         }
 
-        // 3. Accept Global if either check returns ACCEPT_GLOBAL (and LATAM wasn't accepted).
-        if (locationCheck.decision === 'ACCEPT_GLOBAL') {
-            return { relevant: true, type: 'global', reason: locationCheck.reason };
-        }
-        if (contentCheck.decision === 'ACCEPT_GLOBAL') {
-            return { relevant: true, type: 'global', reason: contentCheck.reason };
-        }
-
-        // 4. Fallback to isRemote only if BOTH checks are UNKNOWN.
-        if (locationCheck.decision === 'UNKNOWN' && contentCheck.decision === 'UNKNOWN') {
-            jobLogger.trace({ isRemote: job.isRemote }, 'No strong location/content signals. Falling back to isRemote flag.');
-            if (job.isRemote === true) {
-                return { relevant: true, type: 'global', reason: 'Marked as remote' };
-            } else {
-                return { relevant: false, reason: 'Not explicitly remote and ambiguous keywords' };
-            }
-        }
-
-        // Default case if checks resulted in a mix not covered above (e.g., one UNKNOWN, one not triggering accept/reject)
-        // Consider a scenario: location=UNKNOWN, content=ACCEPT_GLOBAL -> Should be ACCEPT_GLOBAL
-        // Consider a scenario: location=ACCEPT_LATAM, content=UNKNOWN -> Should be ACCEPT_LATAM
-        // The current sequential checks handle these scenarios.
-        // If we reach here, it implies no strong accept/reject signal was definitive.
-        jobLogger.trace({ locationDecision: locationCheck.decision, contentDecision: contentCheck.decision }, 'Job did not meet explicit accept/reject criteria and did not fallback to isRemote. Defaulting to irrelevant.');
-        return { relevant: false, reason: 'Not explicitly remote and ambiguous keywords' };
+        // --- Final Fallback --- 
+        // If we passed basic checks (listed, remote) and keyword checks didn't reject, 
+        // and no strong positive signal was found, assume it's RELEVANT based on isRemote=true.
+        // This differs slightly from Greenhouse/Lever where UNKNOWN/HYBRID exists.
+        jobLogger.trace('Passed basic checks (listed, remote), no REJECT signals, defaulting to RELEVANT.');
+        return JobAssessmentStatus.RELEVANT;
     }
 } 

@@ -8,6 +8,7 @@ import { detectRestrictivePattern, containsInclusiveSignal } from '../utils/filt
 import * as fs from 'fs';
 import * as path from 'path';
 import { stripHtml } from '../utils/textUtils';
+import { JobAssessmentStatus } from '../../types/StandardizedJob';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
@@ -84,16 +85,21 @@ export class LeverFetcher implements JobFetcher {
                     const jobLogger = sourceLogger.child({ jobId: job.id, jobTitle: job.text?.substring(0, 50) });
 
                     try {
-                        const relevanceResult = this._isJobRelevant(job, jobLogger);
+                        const assessmentStatus = this._isJobRelevant(job, jobLogger);
 
-                        if (relevanceResult.relevant) {
-                            stats.relevant++;
-                            jobLogger.trace({ reason: relevanceResult.reason, type: relevanceResult.type }, '➡️ Relevant job found');
-                            
-                            const enhancedJob = {
-                                ...job,
-                                _determinedHiringRegionType: relevanceResult.type
-                            };
+                        const enhancedJob = {
+                            ...job,
+                            _assessmentStatus: assessmentStatus,
+                            _determinedHiringRegionType: (assessmentStatus === JobAssessmentStatus.RELEVANT || assessmentStatus === JobAssessmentStatus.NEEDS_REVIEW) ? 'global' : undefined
+                        };
+
+                        if (assessmentStatus === JobAssessmentStatus.RELEVANT || assessmentStatus === JobAssessmentStatus.NEEDS_REVIEW) {
+                            if (assessmentStatus === JobAssessmentStatus.RELEVANT) {
+                                stats.relevant++;
+                                jobLogger.trace({ reason: 'Relevant job found' }, '➡️ Relevant job found');
+                            } else {
+                                jobLogger.trace({ reason: 'Job needs review' }, '⚠️ Job marked for review');
+                            }
                             
                             const processedOk = await this.adapter.processRawJob('lever', enhancedJob, source);
                             if (processedOk) {
@@ -104,7 +110,7 @@ export class LeverFetcher implements JobFetcher {
                                 jobLogger.trace('Adapter reported job not saved.');
                             }
                         } else {
-                            jobLogger.trace({ reason: relevanceResult.reason }, 'Job skipped as irrelevant');
+                            jobLogger.trace({ reason: 'Job skipped as irrelevant' }, 'Job skipped as irrelevant');
                         }
                     } catch (jobError: any) {
                         stats.errors++;
@@ -261,79 +267,64 @@ export class LeverFetcher implements JobFetcher {
             return { decision: 'ACCEPT_LATAM', reason };
         }
 
-        logger.trace("Content keyword analysis result: UNKNOWN");
+        logger.trace({ content: fullContentLower.substring(0, 100) + '...' }, "Content analysis result: UNKNOWN");
         return { decision: 'UNKNOWN' };
     }
 
-    private _isJobRelevant(job: LeverApiPosting, jobLogger: pino.Logger): FilterResult {
-        jobLogger.trace("--- Starting Lever Relevance Check ---");
+    private _isJobRelevant(job: LeverApiPosting, jobLogger: pino.Logger): JobAssessmentStatus {
+        jobLogger.trace('--- Starting Relevance Check ---');
 
-        const workplaceType = job.workplaceType?.toLowerCase();
+        const workplaceTypeLower = job.workplaceType?.toLowerCase();
 
-        if (workplaceType === 'on-site') {
-            jobLogger.trace({ workplaceType }, 'Skipping job: Explicitly on-site.');
-            return { relevant: false, reason: 'Explicitly on-site' };
+        if (workplaceTypeLower === 'on-site') {
+            jobLogger.trace({ workplaceType: job.workplaceType }, 'Workplace type is ON_SITE, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT;
         }
-        if (this.filterConfig?.PROCESS_JOBS_UPDATED_AFTER_DATE && job.createdAt) {
-            try {
-                const jobCreatedAt = new Date(job.createdAt);
-                const thresholdDate = new Date(this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE);
-                if (jobCreatedAt < thresholdDate) {
-                    jobLogger.info({ createdAt: job.createdAt, threshold: this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE }, "Skipping job: created before threshold date.");
-                    return { relevant: false, reason: `Job created before ${this.filterConfig.PROCESS_JOBS_UPDATED_AFTER_DATE}`, type: undefined };
-                }
-            } catch (dateError) {
-                jobLogger.error({ createdAt: job.createdAt, error: dateError }, "Error parsing job createdAt date");
+        jobLogger.trace({ workplaceType: job.workplaceType }, 'Workplace type check passed (not ON_SITE).');
+
+        const locationCheck = this._checkLocation(job, this.filterConfig, jobLogger);
+        const contentCheck = this._checkContent(job, this.filterConfig, jobLogger);
+
+        if (locationCheck.decision === 'REJECT') {
+            jobLogger.trace({ reason: locationCheck.reason }, 'Location check indicates REJECT, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT;
+        }
+        if (contentCheck.decision === 'REJECT') {
+            jobLogger.trace({ reason: contentCheck.reason }, 'Content check indicates REJECT, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT;
+        }
+
+        if (workplaceTypeLower === 'hybrid' || !workplaceTypeLower || workplaceTypeLower === 'unknown') {
+            const hasPositiveSignal = locationCheck.decision === 'ACCEPT_LATAM' || locationCheck.decision === 'ACCEPT_GLOBAL' ||
+                                    contentCheck.decision === 'ACCEPT_LATAM' || contentCheck.decision === 'ACCEPT_GLOBAL';
+            
+            if (!hasPositiveSignal) {
+                jobLogger.trace({ workplaceType: job.workplaceType }, 'Workplace is HYBRID/UNKNOWN and no strong positive signals found, marking as NEEDS_REVIEW.');
+                return JobAssessmentStatus.NEEDS_REVIEW;
             }
         }
 
-        const locationCheck = this._checkLocation(job, this.filterConfig, jobLogger);
-        jobLogger.debug({ decision: locationCheck.decision, reason: locationCheck.reason }, "Location Check Result");
-
-        const contentCheck = this._checkContent(job, this.filterConfig, jobLogger);
-        jobLogger.debug({ decision: contentCheck.decision, reason: contentCheck.reason }, "Content Check Result");
-
-        if (locationCheck.decision === 'REJECT') {
-            return { relevant: false, reason: locationCheck.reason || 'Location indicates Restriction' };
+        if (locationCheck.decision === 'ACCEPT_LATAM' || contentCheck.decision === 'ACCEPT_LATAM') {
+            jobLogger.trace({ 
+                locationReason: locationCheck.decision === 'ACCEPT_LATAM' ? locationCheck.reason : 'N/A', 
+                contentReason: contentCheck.decision === 'ACCEPT_LATAM' ? contentCheck.reason : 'N/A'
+            }, 'LATAM signal found, marking as RELEVANT.');
+            return JobAssessmentStatus.RELEVANT;
         }
-        if (contentCheck.decision === 'REJECT') {
-            return { relevant: false, reason: contentCheck.reason || 'Content indicates Restriction' };
-        }
-        if (workplaceType === 'hybrid' && 
-            locationCheck.decision === 'UNKNOWN' && 
-            contentCheck.decision === 'UNKNOWN') {
-            jobLogger.debug("Rejecting job: workplaceType is hybrid with no positive signals.");
-            return { relevant: false, reason: 'Hybrid with no positive signals' };
+        if (locationCheck.decision === 'ACCEPT_GLOBAL' || contentCheck.decision === 'ACCEPT_GLOBAL') {
+            jobLogger.trace({ 
+                locationReason: locationCheck.decision === 'ACCEPT_GLOBAL' ? locationCheck.reason : 'N/A', 
+                contentReason: contentCheck.decision === 'ACCEPT_GLOBAL' ? contentCheck.reason : 'N/A'
+            }, 'Global signal found, marking as RELEVANT.');
+            return JobAssessmentStatus.RELEVANT;
         }
 
-        if (locationCheck.decision === 'ACCEPT_LATAM') {
-            jobLogger.debug("Accepting based on LATAM signal from location.");
-            return { relevant: true, reason: locationCheck.reason || 'Location(LATAM)', type: 'latam' };
-        }
-        if (contentCheck.decision === 'ACCEPT_LATAM') {
-            jobLogger.debug("Accepting based on LATAM signal from content.");
-            return { relevant: true, reason: contentCheck.reason || 'Content(LATAM)', type: 'latam' };
+        if (workplaceTypeLower === 'remote') {
+            jobLogger.trace({ workplaceType: job.workplaceType }, 'Workplace is REMOTE, no reject/LATAM/Global signals, defaulting to RELEVANT.');
+            return JobAssessmentStatus.RELEVANT;
         }
 
-        if (locationCheck.decision === 'ACCEPT_GLOBAL') {
-            jobLogger.debug("Accepting based on GLOBAL signal from location.");
-            return { relevant: true, reason: locationCheck.reason || 'Location(Global)', type: 'global' };
-        }
-        if (contentCheck.decision === 'ACCEPT_GLOBAL') {
-            jobLogger.debug("Accepting based on GLOBAL signal from content.");
-            return { relevant: true, reason: contentCheck.reason || 'Content(Global)', type: 'global' };
-        }
-
-        if (workplaceType === 'remote') {
-            jobLogger.debug("Accepting based on workplaceType 'remote' (no strong signals found).");
-            let remoteReason = 'Marked as remote';
-             if (locationCheck.decision === 'UNKNOWN' && contentCheck.decision === 'UNKNOWN' ) {
-                 remoteReason = this.filterConfig ? 'Marked as remote (Ambiguous keywords)' : 'Marked as remote (no filter config)';
-             }
-            return { relevant: true, reason: remoteReason, type: 'global' };
-        }
-
-        jobLogger.debug("Final Decision: Job is not relevant (No definitive signals or remote type).");
-        return { relevant: false, reason: 'No definitive signals or remote type', type: undefined };
+        jobLogger.trace('Reached end of relevance check without clear decision, defaulting to IRRELEVANT.');
+        return JobAssessmentStatus.IRRELEVANT;
     }
 } 

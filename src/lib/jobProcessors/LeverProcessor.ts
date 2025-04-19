@@ -1,7 +1,6 @@
-import { JobProcessor, ProcessedJobResult } from "./types";
-import { StandardizedJob } from "../../types/StandardizedJob";
-import { FilterConfig } from "../../types/FilterConfig"; // Import FilterConfig
-import { JobSource, JobType, ExperienceLevel, SalaryPeriod } from "@prisma/client";
+import { JobProcessor, ProcessedJobResult, EnhancedGreenhouseJob, GreenhouseJob } from './types';
+import { StandardizedJob, JobAssessmentStatus } from "../../types/StandardizedJob";
+import { JobSource, JobType, ExperienceLevel, SalaryPeriod, WorkplaceType } from "@prisma/client";
 import pino from "pino";
 import { LeverApiPosting } from "../fetchers/types"; // Import Lever API type
 import { stripHtml } from "../utils/textUtils";
@@ -9,6 +8,11 @@ import { detectExperienceLevel, detectJobType, extractSkills } from "../utils/jo
 import { calculateRelevanceScore } from '../utils/JobRelevanceScorer'; // Import the scorer
 import { Currency } from '../../types/models'; // Import Currency from models
 import { Prisma } from '@prisma/client';
+
+// Extend Lever API type to include the status
+interface LeverApiPostingWithAssessment extends LeverApiPosting {
+  _assessmentStatus?: JobAssessmentStatus;
+}
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
@@ -27,13 +31,29 @@ function mapStringToCurrency(currencyString: string | null | undefined): Currenc
     return undefined; // Return undefined if string doesn't match enum
 }
 
+// Helper function to map string to WorkplaceType enum
+function mapWorkplaceType(typeString?: 'on-site' | 'remote' | 'hybrid' | string): WorkplaceType {
+  switch (typeString?.toLowerCase()) {
+    case 'remote':
+      return WorkplaceType.REMOTE;
+    case 'hybrid':
+      return WorkplaceType.HYBRID;
+    case 'on-site':
+    case 'onsite': // Handle variations
+      return WorkplaceType.ON_SITE;
+    default:
+      return WorkplaceType.UNKNOWN;
+  }
+}
+
 export class LeverProcessor implements JobProcessor {
     source: string = 'lever'; // Identifier for this processor
 
     async processJob(rawJob: LeverApiPosting, sourceData?: JobSource): Promise<ProcessedJobResult> {
+        const jobWithAssessment = rawJob as LeverApiPostingWithAssessment; // Cast here
         // Ensure child logger inherits parent's level if possible, default to env/info
         const effectiveLogLevel = logger.level; // Get the current level of the base logger
-        const jobLogger = logger.child({ processor: 'Lever', jobId: rawJob?.id, sourceName: sourceData?.name }, { level: effectiveLogLevel });
+        const jobLogger = logger.child({ processor: 'Lever', jobId: jobWithAssessment?.id, sourceName: sourceData?.name }, { level: effectiveLogLevel });
         jobLogger.trace('Starting Lever job processing...');
 
         if (!sourceData) {
@@ -42,13 +62,13 @@ export class LeverProcessor implements JobProcessor {
         }
 
         try {
-            if (!rawJob || typeof rawJob !== 'object' || !rawJob.id || !rawJob.text) {
+            if (!jobWithAssessment || typeof jobWithAssessment !== 'object' || !jobWithAssessment.id || !jobWithAssessment.text) {
                  throw new Error('Invalid or incomplete raw job data provided');
             }
 
             // --- Age Filter --- 
-            if (rawJob.createdAt) {
-                const jobCreationDate = new Date(rawJob.createdAt);
+            if (jobWithAssessment.createdAt) {
+                const jobCreationDate = new Date(jobWithAssessment.createdAt);
                 const maxAgeDate = new Date();
                 maxAgeDate.setDate(maxAgeDate.getDate() - MAX_JOB_AGE_DAYS);
 
@@ -61,21 +81,21 @@ export class LeverProcessor implements JobProcessor {
             }
             // --- End Age Filter ---
             
-            // Explicitly await, though _mapToStandardizedJob is synchronous
-            const standardizedJob = this._mapToStandardizedJob(rawJob, sourceData); // No await needed
+            // Pass the casted job to _mapToStandardizedJob
+            const standardizedJob = this._mapToStandardizedJob(jobWithAssessment, sourceData);
             
             jobLogger.info(`Successfully mapped job: ${standardizedJob.title}`);
             return { success: true, job: standardizedJob };
 
         } catch (error: any) {
-            jobLogger.error({ error, rawJobId: rawJob?.id }, 'Failed to process Lever job');
+            jobLogger.error({ error, rawJobId: jobWithAssessment?.id }, 'Failed to process Lever job');
             return { success: false, error: error.message || 'Unknown processing error' };
         }
     }
 
-    private _mapToStandardizedJob(rawJob: LeverApiPosting, sourceData: JobSource): StandardizedJob {
-        
-        const jobLogger = logger.child({ processor: 'Lever', jobId: rawJob?.id, sourceName: sourceData?.name }, { level: logger.level });
+    private _mapToStandardizedJob(rawJob: LeverApiPostingWithAssessment, sourceData: JobSource): StandardizedJob {
+        const jobWithAssessment = rawJob; // Already cast in processJob
+        const jobLogger = logger.child({ processor: 'Lever', jobId: jobWithAssessment?.id, sourceName: sourceData?.name }, { level: logger.level });
 
         // Use official top-level description field (HTML) as base, fallback to empty
         let baseDescriptionHtml = rawJob.description || ''; 
@@ -166,7 +186,7 @@ export class LeverProcessor implements JobProcessor {
                         description: finalDescriptionHtml, // Use the combined HTML description
                         location: rawJob.categories?.location
                     },
-                    sourceConfig as unknown as FilterConfig // Cast needed
+                    sourceConfig as Prisma.JsonObject // Changed from FilterConfig
                 );
                 jobLogger.trace({ score: relevanceScore }, 'Calculated relevance score.');
             } catch (scoreError) {
@@ -178,6 +198,8 @@ export class LeverProcessor implements JobProcessor {
         // -----------------------------------------------------------------
 
         const mappedCurrency = mapStringToCurrency(salaryCurrencyString); // Map string to enum
+
+        const skills = extractSkills(fullTextForAnalysis);
 
         return {
             title: rawJob.text,
@@ -192,7 +214,7 @@ export class LeverProcessor implements JobProcessor {
             updatedAt: updatedAt,
             experienceLevel: detectExperienceLevel(fullTextForAnalysis), 
             jobType: jobType, // Already calculated
-            skills: extractSkills(fullTextForAnalysis),
+            skills: skills,
             minSalary: minSalary ?? undefined,
             maxSalary: maxSalary ?? undefined,
             currency: mappedCurrency, // Assign the mapped enum value or undefined
@@ -202,16 +224,16 @@ export class LeverProcessor implements JobProcessor {
             companyLogo: sourceData.logoUrl ?? undefined, // Use logo from sourceData if available, default undefined
             companyWebsite: sourceData.companyWebsite ?? undefined, // Use website from sourceData if available, default undefined
             country: 'Unknown', // Default or derive later if possible
-            workplaceType: rawJob.workplaceType?.toUpperCase() ?? (isRemote ? 'REMOTE' : 'UNKNOWN'), // Map to enum/string
             visas: [], // Default
             languages: [], // Default
             hiringRegion: undefined, // Default undefined
             relevanceScore: relevanceScore, // Add the calculated score
-            metadataRaw: { // Add relevant Lever fields to metadataRaw
+            assessmentStatus: (jobWithAssessment as LeverApiPostingWithAssessment)?._assessmentStatus,
+            workplaceType: WorkplaceType.REMOTE,
+            metadataRaw: {
                 categories: rawJob.categories,
-                tags: rawJob.tags,
-                workplaceType: rawJob.workplaceType
-            }
+            },
+            tags: skills,
         };
     }
 

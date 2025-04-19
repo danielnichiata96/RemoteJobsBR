@@ -96,6 +96,7 @@ model Job {
   id               String  @id @default(cuid())
   source           String // e.g., 'greenhouse', 'lever', 'ashby'
   sourceId         String // The job ID from the original source system
+  jobSourceId      String // <<< ADDED Foreign key to JobSource
   sourceLogo       String?
   sourceUrl        String?
   companyId        String
@@ -134,13 +135,14 @@ model Job {
   savedBy          SavedJob[]      @relation("SavedJobs")
   clicks           ClickTracking[] @relation("JobClicks")
   technologies     Technology[]
-  jobSource        JobSource       @relation(fields: [sourceId], references: [id])
+  jobSource        JobSource       @relation(fields: [jobSourceId], references: [id])
 
   // Ensure this is your unique constraint for same job from same source
   @@unique([source, sourceId])
   @@index([companyId])
   @@index([status])
   @@index([createdAt])
+  @@index([jobSourceId]) // <<< ADDED Index for the new FK
   // Consider adding indexes on normalized columns for pg_trgm search performance
   // You'd typically add this via raw SQL migration after enabling the extension:
   // CREATE INDEX job_normalized_title_trgm_idx ON "Job" USING GIN ("normalizedTitle" gin_trgm_ops);
@@ -200,6 +202,7 @@ model JobSource {
   updatedAt     DateTime @updatedAt
   lastFetched   DateTime?
   runStats      JobSourceRunStats[] // Add relation to run stats
+  jobs          Job[] // Add the missing opposite relation field
 
   @@unique([name, type])
 }
@@ -260,8 +263,10 @@ enum JobType {
 enum JobStatus {
   DRAFT
   ACTIVE
+  PENDING_REVIEW
   PAUSED
   CLOSED
+  REJECTED
 }
 
 enum Currency {

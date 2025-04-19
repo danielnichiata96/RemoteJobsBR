@@ -1,5 +1,12 @@
-import { JobType, ExperienceLevel, HiringRegion } from '@prisma/client';
+import { JobType, ExperienceLevel, HiringRegion, JobStatus } from '@prisma/client';
 import { Currency } from './models';
+
+// Add the new enum here
+export enum JobAssessmentStatus {
+  RELEVANT,
+  IRRELEVANT,
+  NEEDS_REVIEW,
+}
 
 /**
  * StandardizedJob represents the normalized job data structure
@@ -32,6 +39,7 @@ export interface StandardizedJob {
   visas?: string[];
   languages?: string[];
   relevanceScore?: number | null; // Calculated score based on relevance signals
+  assessmentStatus?: JobAssessmentStatus; // Added assessment status
   
   // Salary details
   minSalary?: number;
@@ -57,5 +65,5 @@ export interface StandardizedJob {
   publishedAt?: Date;
   expiresAt?: Date;
   updatedAt?: Date;
-  status?: string;
+  status?: JobStatus;
 } 

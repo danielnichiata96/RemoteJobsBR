@@ -1,7 +1,7 @@
 import { prisma } from '../prisma';
-import { StandardizedJob } from '../../types/StandardizedJob';
+import { StandardizedJob, JobAssessmentStatus } from '../../types/StandardizedJob';
 import pino from 'pino';
-import { Prisma, PrismaClient, HiringRegion, JobType, ExperienceLevel, JobStatus, UserRole, SalaryPeriod, WorkplaceType } from '@prisma/client';
+import { Prisma, PrismaClient, HiringRegion, JobType, ExperienceLevel, JobStatus, UserRole, SalaryPeriod, WorkplaceType, JobSource } from '@prisma/client';
 import { Currency } from '../../types/models';
 import { normalizeStringForSearch, normalizeCompanyName } from '../utils/string'; // Import NEW normalization functions
 import { z } from 'zod'; // Import Zod
@@ -54,6 +54,7 @@ const standardizedJobSchema = z.object({
   updatedAt: z.date().optional(),
   status: z.nativeEnum(JobStatus).optional(),
   relevanceScore: z.number().nullish(), // Allow number or null/undefined
+  assessmentStatus: z.nativeEnum(JobAssessmentStatus).optional(), // Add assessmentStatus
 }).refine(data => data.isRemote !== undefined || data.workplaceType !== undefined, {
     message: "Either isRemote or workplaceType must be defined",
     path: ["isRemote", "workplaceType"], 
@@ -71,6 +72,21 @@ function mapJobType2ToHiringRegion(jobType2?: 'global' | 'latam'): HiringRegion 
     case 'global': return HiringRegion.WORLDWIDE;
     case 'latam': return HiringRegion.LATAM;
     default: return null; 
+  }
+}
+
+// Helper function to determine the final JobStatus based on assessment
+function determineJobStatus(assessmentStatus?: JobAssessmentStatus): JobStatus {
+  switch (assessmentStatus) {
+    case JobAssessmentStatus.RELEVANT:
+      return JobStatus.ACTIVE;
+    case JobAssessmentStatus.IRRELEVANT:
+      return JobStatus.CLOSED;
+    case JobAssessmentStatus.NEEDS_REVIEW:
+      return JobStatus.PENDING_REVIEW;
+    default:
+      logger.warn('AssessmentStatus missing or unknown, defaulting JobStatus to PENDING_REVIEW.');
+      return JobStatus.PENDING_REVIEW;
   }
 }
 
@@ -141,10 +157,9 @@ export class JobProcessingService {
 
   /**
    * Saves or updates a job, handles company creation/linking, and logs potential duplicates.
-   * Uses findUnique + update/create instead of upsert for clarity.
+   * Now accepts the sourceData object to link the job correctly.
    */
-  public async saveOrUpdateJob(job: StandardizedJob): Promise<boolean> {
-    // --- Use Comprehensive Zod Validation --- 
+  public async saveOrUpdateJob(job: StandardizedJob, sourceData: JobSource): Promise<boolean> {
     const validationResult = standardizedJobSchema.safeParse(job);
     if (!validationResult.success) {
       this.logger.warn({
@@ -155,12 +170,10 @@ export class JobProcessingService {
       }, 'Job data failed standardized validation. Skipping save.');
       return false;
     }
-    // --- Explicitly type validJobData using z.infer --- 
-    const validJobData: z.infer<typeof standardizedJobSchema> = validationResult.data;
+    const validJobData = validationResult.data;
     
     this.logger.trace({ source: validJobData.source, sourceId: validJobData.sourceId, title: validJobData.title }, 'Processing job (passed validation)...');
 
-    // --- Normalize Key Fields EARLY --- 
     const normalizedTitleForDb = normalizeStringForSearch(validJobData.title);
     const rawCompanyName = validJobData.companyName.trim();
     const normalizedCompanyNameForDb = normalizeCompanyName(rawCompanyName);
@@ -267,76 +280,67 @@ export class JobProcessingService {
           }, `Potential duplicate(s) found for job. Currently only logging.`);
       }
 
-      // --- 2. Prepare Job Data --- 
-      const hiringRegionFromJobType = mapJobType2ToHiringRegion(validJobData.jobType2);
-      const determinedHiringRegion = validJobData.hiringRegion || hiringRegionFromJobType || undefined;
+      // --- 2. Determine Final Job Status based on Assessment ---
+      const finalJobStatus = determineJobStatus(validJobData.assessmentStatus);
+      this.logger.trace({ assessmentStatus: validJobData.assessmentStatus, finalJobStatus }, 'Determined final job status from assessment.');
+      // --- End Status Determination --- 
 
-      const jobData = {
-        title: validJobData.title,
-        description: validJobData.description,
-        requirements: validJobData.requirements,
-        responsibilities: validJobData.responsibilities,
-        benefits: validJobData.benefits,
-        location: validJobData.location,
-        country: validJobData.country,
-        isRemote: validJobData.isRemote,
-        jobType: validJobData.jobType || JobType.UNKNOWN, // Default if undefined
-        experienceLevel: validJobData.experienceLevel || ExperienceLevel.UNKNOWN, // Default
-        workplaceType: validJobData.workplaceType || WorkplaceType.UNKNOWN, // Default
-        applicationUrl: validJobData.applicationUrl,
-        // applicationEmail: validJobData.companyEmail, // Consider if this should be job-specific
-        minSalary: validJobData.minSalary,
-        maxSalary: validJobData.maxSalary,
-        currency: validJobData.currency,
-        salaryPeriod: validJobData.salaryPeriod,
-        publishedAt: validJobData.publishedAt,
-        status: JobStatus.ACTIVE, // Set to active when saving/updating
-        skills: validJobData.skills || [],
-        tags: validJobData.tags || [],
-        visas: validJobData.visas || [],
-        languages: validJobData.languages || [],
-        hiringRegion: determinedHiringRegion,
-        companyId: companyId,
-        source: validJobData.source,
-        sourceId: validJobData.sourceId,
-        normalizedTitle: normalizedTitleForDb, // Use pre-normalized
-        normalizedCompanyName: normalizedCompanyNameForDb, // Use pre-normalized
-        relevanceScore: validJobData.relevanceScore, // Include the relevance score
-        // Ensure updatedAt is handled by Prisma automatically or set manually if needed
+      // --- 3. Prepare Data & Upsert Job ---
+      const dataForDb = {
+          title: validJobData.title,
+          source: validJobData.source,
+          sourceId: validJobData.sourceId,
+          companyId: companyId,
+          normalizedTitle: normalizedTitleForDb,
+          normalizedCompanyName: normalizedCompanyNameForDb,
+          description: validJobData.description,
+          requirements: validJobData.requirements,
+          responsibilities: validJobData.responsibilities,
+          benefits: validJobData.benefits,
+          skills: validJobData.skills,
+          tags: validJobData.tags,
+          location: validJobData.location,
+          country: validJobData.country,
+          isRemote: validJobData.isRemote ?? true, // Default to true if undefined
+          jobType: validJobData.jobType,
+          experienceLevel: validJobData.experienceLevel,
+          workplaceType: validJobData.workplaceType,
+          applicationUrl: validJobData.applicationUrl,
+          minSalary: validJobData.minSalary,
+          maxSalary: validJobData.maxSalary,
+          currency: validJobData.currency,
+          salaryPeriod: validJobData.salaryPeriod,
+          publishedAt: validJobData.publishedAt,
+          hiringRegion: validJobData.hiringRegion, 
+          visas: validJobData.visas,
+          languages: validJobData.languages,
+          relevanceScore: validJobData.relevanceScore,
+          jobSourceId: sourceData.id,
+          status: finalJobStatus,
+          updatedAt: new Date()
       };
 
-      // --- 3. Find Existing Job --- 
-      const existingJob = await this.prisma.job.findUnique({
-        where: { 
-          source_sourceId: { 
-            source: validJobData.source, 
-            sourceId: validJobData.sourceId, 
+      const upsertResult = await this.prisma.job.upsert({
+        where: {
+          source_sourceId: {
+            source: validJobData.source,
+            sourceId: validJobData.sourceId,
           },
+        },
+        create: {
+          ...dataForDb,
+          createdAt: new Date()
+        },
+        update: {
+          ...dataForDb,
+          updatedAt: new Date()
         },
       });
 
-      // --- 4. Update or Create Job --- 
-      if (existingJob) {
-        // --- Update Existing Job ---
-        this.logger.trace({ jobId: existingJob.id }, 'Updating existing job...');
-        await this.prisma.job.update({
-            where: { id: existingJob.id },
-            data: jobData,
-        });
-        this.logger.info({ jobId: existingJob.id, source: validJobData.source, sourceId: validJobData.sourceId }, 'Job updated successfully.');
-
-      } else {
-        // --- Create New Job ---
-        this.logger.trace('Creating new job...');
-        const newJob = await this.prisma.job.create({
-            data: jobData,
-        });
-        this.logger.info({ jobId: newJob.id, source: validJobData.source, sourceId: validJobData.sourceId }, 'Job created successfully.');
-      }
-
+      this.logger.trace({ jobId: upsertResult.id, source: validJobData.source, sourceId: validJobData.sourceId }, 'Job successfully saved/updated.');
       return true;
 
-    } catch (error) {
+    } catch (error: any) {
       // Improved Error Logging
       const logPayload: any = { 
           source: validJobData?.source, // Use validated data if available

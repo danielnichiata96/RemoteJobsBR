@@ -1,7 +1,6 @@
 import { JobProcessor, ProcessedJobResult, RawJobData } from './types';
-import { StandardizedJob } from '../../types/StandardizedJob';
-import { FilterConfig } from '../../types/FilterConfig';
-import { JobType, ExperienceLevel, JobSource, SalaryPeriod, HiringRegion, Prisma } from '@prisma/client';
+import { StandardizedJob, JobAssessmentStatus } from '../../types/StandardizedJob';
+import { JobType, ExperienceLevel, JobSource, SalaryPeriod, HiringRegion, Prisma, WorkplaceType } from '@prisma/client';
 import { Currency } from '../../types/models';
 import { AshbyApiJob } from '../fetchers/types';
 import { parseDate } from '../utils/textUtils';
@@ -20,6 +19,11 @@ const logger = pino({
 });
 
 const MAX_JOB_AGE_DAYS = 30; // Configurable?
+
+// Extend Ashby API type
+interface AshbyApiJobWithAssessment extends AshbyApiJob {
+  _assessmentStatus?: JobAssessmentStatus;
+}
 
 // Helper function to map Ashby employmentType to our JobType enum
 function mapAshbyEmploymentType(ashbyType?: string): JobType | undefined {
@@ -44,7 +48,7 @@ export class AshbyProcessor implements JobProcessor {
   source = 'ashby';
 
   async processJob(rawJob: RawJobData, sourceData?: JobSource): Promise<ProcessedJobResult> {
-    const ashbyJob = rawJob as AshbyApiJob;
+    const ashbyJob = rawJob as AshbyApiJobWithAssessment;
     const jobLogger = logger.child({ processor: 'Ashby', jobId: ashbyJob?.id, sourceName: sourceData?.name }, { level: logger.level });
 
     try {
@@ -104,7 +108,7 @@ export class AshbyProcessor implements JobProcessor {
               description: cleanContent, // Use the cleaned description
               location: ashbyJob.location // Use Ashby's location field
             },
-            sourceConfig as unknown as FilterConfig // Cast needed, ensure config structure matches
+            sourceConfig as Prisma.JsonObject // Use Prisma.JsonObject instead of FilterConfig
           );
           jobLogger.trace({ score: relevanceScore }, 'Calculated relevance score.');
         } catch (scoreError) {
@@ -130,7 +134,7 @@ export class AshbyProcessor implements JobProcessor {
         hiringRegion: determinedRegion,
         location: ashbyJob.location || 'Remote', // Default to Remote if location is missing but isRemote is true
         country: primaryCountry || undefined, 
-        workplaceType: determinedWorkplaceType, // Always REMOTE here
+        workplaceType: WorkplaceType.REMOTE, 
         applicationUrl: ashbyJob.applyUrl || ashbyJob.jobUrl,
         companyName: companyName,
         companyLogo: undefined, // Fetched below
@@ -139,12 +143,10 @@ export class AshbyProcessor implements JobProcessor {
         publishedAt: ashbyJob.publishedAt ? new Date(ashbyJob.publishedAt) : new Date(), 
         isRemote: ashbyJob.isRemote,
         relevanceScore: relevanceScore, // Add the calculated score
-        metadataRaw: { // Add relevant Ashby fields to metadataRaw
+        assessmentStatus: ashbyJob._assessmentStatus, // Add assessment status
+        metadataRaw: { 
             employmentType: ashbyJob.employmentType,
-            team: ashbyJob.team,
-            compensationTier: ashbyJob.compensationTier,
-            department: ashbyJob.department,
-            locations: ashbyJob.locations, // Include all locations
+            location: ashbyJob.location,
             address: ashbyJob.address
         }
       };

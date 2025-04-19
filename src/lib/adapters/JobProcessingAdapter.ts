@@ -104,10 +104,17 @@ export class JobProcessingAdapter {
         return false; // Processor failed or job wasn't relevant
       }
 
+      // <<< ADDED: Check if sourceData exists before saving >>>
+      if (!sourceData) {
+        processLogger.error({ standardizedJobId: result.job.sourceId }, 'Missing sourceData, cannot save job.');
+        return false;
+      }
+
       processLogger.info({ jobId: result.job.sourceId, title: result.job.title }, `Processor returned standardized job. Attempting save...`);
       
-      // Call the service to handle saving the standardized job
-      const saved = await this.jobProcessingService.saveOrUpdateJob(result.job);
+      // Call the service to handle saving the standardized job, passing sourceData
+      // Now we know sourceData is defined here
+      const saved = await this.jobProcessingService.saveOrUpdateJob(result.job, sourceData); 
       
       if (!saved) {
          processLogger.warn({ standardizedJobId: result.job.sourceId }, `JobProcessingService failed to save/update the job.`);

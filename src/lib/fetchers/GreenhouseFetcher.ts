@@ -6,12 +6,13 @@ import pino from 'pino';
 import * as fs from 'fs';
 import * as path from 'path';
 import { JobProcessingAdapter } from '../adapters/JobProcessingAdapter';
-import { FilterConfig, FilterMetadataConfig, getGreenhouseConfig } from '../../types/JobSource'; // Adjust path
+import { FilterConfig, FilterMetadataConfig, getGreenhouseConfig, JobSourceConfig, GreenhouseConfig } from '../../types/JobSource';
 import { StandardizedJob } from '../../types/StandardizedJob'; // Adjust path
 import { extractSkills, detectJobType, detectExperienceLevel } from '../utils/jobUtils';
 import { stripHtml } from '../utils/textUtils'; // Correct import
 import { JobFetcher, SourceStats, FetcherResult, GreenhouseJob, GreenhouseMetadata, GreenhouseOffice, FilterResult } from './types';
 import { detectRestrictivePattern, containsInclusiveSignal } from '../utils/filterUtils'; // Import the new utilities
+import { JobAssessmentStatus } from '../../types/StandardizedJob'; // Import the new enum
 
 export class GreenhouseFetcher implements JobFetcher {
     private prisma: PrismaClient;
@@ -100,21 +101,27 @@ export class GreenhouseFetcher implements JobFetcher {
             for (const job of apiJobs) {
                 const jobLogger = sourceLogger.child({ jobId: job.id, jobTitle: job.title?.substring(0,50) });
                 try {
-                    const relevanceResult = this._isJobRelevant(job, filterConfig!, jobLogger);
-                    if (relevanceResult.relevant) {
-                        stats.relevant++; // Increment relevant count here
-                        jobLogger.trace(
-                            { reason: relevanceResult.reason, type: relevanceResult.type },
-                            `➡️ Relevant job found`
-                        );
-                        // Add determined hiring region type (UPPERCASE) to the job object
-                        const enhancedJob = {
-                            ...job,
-                            _determinedHiringRegionType: relevanceResult.type?.toUpperCase() || 'UNKNOWN' // Ensure uppercase
-                        };
-                        relevantJobs.push(enhancedJob);
-                    } else {
-                        jobLogger.trace({ reason: relevanceResult.reason }, `➖ Job skipped as irrelevant`);
+                    // Now returns JobAssessmentStatus
+                    const assessmentStatus = this._isJobRelevant(job, filterConfig!, jobLogger);
+                    
+                    // Add the assessment status to the job object before pushing
+                    const enhancedJob = {
+                        ...job,
+                        _assessmentStatus: assessmentStatus,
+                        _determinedHiringRegionType: assessmentStatus === JobAssessmentStatus.RELEVANT ? 'global' as const : undefined 
+                    };
+
+                    // Decide based on assessment status
+                    if (assessmentStatus === JobAssessmentStatus.RELEVANT || assessmentStatus === JobAssessmentStatus.NEEDS_REVIEW) {
+                        if (assessmentStatus === JobAssessmentStatus.RELEVANT) {
+                           stats.relevant++; // Only count RELEVANT as truly relevant for stats
+                           jobLogger.trace({ reason: 'Relevant job found' }, `➡️ Relevant job found`);
+                        } else {
+                           jobLogger.trace({ reason: 'Job needs review' }, `⚠️ Job marked for review`);
+                        }
+                        relevantJobs.push(enhancedJob); // Push RELEVANT and NEEDS_REVIEW jobs for processing
+                    } else { // IRRELEVANT
+                        jobLogger.trace({ reason: 'Job skipped as irrelevant' }, `➖ Job skipped as irrelevant`);
                     }
                 } catch (relevanceError: any) {
                     // Error *during* the relevance check itself
@@ -131,14 +138,15 @@ export class GreenhouseFetcher implements JobFetcher {
                 }
             }
 
-            sourceLogger.trace(`Found ${relevantJobs.length} relevant jobs. Proceeding to process via adapter...`);
+            sourceLogger.trace(`Found ${relevantJobs.length} relevant or reviewable jobs. Proceeding to process via adapter...`);
 
             // --- Step 2: Process Relevant Jobs in Parallel --- 
             if (relevantJobs.length > 0) {
-                await pMap(relevantJobs, async (relevantJob) => { // Iterate over relevantJobs
+                await pMap(relevantJobs, async (relevantJob) => { // Iterate over relevantJobs (now includes NEEDS_REVIEW)
                     const jobLogger = sourceLogger.child({ jobId: relevantJob.id, jobTitle: relevantJob.title?.substring(0,50) });
                     try {
-                        const saved = await this.jobProcessor.processRawJob('greenhouse', relevantJob, source); // Pass the relevant job
+                        // Pass the enhanced job with _assessmentStatus
+                        const saved = await this.jobProcessor.processRawJob('greenhouse', relevantJob, source);
 
                         if (saved) {
                             stats.processed++;
@@ -523,75 +531,88 @@ export class GreenhouseFetcher implements JobFetcher {
         return { decision: 'UNKNOWN' };
     }
 
-    // --- Refactored _isJobRelevant using the updated checks ---
-    private _isJobRelevant(job: GreenhouseJob, filterConfig: FilterConfig, logger: pino.Logger): FilterResult {
-        // Basic sanity check
-        if (!job || !job.id || !job.title) {
-            logger.warn({ jobData: job ? { id: job.id, title: job.title } : null }, 'Job data missing id or title, skipping as irrelevant.');
-            return { relevant: false, reason: 'Invalid job data (missing id or title)' };
+    // Updated return type from FilterResult to JobAssessmentStatus
+    private _isJobRelevant(job: GreenhouseJob, filterConfig: FilterConfig, logger: pino.Logger): JobAssessmentStatus {
+        const { id: jobId, title, content, location, metadata, offices } = job;
+        const jobLogger = logger.child({ jobId, jobTitle: title?.substring(0, 50) });
+
+        jobLogger.trace('--- Starting Relevance Check ---');
+
+        // 0. Initial Content Check (If no content, likely irrelevant)
+        if (!content) {
+            jobLogger.trace('Job has no content, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT; // Changed from FilterResult
+        }
+        const cleanContent = stripHtml(content).toLowerCase();
+
+        // 1. Explicit Rejection Keywords (High Priority)
+        const rejectionKeywords = (filterConfig as GreenhouseConfig)?.filterConfig?.LOCATION_KEYWORDS?.STRONG_NEGATIVE_RESTRICTION || [];
+        const { match: rejectMatch, keyword: rejectKeyword } = this._matchesKeywordRegex(
+            `${title || ''} ${location?.name || ''} ${cleanContent}`,
+            rejectionKeywords // Use the correctly accessed keywords
+        );
+        if (rejectMatch) {
+            jobLogger.trace({ rejectKeyword }, 'Explicit rejection keyword found, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT; // Changed from FilterResult
         }
 
-        const jobLogger = logger.child({ jobId: job.id, jobTitle: job.title?.substring(0, 50), fn: '_isJobRelevant' });
-        jobLogger.debug("--- Starting Relevance Check ---");
-
-        // --- Run ALL checks first --- 
-        const metadataCheck = this._checkMetadataForRemoteness(job.metadata || [], filterConfig, jobLogger);
-        jobLogger.trace({ decision: metadataCheck }, "Metadata Check Result");
-
-        const locationCheck = this._checkLocationName(job.location?.name, job.offices, filterConfig, jobLogger);
-        jobLogger.trace({ decision: locationCheck.decision, reason: locationCheck.reason }, "Location Check Result");
-        
-        const contentCheck = this._checkContentKeywords(job.title, job.content, filterConfig, jobLogger);
-        jobLogger.trace({ decision: contentCheck.decision, reason: contentCheck.reason }, "Content Check Result");
-
-        // --- Decision Logic: Prioritize REJECT, then LATAM, then GLOBAL --- 
-
-        // 1. Prioritize REJECT from any stage
-        if (metadataCheck === 'REJECT') {
-            jobLogger.info("Final Decision: REJECT (Metadata)");
-            return { relevant: false, reason: 'Metadata indicates Restriction' };
-        }
-        if (locationCheck.decision === 'REJECT') {
-            jobLogger.info({ reason: locationCheck.reason }, "Final Decision: REJECT (Location)");
-            return { relevant: false, reason: locationCheck.reason || 'Location/Office indicates Restriction' };
-        }
-        if (contentCheck.decision === 'REJECT') {
-            jobLogger.info({ reason: contentCheck.reason }, "Final Decision: REJECT (Content)");
-            return { relevant: false, reason: contentCheck.reason || 'Content indicates Restriction' };
+        // 2. Restrictive Patterns (e.g., "Remote (US Only)")
+        const restrictivePattern = detectRestrictivePattern(
+            `${title || ''} ${location?.name || ''}`, 
+            rejectionKeywords // Use the same correctly accessed keywords
+        );
+        if (restrictivePattern.isRestrictive) {
+            jobLogger.trace({ matchedKeyword: restrictivePattern.matchedKeyword }, 'Restrictive pattern found, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT; // Changed from FilterResult
         }
 
-        // 2. Prioritize ACCEPT_LATAM if no rejection occurred
-        if (metadataCheck === 'ACCEPT_LATAM') {
-             jobLogger.info("Final Decision: ACCEPT_LATAM (Metadata)");
-            return { relevant: true, reason: 'Metadata(LATAM)', type: 'latam' };
+        // 3. Check Metadata (e.g., "Location Type: Remote - LATAM")
+        const metadataDecision = this._checkMetadataForRemoteness(metadata, filterConfig, jobLogger);
+        if (metadataDecision === 'REJECT') {
+            jobLogger.trace('Metadata indicates rejection, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT; // Changed from FilterResult
+        } else if (metadataDecision === 'ACCEPT_GLOBAL' || metadataDecision === 'ACCEPT_LATAM') {
+            jobLogger.trace({ metadataDecision }, 'Metadata indicates relevance, marking as RELEVANT.');
+            return JobAssessmentStatus.RELEVANT; // Changed from FilterResult
+            // Future: Could differentiate GLOBAL/LATAM here if needed
         }
-        if (locationCheck.decision === 'ACCEPT_LATAM') {
-            jobLogger.info({ reason: locationCheck.reason }, "Final Decision: ACCEPT_LATAM (Location)");
-            return { relevant: true, reason: locationCheck.reason || 'Location/Office(LATAM)', type: 'latam' };
-        }
-        if (contentCheck.decision === 'ACCEPT_LATAM') {
-             jobLogger.info({ reason: contentCheck.reason }, "Final Decision: ACCEPT_LATAM (Content)");
-            return { relevant: true, reason: contentCheck.reason || 'Content(LATAM)', type: 'latam' };
-        }
+        jobLogger.trace({ metadataDecision }, 'Metadata check result (did not determine relevance).');
 
-        // 3. Accept GLOBAL if no rejection or LATAM acceptance occurred
-        const isGlobalFromMetadata = metadataCheck === 'ACCEPT_GLOBAL';
-        const isGlobalFromLocation = locationCheck.decision === 'ACCEPT_GLOBAL';
-        const isGlobalFromContent = contentCheck.decision === 'ACCEPT_GLOBAL';
-
-        if (isGlobalFromMetadata || isGlobalFromLocation || isGlobalFromContent) {
-             let globalReason = 'Unknown Global Signal';
-             // Prioritize the reason from the first GLOBAL signal found
-             if (isGlobalFromMetadata) globalReason = 'Metadata(Global)';
-             else if (isGlobalFromLocation) globalReason = locationCheck.reason || 'Location/Office(Global)';
-             else if (isGlobalFromContent) globalReason = contentCheck.reason || 'Content(Global)';
-             
-             jobLogger.info({ finalReason: globalReason }, "Final Decision: ACCEPT_GLOBAL (based on combined checks)");
-             return { relevant: true, reason: globalReason, type: 'global' };
+        // 4. Check Location Name & Offices
+        const locationDecision = this._checkLocationName(location?.name, offices, filterConfig, jobLogger);
+        if (locationDecision.decision === 'REJECT') {
+            jobLogger.trace({ reason: locationDecision.reason }, 'Location name indicates rejection, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT; // Changed from FilterResult
+        } else if (locationDecision.decision === 'ACCEPT_GLOBAL' || locationDecision.decision === 'ACCEPT_LATAM') {
+            jobLogger.trace({ reason: locationDecision.reason, decision: locationDecision.decision }, 'Location name indicates relevance, marking as RELEVANT.');
+            return JobAssessmentStatus.RELEVANT; // Changed from FilterResult
         }
+        jobLogger.trace({ decision: locationDecision.decision, reason: locationDecision.reason }, 'Location name check result (did not determine relevance).');
 
-        // 4. Default to REJECT (Ambiguous/Irrelevant) if none of the above conditions met
-        jobLogger.info("Final Decision: REJECT (Ambiguous or No Positive Signal Found)");
-        return { relevant: false, reason: 'Ambiguous or No Remote Signal' };
+        // 5. Check Content Keywords (Title + Description)
+        const contentDecision = this._checkContentKeywords(title, cleanContent, filterConfig, jobLogger);
+        if (contentDecision.decision === 'REJECT') {
+            jobLogger.trace({ reason: contentDecision.reason }, 'Content keywords indicate rejection, marking as IRRELEVANT.');
+            return JobAssessmentStatus.IRRELEVANT; // Changed from FilterResult
+        } else if (contentDecision.decision === 'ACCEPT_GLOBAL' || contentDecision.decision === 'ACCEPT_LATAM') {
+            jobLogger.trace({ reason: contentDecision.reason, decision: contentDecision.decision }, 'Content keywords indicate relevance, marking as RELEVANT.');
+            return JobAssessmentStatus.RELEVANT; // Changed from FilterResult
+        }
+        jobLogger.trace({ decision: contentDecision.decision, reason: contentDecision.reason }, 'Content keyword check result (did not determine relevance).');
+
+        // *** NEW: NEEDS_REVIEW Check (Add this before the final fallback) ***
+        // Placeholder: This needs the actual WorkplaceType to be determined first.
+        // We might need to fetch this earlier or pass it in if available at the fetcher stage.
+        // For now, we'll skip this specific check in the fetcher and assume it happens
+        // later in the processor or service based on standardized data.
+
+        // 6. Final Fallback (Default Decision if no clear signal)
+        // Previously: Defaulted to relevant if passes initial checks. Now needs careful consideration.
+        // If we reach here, no strong accept/reject signal was found.
+        // Let's default to IRRELEVANT for now, assuming ambiguity should not pass.
+        // This might be refined later, potentially moving to NEEDS_REVIEW if other checks pass
+        // but location/content checks were inconclusive.
+        jobLogger.trace('No definitive signal found after all checks, defaulting to IRRELEVANT.');
+        return JobAssessmentStatus.IRRELEVANT; // Changed from FilterResult
     }
 }
